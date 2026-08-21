@@ -24,7 +24,6 @@
         </a>
         <div class="header-actions">
           <button class="install-button" id="installApp" title="Instalar no celular">⇩ <span>Instalar</span></button>
-          <button class="icon-button" id="openSettings" title="Configurações" aria-label="Configurações">⚙</button>
         </div>
       </header>
 
@@ -107,6 +106,7 @@
               <h1>Controle da frota</h1>
             </div>
           </div>
+          <button class="base-settings-button" id="openSettings">⚙ Configurações da base</button>
           <div class="stat-grid">
             <article><span id="fleetCount">0</span><small>veículos</small></article>
             <article class="alert"><span id="seriousCount">0</span><small>graves</small></article>
@@ -128,7 +128,7 @@
       <div class="install-banner-icon">✓</div>
       <div><strong>Instale o CheckFrota</strong><p>Tenha acesso rápido na tela inicial, como um aplicativo.</p></div>
       <button class="small-button" id="installBannerButton">Instalar</button>
-      <button class="dismiss-install" id="dismissInstallBanner" aria-label="Fechar aviso">×</button>
+      <button class="dismiss-install" id="dismissInstallBanner" type="button" aria-label="Fechar aviso">×</button>
     </div>
 
     <dialog id="issueDialog" class="issue-dialog">
