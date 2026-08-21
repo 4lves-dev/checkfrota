@@ -293,7 +293,7 @@ document.addEventListener("click", (event) => {
   if (target.dataset.severity) { issueDraft.severity = target.dataset.severity; $$(".severity").forEach((button) => button.classList.toggle("active", button === target)); }
   if (target.id === "saveIssue") { event.preventDefault(); saveIssue(); }
   if (target.id === "openSettings") { $("#webhookUrl").value = data.settings.webhookUrl; $("#maintenancePhone").value = data.settings.maintenancePhone; $("#settingsDialog").showModal(); }
-  if (target.id === "installApp" || target.id === "installBannerButton" || target.id === "installFromDialog") requestInstall();
+  if (target.id === "installApp" || target.id === "installBannerButton" || target.id === "installFromDialog" || target.dataset.install === "app") requestInstall();
   if (target.id === "dismissInstallBanner") { sessionStorage.setItem("checkfrota-install-dismissed", "1"); $("#installBanner").hidden = true; }
   if (target.id === "closeInstallDialog") $("#installDialog").close();
   if (target.id === "newVehicle") openVehicleDialog();
