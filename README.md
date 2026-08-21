@@ -7,7 +7,9 @@ Aplicativo responsivo para a vistoria de caminhões, carros e utilitários. Ele 
 - Cadastro da frota, responsável, WhatsApp e e-mail por veículo.
 - Checklist de saída com 12 itens de segurança e operação.
 - Registro de ocorrências com texto, foto opcional e gravidade **leve**, **média** ou **grave — veículo sem condição de deslocamento**.
-- Geração de um registro completo da inspeção e painel da base com ocorrências abertas, histórico e opção de marcar manutenção como resolvida.
+- Geração de um registro completo da inspeção e painel da base com ocorrências abertas, histórico, frota e relatório de solicitações.
+- Retorno da manutenção por ocorrência: situação, data/hora de agendamento, oficina/responsável e observação. O retorno pode ser enviado pelo WhatsApp para a base.
+- Relatório das solicitações com totais e download em CSV, pronto para abrir no Excel.
 - Botão que abre o WhatsApp da base no número `+55 12 98840-0316`, com a ocorrência já redigida.
 - Botão que abre o WhatsApp do responsável pelo caminhão/carro, quando o número estiver cadastrado.
 - Envio do formulário para um fluxo externo (Power Automate, Make ou Google Apps Script) que pode encaminhá-lo automaticamente por e-mail.
@@ -16,10 +18,10 @@ Aplicativo responsivo para a vistoria de caminhões, carros e utilitários. Ele 
 ## Primeiro uso
 
 1. Abra o aplicativo em um navegador.
-2. Entre no ícone de engrenagem e confirme o telefone da base.
+2. Em **Controle da frota → Configurações**, confirme o telefone da base.
 3. Em **Controle da frota → Veículos**, edite os três veículos de exemplo ou cadastre toda a frota real. Para cada um informe placa, tipo, dono/responsável, WhatsApp e e-mail.
 4. O motorista informa o nome, escolhe o veículo e preenche o checklist.
-5. Havendo alguma falha, ele toca em `!`, descreve o problema e escolhe a gravidade. Ao concluir, aparecem os botões de aviso pelo WhatsApp.
+5. Havendo alguma falha, ele toca em `!`, descreve o problema e escolhe a gravidade. Ao concluir, aparecem os botões de aviso pelo WhatsApp. Na base, use **Agendar / retorno** e a aba **Relatório** para acompanhar e baixar as solicitações.
 
 > Os dados locais servem para demonstração e para uso no mesmo aparelho. Para todos os motoristas e a base enxergarem a mesma frota e o mesmo histórico, a publicação final precisa de uma base central (por exemplo, SharePoint, Supabase ou Firebase). A tela e o fluxo já estão prontos para isso; o endpoint de automação é configurável.
 
@@ -35,7 +37,7 @@ No Power Automate, crie um fluxo com:
 4. Opcionalmente, grave o mesmo registro numa lista do SharePoint ou planilha Excel e envie notificações de ocorrências graves para o time de manutenção.
 5. Copie a URL do gatilho e cole em **⚙ Configurações → URL de envio do formulário** no aplicativo.
 
-O corpo enviado inclui `inspection`, `vehicle` e `issues`; cada ocorrência traz veículo, motorista, gravidade, descrição, horário e nome da foto. Se a empresa preferir Make ou Google Apps Script, a mesma URL de webhook funciona.
+O corpo enviado inclui `inspection`, `vehicle` e `issues`; cada ocorrência traz veículo, motorista, gravidade, descrição, horário e nome da foto. O aplicativo também envia uma atualização com `type: "maintenance-update"` quando a base salva um agendamento ou retorno. Se a empresa preferir Make ou Google Apps Script, a mesma URL de webhook funciona.
 
 ## Instalar no celular
 
