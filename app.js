@@ -254,6 +254,7 @@ function sendIssueWhatsApp(issueId) {
 }
 function closeIssue(issueId) { const issue = data.issues.find((entry) => entry.id === issueId); if (issue) { issue.status = "resolvida"; issue.resolvedAt = new Date().toISOString(); saveData(); renderControl(); } }
 function saveSettings() { data.settings.webhookUrl = $("#webhookUrl").value.trim(); data.settings.maintenancePhone = phoneOnly($("#maintenancePhone").value); saveData(); $("#settingsDialog").close(); }
+function dismissInstallBanner() { sessionStorage.setItem("checkfrota-install-dismissed", "1"); $("#installBanner").hidden = true; }
 
 function isInstalled() {
   return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
@@ -294,7 +295,7 @@ document.addEventListener("click", (event) => {
   if (target.id === "saveIssue") { event.preventDefault(); saveIssue(); }
   if (target.id === "openSettings") { $("#webhookUrl").value = data.settings.webhookUrl; $("#maintenancePhone").value = data.settings.maintenancePhone; $("#settingsDialog").showModal(); }
   if (target.id === "installApp" || target.id === "installBannerButton" || target.id === "installFromDialog" || target.dataset.install === "app") requestInstall();
-  if (target.id === "dismissInstallBanner") { sessionStorage.setItem("checkfrota-install-dismissed", "1"); $("#installBanner").hidden = true; }
+  if (target.id === "dismissInstallBanner") dismissInstallBanner();
   if (target.id === "closeInstallDialog") $("#installDialog").close();
   if (target.id === "newVehicle") openVehicleDialog();
   if (target.dataset.editVehicle) openVehicleDialog(target.dataset.editVehicle);
@@ -302,6 +303,7 @@ document.addEventListener("click", (event) => {
   if (target.dataset.closeIssue) closeIssue(target.dataset.closeIssue);
 });
 $("#vehicleSelect").addEventListener("change", renderVehicleOwner);
+$("#dismissInstallBanner").addEventListener("click", dismissInstallBanner);
 $("#issueForm").addEventListener("submit", (event) => { event.preventDefault(); saveIssue(); });
 $("#vehicleForm").addEventListener("submit", (event) => { event.preventDefault(); saveVehicle(); });
 $("#settingsForm").addEventListener("submit", (event) => { event.preventDefault(); saveSettings(); });
