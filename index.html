@@ -12,7 +12,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icons/icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=8" />
+    <link rel="stylesheet" href="styles.css?v=10" />
     <style>#installBanner[hidden] { display: none !important; }</style>
     <title>CheckFrota</title>
   </head>
@@ -115,10 +115,12 @@
           </div>
           <div class="tabs" role="tablist">
             <button class="tab active" data-tab="issues">Ocorrências</button>
+            <button class="tab" data-tab="reports">Relatório</button>
             <button class="tab" data-tab="history">Histórico</button>
             <button class="tab" data-tab="vehicles">Veículos</button>
           </div>
           <div id="issuesPanel" class="tab-panel active"></div>
+          <div id="reportsPanel" class="tab-panel"></div>
           <div id="historyPanel" class="tab-panel"></div>
           <div id="vehiclesPanel" class="tab-panel"></div>
         </section>
@@ -175,6 +177,24 @@
         <label for="maintenancePhone">WhatsApp da manutenção / base</label>
         <input id="maintenancePhone" inputmode="tel" placeholder="5512988400316" />
         <button class="primary-button" value="default">Salvar configurações</button>
+      </form>
+    </dialog>
+
+    <dialog id="maintenanceDialog" class="issue-dialog">
+      <form method="dialog" id="maintenanceForm">
+        <div class="dialog-head"><div><p class="eyebrow">MANUTENÇÃO</p><h2 id="maintenanceDialogTitle">Retorno da manutenção</h2></div><button class="icon-button" value="cancel" aria-label="Fechar">×</button></div>
+        <input type="hidden" id="maintenanceIssueId" />
+        <p class="dialog-copy" id="maintenanceIssueSummary"></p>
+        <label for="maintenanceStatus">Situação da manutenção</label>
+        <select id="maintenanceStatus"><option>Pendente</option><option>Agendada</option><option>Em manutenção</option><option>Concluída</option></select>
+        <label for="maintenanceScheduledAt">Data e horário agendados <em>opcional</em></label>
+        <input id="maintenanceScheduledAt" type="datetime-local" />
+        <label for="maintenanceProvider">Oficina / responsável <em>opcional</em></label>
+        <input id="maintenanceProvider" placeholder="Ex.: Oficina Central" />
+        <label for="maintenanceFeedback">Retorno ou observação</label>
+        <textarea id="maintenanceFeedback" placeholder="Ex.: manutenção confirmada para terça, às 08h."></textarea>
+        <button type="button" class="secondary-button" id="sendMaintenanceUpdate">Enviar retorno à base no WhatsApp</button>
+        <button class="primary-button" value="default">Salvar retorno</button>
       </form>
     </dialog>
 
