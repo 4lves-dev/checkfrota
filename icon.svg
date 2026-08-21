@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="CheckFrota">
+  <rect width="512" height="512" rx="112" fill="#0f2a43"/>
+  <path d="M128 143c0-18 14-32 32-32h192c18 0 32 14 32 32v140h20c22 0 40 18 40 40v49c0 18-14 32-32 32h-17c-8 31-36 54-70 54s-62-23-70-54H207c-8 31-36 54-70 54s-62-23-70-54h-7c-18 0-32-14-32-32V199c0-18 14-32 32-32h68v-24Zm64 0v140h128V143H192Zm-55 203a23 23 0 1 0 0 46 23 23 0 0 0 0-46Zm198 0a23 23 0 1 0 0 46 23 23 0 0 0 0-46Z" fill="#fff"/>
+  <circle cx="385" cy="135" r="78" fill="#1675d1"/>
+  <path d="m350 136 23 23 48-53" fill="none" stroke="#fff" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

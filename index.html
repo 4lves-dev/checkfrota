@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0f2a43" />
+    <meta name="description" content="CheckFrota: checklist e ocorrências de veículos." />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="CheckFrota" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="icons/icon.svg" />
+    <link rel="stylesheet" href="styles.css" />
+    <title>CheckFrota</title>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="#inicio" aria-label="CheckFrota - início">
+          <span class="brand-mark">✓</span>
+          <span>Check<span>Frota</span></span>
+        </a>
+        <div class="header-actions">
+          <button class="install-button" id="installApp" title="Instalar no celular">⇩ <span>Instalar</span></button>
+          <button class="icon-button" id="openSettings" title="Configurações" aria-label="Configurações">⚙</button>
+        </div>
+      </header>
+
+      <main>
+        <section class="screen active" id="inicio" data-screen="inicio">
+          <div class="hero">
+            <p class="eyebrow">CONTROLE DE FROTA</p>
+            <h1>Olá, motorista.</h1>
+            <p>Faça a inspeção antes de sair. Se algo estiver errado, a manutenção será avisada na hora.</p>
+          </div>
+
+          <div class="card driver-card">
+            <label for="driverName">Seu nome</label>
+            <input id="driverName" type="text" placeholder="Ex.: João da Silva" autocomplete="name" />
+            <label for="vehicleSelect">Veículo que vai utilizar</label>
+            <select id="vehicleSelect" aria-label="Escolha o veículo"></select>
+            <p class="helper" id="vehicleOwner"></p>
+            <button class="primary-button" id="startChecklist">Iniciar checklist <span>→</span></button>
+          </div>
+
+          <section class="quick-status" aria-label="Resumo da frota">
+            <div><span id="dailyDone">0</span><small>checklists hoje</small></div>
+            <div><span id="openIssues">0</span><small>ocorrências abertas</small></div>
+          </section>
+
+          <button class="text-button admin-entry" data-go="controle">Acessar controle da frota <span>→</span></button>
+        </section>
+
+        <section class="screen" id="checklist" data-screen="checklist">
+          <div class="screen-heading">
+            <button class="back-button" data-go="inicio">←</button>
+            <div>
+              <p class="eyebrow">INSPEÇÃO DE SAÍDA</p>
+              <h1 id="checklistVehicle">Veículo</h1>
+            </div>
+          </div>
+          <div class="progress-row"><span id="progressText">0 de 12 itens</span><div class="progress"><i id="progressBar"></i></div></div>
+          <div id="checklistItems" class="checklist-list"></div>
+          <div class="sticky-action">
+            <button class="primary-button" id="reviewChecklist">Revisar e concluir <span>→</span></button>
+          </div>
+        </section>
+
+        <section class="screen" id="review" data-screen="review">
+          <div class="screen-heading">
+            <button class="back-button" data-go="checklist">←</button>
+            <div>
+              <p class="eyebrow">REVISÃO</p>
+              <h1>Confirmar inspeção</h1>
+            </div>
+          </div>
+          <div id="reviewSummary"></div>
+          <label class="field-label" for="generalNotes">Observação geral <em>opcional</em></label>
+          <textarea id="generalNotes" placeholder="Alguma informação importante para a base?"></textarea>
+          <button class="primary-button" id="submitChecklist">Concluir e gerar formulário <span>✓</span></button>
+        </section>
+
+        <section class="screen" id="success" data-screen="success">
+          <div class="success-card card">
+            <div class="success-icon">✓</div>
+            <p class="eyebrow">CHECKLIST REGISTRADO</p>
+            <h1 id="successTitle">Tudo certo para seguir.</h1>
+            <p id="successText"></p>
+            <div id="dispatchActions" class="dispatch-actions"></div>
+            <button class="secondary-button" data-go="inicio">Voltar ao início</button>
+          </div>
+        </section>
+
+        <section class="screen" id="controle" data-screen="controle">
+          <div class="screen-heading">
+            <button class="back-button" data-go="inicio">←</button>
+            <div>
+              <p class="eyebrow">PAINEL DA BASE</p>
+              <h1>Controle da frota</h1>
+            </div>
+          </div>
+          <div class="stat-grid">
+            <article><span id="fleetCount">0</span><small>veículos</small></article>
+            <article class="alert"><span id="seriousCount">0</span><small>graves</small></article>
+            <article><span id="weekChecks">0</span><small>checklists (7 dias)</small></article>
+          </div>
+          <div class="tabs" role="tablist">
+            <button class="tab active" data-tab="issues">Ocorrências</button>
+            <button class="tab" data-tab="history">Histórico</button>
+            <button class="tab" data-tab="vehicles">Veículos</button>
+          </div>
+          <div id="issuesPanel" class="tab-panel active"></div>
+          <div id="historyPanel" class="tab-panel"></div>
+          <div id="vehiclesPanel" class="tab-panel"></div>
+        </section>
+      </main>
+    </div>
+
+    <div class="install-banner" id="installBanner" hidden>
+      <div class="install-banner-icon">✓</div>
+      <div><strong>Instale o CheckFrota</strong><p>Tenha acesso rápido na tela inicial, como um aplicativo.</p></div>
+      <button class="small-button" id="installBannerButton">Instalar</button>
+      <button class="dismiss-install" id="dismissInstallBanner" aria-label="Fechar aviso">×</button>
+    </div>
+
+    <dialog id="issueDialog" class="issue-dialog">
+      <form method="dialog" id="issueForm">
+        <div class="dialog-head">
+          <div><p class="eyebrow">OCORRÊNCIA</p><h2 id="issueItemName">Item</h2></div>
+          <button class="icon-button" value="cancel" aria-label="Fechar">×</button>
+        </div>
+        <p class="dialog-copy">Descreva o problema e escolha a gravidade. A base será avisada ao concluir o checklist.</p>
+        <label for="issueSeverity">Gravidade</label>
+        <div class="severity-options" id="severityOptions">
+          <button type="button" data-severity="Leve" class="severity leve"><b>Leve</b><small>Sem impedir o uso</small></button>
+          <button type="button" data-severity="Média" class="severity media"><b>Média</b><small>Precisa programar reparo</small></button>
+          <button type="button" data-severity="Grave" class="severity grave"><b>Grave</b><small>Não pode se deslocar</small></button>
+        </div>
+        <label for="issueDescription">O que foi encontrado?</label>
+        <textarea id="issueDescription" required placeholder="Ex.: pneu dianteiro direito com corte lateral"></textarea>
+        <label for="issuePhoto">Foto <em>opcional</em></label>
+        <input id="issuePhoto" type="file" accept="image/*" capture="environment" />
+        <button class="primary-button" id="saveIssue" value="default">Salvar ocorrência</button>
+      </form>
+    </dialog>
+
+    <dialog id="vehicleDialog" class="issue-dialog">
+      <form method="dialog" id="vehicleForm">
+        <div class="dialog-head"><div><p class="eyebrow">CADASTRO</p><h2 id="vehicleDialogTitle">Novo veículo</h2></div><button class="icon-button" value="cancel" aria-label="Fechar">×</button></div>
+        <input type="hidden" id="editVehicleId" />
+        <label for="vehiclePlate">Placa / identificação</label><input id="vehiclePlate" required placeholder="ABC1D23" />
+        <label for="vehicleType">Tipo</label><select id="vehicleType"><option>Caminhão</option><option>Carro</option><option>Utilitário</option><option>Outro</option></select>
+        <label for="vehicleOwnerName">Responsável / dono</label><input id="vehicleOwnerName" required placeholder="Nome do responsável" />
+        <label for="vehicleOwnerPhone">WhatsApp do responsável</label><input id="vehicleOwnerPhone" inputmode="tel" placeholder="5512999999999" />
+        <label for="vehicleEmail">E-mail para o formulário</label><input id="vehicleEmail" type="email" placeholder="manutencao@empresa.com" />
+        <button class="primary-button" value="default">Salvar veículo</button>
+      </form>
+    </dialog>
+
+    <dialog id="settingsDialog" class="issue-dialog">
+      <form method="dialog" id="settingsForm">
+        <div class="dialog-head"><div><p class="eyebrow">INTEGRAÇÃO</p><h2>Configurações</h2></div><button class="icon-button" value="cancel" aria-label="Fechar">×</button></div>
+        <p class="dialog-copy">Cole a URL do seu fluxo do Power Automate, Make ou Apps Script. Ele receberá o formulário e poderá enviar o e-mail automático.</p>
+        <label for="webhookUrl">URL de envio do formulário</label>
+        <input id="webhookUrl" type="url" placeholder="https://..." />
+        <label for="maintenancePhone">WhatsApp da manutenção / base</label>
+        <input id="maintenancePhone" inputmode="tel" placeholder="5512988400316" />
+        <button class="primary-button" value="default">Salvar configurações</button>
+      </form>
+    </dialog>
+
+    <dialog id="installDialog" class="issue-dialog install-dialog">
+      <div class="dialog-head">
+        <div><p class="eyebrow">APLICATIVO NO CELULAR</p><h2>Instalar CheckFrota</h2></div>
+        <button class="icon-button" id="closeInstallDialog" aria-label="Fechar">×</button>
+      </div>
+      <div id="installDialogContent"></div>
+    </dialog>
+
+    <template id="emptyStateTemplate"><div class="empty-state"><span>⌁</span><p>Nenhum registro por aqui.</p></div></template>
+    <script src="app.js"></script>
+  </body>
+</html>
