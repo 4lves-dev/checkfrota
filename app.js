@@ -158,6 +158,7 @@ async function submitChecklist() {
     driver: current.driver, vehicleId: vehicle.id, vehiclePlate: vehicle.plate, vehicleType: vehicle.type,
     ownerName: vehicle.ownerName, ownerPhone: vehicle.ownerPhone, email: vehicle.email,
     itemName: issue.item.name, severity: issue.severity, description: issue.description, photoName: issue.photoName,
+    maintenance: { status: "Pendente", scheduledAt: "", provider: "", feedback: "", updatedAt: "" },
   }));
   data.inspections.unshift(inspection);
   data.issues.unshift(...newIssues);
@@ -203,19 +204,40 @@ function renderControl() {
   $("#seriousCount").textContent = open.filter((issue) => issue.severity === "Grave").length;
   const since = Date.now() - 7 * 24 * 60 * 60 * 1000;
   $("#weekChecks").textContent = data.inspections.filter((inspection) => new Date(inspection.createdAt).getTime() >= since).length;
-  renderIssues(); renderHistory(); renderVehicles();
+  renderIssues(); renderReports(); renderHistory(); renderVehicles();
 }
 function empty() { return $("#emptyStateTemplate").content.cloneNode(true); }
+function maintenanceOf(issue) { return { status: "Pendente", scheduledAt: "", provider: "", feedback: "", ...issue.maintenance }; }
 function renderIssues() {
   const panel = $("#issuesPanel"); panel.innerHTML = "";
   const issues = data.issues.filter((issue) => issue.status === "aberta").sort((a,b) => severityRank(b.severity) - severityRank(a.severity) || new Date(b.createdAt)-new Date(a.createdAt));
   if (!issues.length) { panel.append(empty()); return; }
-  panel.innerHTML = issues.map((issue) => `<article class="issue-card ${issue.severity.toLowerCase()}">
+  panel.innerHTML = issues.map((issue) => {
+    const maintenance = maintenanceOf(issue);
+    const schedule = maintenance.scheduledAt ? ` · ${dateTime(maintenance.scheduledAt)}` : "";
+    return `<article class="issue-card ${issue.severity.toLowerCase()}">
       <div class="card-heading"><div><h3>${esc(issue.itemName)}</h3><p class="vehicle-label">${esc(issue.vehiclePlate)} · ${esc(issue.vehicleType)}</p></div><span class="chip ${issue.severity.toLowerCase()}">${esc(issue.severity)}</span></div>
       <p class="issue-desc">${esc(issue.description)}</p>
       <p class="meta">${esc(issue.driver)} · ${dateTime(issue.createdAt)}${issue.photoName ? ` · 📷 ${esc(issue.photoName)}` : ""}</p>
-      <div class="issue-actions"><button class="small-button whatsapp" data-whatsapp-issue="${issue.id}">WhatsApp</button><button class="small-button" data-close-issue="${issue.id}">Marcar resolvida</button></div>
-    </article>`).join("");
+      <p class="maintenance-meta"><b>Manutenção:</b> ${esc(maintenance.status)}${schedule}${maintenance.provider ? ` · ${esc(maintenance.provider)}` : ""}</p>
+      <div class="issue-actions"><button class="small-button" data-maintenance-issue="${issue.id}">Agendar / retorno</button><button class="small-button whatsapp" data-maintenance-whatsapp="${issue.id}">Avisar base</button><button class="small-button" data-close-issue="${issue.id}">Marcar resolvida</button></div>
+    </article>`;
+  }).join("");
+}
+function renderReports() {
+  const panel = $("#reportsPanel");
+  const issues = [...data.issues].sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const open = issues.filter((issue) => issue.status === "aberta").length;
+  const scheduled = issues.filter((issue) => maintenanceOf(issue).status === "Agendada").length;
+  const completed = issues.filter((issue) => issue.status === "resolvida" || maintenanceOf(issue).status === "Concluída").length;
+  panel.innerHTML = `<section class="report-summary"><article><span>${issues.length}</span><small>solicitações</small></article><article><span>${open}</span><small>em aberto</small></article><article><span>${scheduled}</span><small>agendadas</small></article><article><span>${completed}</span><small>concluídas</small></article></section><button class="report-download" id="downloadReport">↓ Baixar relatório de solicitações (.csv)</button><div class="report-list">${issues.length ? issues.map((issue) => { const maintenance = maintenanceOf(issue); return `<article class="report-item"><div><b>${esc(issue.vehiclePlate)} · ${esc(issue.itemName)}</b><p>${esc(issue.description)}</p><small>${dateTime(issue.createdAt)} · ${esc(maintenance.status)}${maintenance.scheduledAt ? ` · ${dateTime(maintenance.scheduledAt)}` : ""}</small></div><span class="chip ${issue.severity.toLowerCase()}">${esc(issue.severity)}</span></article>`; }).join("") : `<div class="empty-state"><span>⌁</span><p>Nenhuma solicitação registrada.</p></div>`}</div>`;
+}
+function csvValue(value = "") { return `"${String(value).replaceAll('"', '""')}"`; }
+function downloadReport() {
+  const rows = [["Data", "Veículo", "Tipo", "Item", "Gravidade", "Descrição", "Motorista", "Situação", "Agendamento", "Oficina / responsável", "Retorno"]];
+  data.issues.forEach((issue) => { const maintenance = maintenanceOf(issue); rows.push([dateTime(issue.createdAt), issue.vehiclePlate, issue.vehicleType, issue.itemName, issue.severity, issue.description, issue.driver, maintenance.status, maintenance.scheduledAt ? dateTime(maintenance.scheduledAt) : "", maintenance.provider, maintenance.feedback]); });
+  const blob = new Blob([`\uFEFF${rows.map((row) => row.map(csvValue).join(";")).join("\n")}`], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = `relatorio-solicitacoes-${today()}.csv`; link.click(); URL.revokeObjectURL(url);
 }
 function renderHistory() {
   const panel = $("#historyPanel"); panel.innerHTML = "";
@@ -252,7 +274,39 @@ function sendIssueWhatsApp(issueId) {
   if (!target) return alert("Cadastre o número de WhatsApp do responsável ou da base nas configurações.");
   window.open(whatsappLink(target, message), "_blank", "noopener");
 }
-function closeIssue(issueId) { const issue = data.issues.find((entry) => entry.id === issueId); if (issue) { issue.status = "resolvida"; issue.resolvedAt = new Date().toISOString(); saveData(); renderControl(); } }
+function maintenanceFormValues() { return { status: $("#maintenanceStatus").value, scheduledAt: $("#maintenanceScheduledAt").value, provider: $("#maintenanceProvider").value.trim(), feedback: $("#maintenanceFeedback").value.trim(), updatedAt: new Date().toISOString() }; }
+function buildMaintenanceMessage(issue) {
+  const maintenance = maintenanceOf(issue);
+  return `*RETORNO DE MANUTENÇÃO — ${maintenance.status.toUpperCase()}*\n\nVeículo: ${issue.vehiclePlate} (${issue.vehicleType})\nOcorrência: ${issue.itemName}\nGravidade: ${issue.severity}\nMotorista: ${issue.driver}\n${maintenance.scheduledAt ? `Agendamento: ${dateTime(maintenance.scheduledAt)}\n` : ""}${maintenance.provider ? `Oficina / responsável: ${maintenance.provider}\n` : ""}${maintenance.feedback ? `Retorno: ${maintenance.feedback}\n` : ""}\nSolicitação original: ${issue.description}`;
+}
+function openMaintenanceIssue(issueId) {
+  const issue = data.issues.find((entry) => entry.id === issueId); if (!issue) return;
+  const maintenance = maintenanceOf(issue);
+  $("#maintenanceIssueId").value = issue.id;
+  $("#maintenanceDialogTitle").textContent = `${issue.vehiclePlate} · ${issue.itemName}`;
+  $("#maintenanceIssueSummary").textContent = `${issue.severity} · ${issue.description}`;
+  $("#maintenanceStatus").value = maintenance.status;
+  $("#maintenanceScheduledAt").value = maintenance.scheduledAt ? maintenance.scheduledAt.slice(0, 16) : "";
+  $("#maintenanceProvider").value = maintenance.provider;
+  $("#maintenanceFeedback").value = maintenance.feedback;
+  $("#maintenanceDialog").showModal();
+}
+function sendMaintenanceWhatsApp(issueId) {
+  const issue = data.issues.find((entry) => entry.id === issueId); if (!issue) return;
+  const target = data.settings.maintenancePhone;
+  if (!target) return alert("Cadastre o WhatsApp da base de manutenção em Configurações da base.");
+  window.open(whatsappLink(target, buildMaintenanceMessage(issue)), "_blank", "noopener");
+}
+function saveMaintenance() {
+  const issue = data.issues.find((entry) => entry.id === $("#maintenanceIssueId").value); if (!issue) return;
+  issue.maintenance = maintenanceFormValues();
+  if (issue.maintenance.status === "Concluída") { issue.status = "resolvida"; issue.resolvedAt = new Date().toISOString(); }
+  else if (issue.status === "resolvida") { issue.status = "aberta"; delete issue.resolvedAt; }
+  saveData();
+  if (data.settings.webhookUrl) void sendToIntegration({ type: "maintenance-update", issue, maintenance: issue.maintenance });
+  $("#maintenanceDialog").close(); renderControl();
+}
+function closeIssue(issueId) { const issue = data.issues.find((entry) => entry.id === issueId); if (issue) { issue.maintenance = { ...maintenanceOf(issue), status: "Concluída", updatedAt: new Date().toISOString() }; issue.status = "resolvida"; issue.resolvedAt = new Date().toISOString(); saveData(); if (data.settings.webhookUrl) void sendToIntegration({ type: "maintenance-update", issue, maintenance: issue.maintenance }); renderControl(); } }
 function saveSettings() { data.settings.webhookUrl = $("#webhookUrl").value.trim(); data.settings.maintenancePhone = phoneOnly($("#maintenancePhone").value); saveData(); $("#settingsDialog").close(); }
 function dismissInstallBanner() { sessionStorage.setItem("checkfrota-install-dismissed", "1"); $("#installBanner").hidden = true; }
 
@@ -300,13 +354,18 @@ document.addEventListener("click", (event) => {
   if (target.id === "newVehicle") openVehicleDialog();
   if (target.dataset.editVehicle) openVehicleDialog(target.dataset.editVehicle);
   if (target.dataset.whatsappIssue) sendIssueWhatsApp(target.dataset.whatsappIssue);
+  if (target.dataset.maintenanceIssue) openMaintenanceIssue(target.dataset.maintenanceIssue);
+  if (target.dataset.maintenanceWhatsapp) sendMaintenanceWhatsApp(target.dataset.maintenanceWhatsapp);
   if (target.dataset.closeIssue) closeIssue(target.dataset.closeIssue);
+  if (target.id === "sendMaintenanceUpdate") { const issue = data.issues.find((entry) => entry.id === $("#maintenanceIssueId").value); if (issue) { issue.maintenance = maintenanceFormValues(); sendMaintenanceWhatsApp(issue.id); } }
+  if (target.id === "downloadReport") downloadReport();
 });
 $("#vehicleSelect").addEventListener("change", renderVehicleOwner);
 $("#dismissInstallBanner").addEventListener("click", dismissInstallBanner);
 $("#issueForm").addEventListener("submit", (event) => { event.preventDefault(); saveIssue(); });
 $("#vehicleForm").addEventListener("submit", (event) => { event.preventDefault(); saveVehicle(); });
 $("#settingsForm").addEventListener("submit", (event) => { event.preventDefault(); saveSettings(); });
+$("#maintenanceForm").addEventListener("submit", (event) => { event.preventDefault(); saveMaintenance(); });
 $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").forEach((button) => button.classList.toggle("active", button === tab)); $$(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab.dataset.tab}Panel`)); }));
 
 if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js").catch(() => {}));
