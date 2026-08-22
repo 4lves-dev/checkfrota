@@ -15,6 +15,7 @@ const CHECKLIST = [
   ["kit", "Triângulo, macaco e extintor", "Segurança"],
 ].map(([id, name, category]) => ({ id, name, category }));
 const BASES = { Vertical: "5512981567218", Abrigo: "5512997884887", Horizontal: "5512988400697" };
+const DRIVER_NOTIFICATION_PHONE = "5512988400316";
 
 const initialData = {
   settings: { maintenancePhone: "5512988400316", maintenanceGroupPhone: "", leaderPhone: "", fleetManagerPhone: "", webhookUrl: "" },
@@ -44,7 +45,7 @@ const initialData = {
 };
 
 let data = loadData();
-let current = { driver: "", driverPhone: "", leaderName: "", baseName: "", basePhone: "", vehicleId: "", odometer: "", states: {}, notes: "" };
+let current = { driver: "", driverPhone: DRIVER_NOTIFICATION_PHONE, baseName: "", basePhone: "", vehicleId: "", odometer: "", states: {}, notes: "" };
 let issueDraft = { itemId: null, severity: "Leve" };
 let deferredInstallPrompt = null;
 
@@ -106,8 +107,7 @@ function renderVehicleOwner() {
 
 function beginChecklist() {
   const driver = $("#driverName").value.trim();
-  const driverPhone = "";
-  const leaderName = "";
+  const driverPhone = DRIVER_NOTIFICATION_PHONE;
   const baseName = $("#baseSelect").value;
   const basePhone = BASES[baseName] || "";
   const vehicleId = $("#vehicleSelect").value;
@@ -116,7 +116,7 @@ function beginChecklist() {
   if (!vehicleId) return alert("Selecione o veículo que será utilizado.");
   if (!basePhone) return alert("Selecione a base responsável pela aprovação.");
   if (!Number.isFinite(odometer) || odometer < 0) return alert("Informe a quilometragem atual do veículo.");
-  current = { driver, driverPhone, leaderName, baseName, basePhone, vehicleId, odometer, states: Object.fromEntries(CHECKLIST.map((item) => [item.id, { status: "pending" }])), notes: "" };
+  current = { driver, driverPhone, baseName, basePhone, vehicleId, odometer, states: Object.fromEntries(CHECKLIST.map((item) => [item.id, { status: "pending" }])), notes: "" };
   localStorage.setItem("checkfrota-driver", driver);
   localStorage.setItem("checkfrota-base", baseName);
   const vehicle = vehicleById(vehicleId);
@@ -190,14 +190,14 @@ async function submitChecklist() {
   current.notes = $("#generalNotes").value.trim();
   const vehicle = vehicleById(current.vehicleId);
   const inspection = {
-    id: crypto.randomUUID(), createdAt: new Date().toISOString(), driver: current.driver, driverPhone: current.driverPhone, leaderName: current.leaderName, baseName: current.baseName, basePhone: current.basePhone,
+    id: crypto.randomUUID(), createdAt: new Date().toISOString(), driver: current.driver, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone,
     vehicleId: vehicle.id, vehiclePrefix: vehicle.prefix || "", vehiclePlate: vehicle.plate, vehicleType: vehicle.type, vehicleModel: vehicle.model || "", odometer: current.odometer, notes: current.notes,
     items: CHECKLIST.map((item) => ({ ...item, ...current.states[item.id] })),
   };
   const currentIssues = getCurrentIssues();
   const newIssues = currentIssues.map((issue) => ({
     id: crypto.randomUUID(), inspectionId: inspection.id, status: "aberta", createdAt: inspection.createdAt,
-    driver: current.driver, driverPhone: current.driverPhone, leaderName: current.leaderName, baseName: current.baseName, basePhone: current.basePhone, vehicleId: vehicle.id, vehiclePrefix: vehicle.prefix || "", vehiclePlate: vehicle.plate, vehicleType: vehicle.type, vehicleModel: vehicle.model || "", odometer: current.odometer,
+    driver: current.driver, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, vehicleId: vehicle.id, vehiclePrefix: vehicle.prefix || "", vehiclePlate: vehicle.plate, vehicleType: vehicle.type, vehicleModel: vehicle.model || "", odometer: current.odometer,
     ownerName: vehicle.ownerName, ownerPhone: vehicle.ownerPhone, email: vehicle.email,
     itemName: issue.item.name, severity: issue.severity, description: issue.description, photoName: issue.photoName,
     maintenance: { status: "Pendente", scheduledAt: "", provider: "", feedback: "", updatedAt: "" },
@@ -208,7 +208,7 @@ async function submitChecklist() {
   saveData();
   const sendResult = await sendToIntegration({ inspection, vehicle, issues: newIssues });
   showCompletion(vehicle, newIssues, sendResult);
-  current = { driver: current.driver, driverPhone: current.driverPhone, leaderName: current.leaderName, baseName: current.baseName, basePhone: current.basePhone, vehicleId: vehicle.id, odometer: "", states: {}, notes: "" };
+  current = { driver: current.driver, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, vehicleId: vehicle.id, odometer: "", states: {}, notes: "" };
   saveData();
 }
 
@@ -223,7 +223,7 @@ function buildWhatsAppMessage(vehicle, issues) {
   const severity = highestSeverity(issues);
   const list = issues.map((issue) => `• ${issue.itemName || issue.item?.name} (${issue.severity}): ${issue.description}`).join("\n");
   const createdAt = issues[0]?.createdAt || new Date();
-  return `*OCORRÊNCIA DE FROTA — ${severity.toUpperCase()}*\n\nVeículo: Prefixo ${vehicle.prefix || "—"} · ${vehicle.plate} (${vehicle.model || vehicle.type})\nQuilometragem: ${issues[0]?.odometer ?? vehicle.odometer ?? "Não informada"} km\nMotorista: ${issues[0]?.driver || current.driver || "Não informado"}\nLíder: ${issues[0]?.leaderName || current.leaderName || "Não informado"}\nBase: ${issues[0]?.baseName || current.baseName || "Não informada"}\nData: ${dateTime(createdAt)}\n\nOcorrência(s):\n${list}\n\nSolicitamos avaliação e manutenção do veículo.`;
+  return `*OCORRÊNCIA DE FROTA — ${severity.toUpperCase()}*\n\nVeículo: Prefixo ${vehicle.prefix || "—"} · ${vehicle.plate} (${vehicle.model || vehicle.type})\nQuilometragem: ${issues[0]?.odometer ?? vehicle.odometer ?? "Não informada"} km\nMotorista: ${issues[0]?.driver || current.driver || "Não informado"}\nBase: ${issues[0]?.baseName || current.baseName || "Não informada"}\nData: ${dateTime(createdAt)}\n\nOcorrência(s):\n${list}\n\nSolicitamos avaliação e manutenção do veículo.`;
 }
 function whatsappLink(phone, message) { return `https://wa.me/${phoneOnly(phone)}?text=${encodeURIComponent(message)}`; }
 function approvalUrl(vehicle, issues) {
