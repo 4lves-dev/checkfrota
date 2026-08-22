@@ -10,14 +10,13 @@ const fleet=[['1446','Onix','SHR7161'],['1447','Onix','SHL7J59'],['1456','Furgã
 </script><script>
 /* A solicitação aprovada é encaminhada somente à base. */
 const TRUCK_MAINTENANCE_PHONE = "5512996181645";
-const BASE_MAINTENANCE_PHONE = "551299840316";
 function decide(status) {
   const r = request();
   const note = $("leaderNote").value.trim();
-  const message = `*${status === "Aprovada" ? "MANUTENÇÃO APROVADA" : "SOLICITAÇÃO RECUSADA"} — ${r.id}*\n\nVeículo: Prefixo ${r.prefix} · ${r.plate}\nMotorista: ${r.driver}\nKM: ${r.km}\nLíder: decisão ${status.toLowerCase()}.${note ? "\nObservação: " + note : ""}`;
+  const message = `*${status === "Aprovada" ? "MANUTENÇÃO APROVADA" : "SOLICITAÇÃO RECUSADA"} — ${r.id}*\n\n${text(r)}\n\nStatus: ${status}.\nAprovado pelo líder da Base ${r.baseName || "não informada"}.${note ? "\nObservação do líder: " + note : ""}`;
   localStorage.setItem(`aprovafrota-${r.id}`, JSON.stringify({ ...r, status, note, decidedAt: new Date().toISOString() }));
   $("decisionBox").className = "decision " + (status === "Aprovada" ? "" : "refused");
-  $("decisionBox").innerHTML = `<b>${status === "Aprovada" ? "MANUTENÇÃO APROVADA" : "SOLICITAÇÃO RECUSADA"}</b><p>${note || "Sem observações."}</p>${status === "Aprovada" ? `<div class="actions"><a class="btn primary" target="_blank" rel="noopener" href="${wa(TRUCK_MAINTENANCE_PHONE, message)}">Enviar para manutenção de caminhões</a><a class="btn secondary" target="_blank" rel="noopener" href="${wa(BASE_MAINTENANCE_PHONE, message)}">Enviar para a base</a></div>` : ""}`;
+  $("decisionBox").innerHTML = `<b>${status === "Aprovada" ? "MANUTENÇÃO APROVADA" : "SOLICITAÇÃO RECUSADA"}</b><p>${note || "Sem observações."}</p>${status === "Aprovada" ? `<div class="actions"><a class="btn primary" target="_blank" rel="noopener" href="${wa(TRUCK_MAINTENANCE_PHONE, message)}">Enviar chamado aprovado para manutenção de caminhões</a></div>` : ""}`;
   $("decisionBox").classList.remove("hidden");
 }
 $("approve").onclick = () => decide("Aprovada");
