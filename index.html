@@ -12,7 +12,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icons/icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=13" />
+    <link rel="stylesheet" href="styles.css?v=14" />
     <style>#installBanner[hidden] { display: none !important; }</style>
     <title>CheckFrota</title>
   </head>
@@ -45,6 +45,8 @@
           <div class="card driver-card">
             <label for="driverName">Seu nome</label>
             <input id="driverName" type="text" placeholder="Ex.: João da Silva" autocomplete="name" />
+            <label for="driverPhone">Seu WhatsApp <em>para receber a ciência da aprovação</em></label>
+            <input id="driverPhone" type="tel" inputmode="tel" placeholder="5512999999999" autocomplete="tel" />
             <label for="vehicleSelect">Veículo que vai utilizar</label>
             <select id="vehicleSelect" aria-label="Escolha o veículo"></select>
             <label for="odometer">Quilometragem atual (km)</label>
@@ -185,6 +187,10 @@
         <input id="webhookUrl" type="url" placeholder="https://..." />
         <label for="maintenancePhone">WhatsApp da manutenção / base</label>
         <input id="maintenancePhone" inputmode="tel" placeholder="5512988400316" />
+        <label for="leaderPhone">WhatsApp do líder aprovador</label>
+        <input id="leaderPhone" inputmode="tel" placeholder="5512999999999" />
+        <label for="fleetManagerPhone">WhatsApp do gestor de frota</label>
+        <input id="fleetManagerPhone" inputmode="tel" placeholder="5512999999999" />
         <button class="primary-button" value="default">Salvar configurações</button>
       </form>
     </dialog>
