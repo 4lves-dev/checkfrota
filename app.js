@@ -16,7 +16,7 @@ const CHECKLIST = [
 ].map(([id, name, category]) => ({ id, name, category }));
 
 const initialData = {
-  settings: { maintenancePhone: "5512988400316", webhookUrl: "" },
+  settings: { maintenancePhone: "5512988400316", leaderPhone: "", fleetManagerPhone: "", webhookUrl: "" },
   vehicles: [
     { id: "v1446", prefix: "1446", plate: "SHR7161", type: "Carro", model: "Onix", ownerName: "Responsável a cadastrar", ownerPhone: "", email: "", contract: "50/23", urbamContract: "620/24", odometer: "" },
     { id: "v1447", prefix: "1447", plate: "SHL7J59", type: "Carro", model: "Onix", ownerName: "Responsável a cadastrar", ownerPhone: "", email: "", contract: "50/23", urbamContract: "482/22", odometer: "" },
@@ -43,7 +43,7 @@ const initialData = {
 };
 
 let data = loadData();
-let current = { driver: "", vehicleId: "", odometer: "", states: {}, notes: "" };
+let current = { driver: "", driverPhone: "", vehicleId: "", odometer: "", states: {}, notes: "" };
 let issueDraft = { itemId: null, severity: "Leve" };
 let deferredInstallPrompt = null;
 
@@ -86,7 +86,9 @@ function showScreen(name) {
 function renderStart() {
   const select = $("#vehicleSelect");
   const rememberedDriver = localStorage.getItem("checkfrota-driver") || "";
+  const rememberedDriverPhone = localStorage.getItem("checkfrota-driver-phone") || "";
   if (!$("#driverName").value) $("#driverName").value = rememberedDriver;
+  if (!$("#driverPhone").value) $("#driverPhone").value = rememberedDriverPhone;
   select.innerHTML = `<option value="">Selecione o veículo</option>${data.vehicles.map((vehicle) => `<option value="${vehicle.id}">Prefixo ${esc(vehicle.prefix || "—")} · ${esc(vehicle.plate)} · ${esc(vehicle.model || vehicle.type)}</option>`).join("")}`;
   if (current.vehicleId && vehicleById(current.vehicleId)) select.value = current.vehicleId;
   renderVehicleOwner();
@@ -101,13 +103,15 @@ function renderVehicleOwner() {
 
 function beginChecklist() {
   const driver = $("#driverName").value.trim();
+  const driverPhone = phoneOnly($("#driverPhone").value);
   const vehicleId = $("#vehicleSelect").value;
   const odometer = Number($("#odometer").value);
   if (!driver) return alert("Informe seu nome antes de iniciar.");
   if (!vehicleId) return alert("Selecione o veículo que será utilizado.");
   if (!Number.isFinite(odometer) || odometer < 0) return alert("Informe a quilometragem atual do veículo.");
-  current = { driver, vehicleId, odometer, states: Object.fromEntries(CHECKLIST.map((item) => [item.id, { status: "pending" }])), notes: "" };
+  current = { driver, driverPhone, vehicleId, odometer, states: Object.fromEntries(CHECKLIST.map((item) => [item.id, { status: "pending" }])), notes: "" };
   localStorage.setItem("checkfrota-driver", driver);
+  localStorage.setItem("checkfrota-driver-phone", driverPhone);
   const vehicle = vehicleById(vehicleId);
   $("#checklistVehicle").textContent = `Prefixo ${vehicle.prefix || "—"} · ${vehicle.plate} · ${vehicle.model || vehicle.type}`;
   renderChecklist();
@@ -179,14 +183,14 @@ async function submitChecklist() {
   current.notes = $("#generalNotes").value.trim();
   const vehicle = vehicleById(current.vehicleId);
   const inspection = {
-    id: crypto.randomUUID(), createdAt: new Date().toISOString(), driver: current.driver,
+    id: crypto.randomUUID(), createdAt: new Date().toISOString(), driver: current.driver, driverPhone: current.driverPhone,
     vehicleId: vehicle.id, vehiclePrefix: vehicle.prefix || "", vehiclePlate: vehicle.plate, vehicleType: vehicle.type, vehicleModel: vehicle.model || "", odometer: current.odometer, notes: current.notes,
     items: CHECKLIST.map((item) => ({ ...item, ...current.states[item.id] })),
   };
   const currentIssues = getCurrentIssues();
   const newIssues = currentIssues.map((issue) => ({
     id: crypto.randomUUID(), inspectionId: inspection.id, status: "aberta", createdAt: inspection.createdAt,
-    driver: current.driver, vehicleId: vehicle.id, vehiclePrefix: vehicle.prefix || "", vehiclePlate: vehicle.plate, vehicleType: vehicle.type, vehicleModel: vehicle.model || "", odometer: current.odometer,
+    driver: current.driver, driverPhone: current.driverPhone, vehicleId: vehicle.id, vehiclePrefix: vehicle.prefix || "", vehiclePlate: vehicle.plate, vehicleType: vehicle.type, vehicleModel: vehicle.model || "", odometer: current.odometer,
     ownerName: vehicle.ownerName, ownerPhone: vehicle.ownerPhone, email: vehicle.email,
     itemName: issue.item.name, severity: issue.severity, description: issue.description, photoName: issue.photoName,
     maintenance: { status: "Pendente", scheduledAt: "", provider: "", feedback: "", updatedAt: "" },
@@ -197,7 +201,7 @@ async function submitChecklist() {
   saveData();
   const sendResult = await sendToIntegration({ inspection, vehicle, issues: newIssues });
   showCompletion(vehicle, newIssues, sendResult);
-  current = { driver: current.driver, vehicleId: vehicle.id, odometer: "", states: {}, notes: "" };
+  current = { driver: current.driver, driverPhone: current.driverPhone, vehicleId: vehicle.id, odometer: "", states: {}, notes: "" };
   saveData();
 }
 
@@ -215,6 +219,18 @@ function buildWhatsAppMessage(vehicle, issues) {
   return `*OCORRÊNCIA DE FROTA — ${severity.toUpperCase()}*\n\nVeículo: Prefixo ${vehicle.prefix || "—"} · ${vehicle.plate} (${vehicle.model || vehicle.type})\nQuilometragem: ${issues[0]?.odometer ?? vehicle.odometer ?? "Não informada"} km\nMotorista: ${issues[0]?.driver || current.driver || "Não informado"}\nData: ${dateTime(createdAt)}\n\nOcorrência(s):\n${list}\n\nSolicitamos avaliação e manutenção do veículo.`;
 }
 function whatsappLink(phone, message) { return `https://wa.me/${phoneOnly(phone)}?text=${encodeURIComponent(message)}`; }
+function approvalUrl(vehicle, issues) {
+  const first = issues[0] || {};
+  const problem = issues.map((issue) => `${issue.itemName || issue.item?.name}: ${issue.description}`).join(" | ");
+  const params = new URLSearchParams({
+    id: `MAN-${String(first.id || Date.now()).replaceAll("-", "").slice(-8)}`,
+    prefix: vehicle.prefix || "", type: vehicle.model || vehicle.type, plate: vehicle.plate,
+    driver: first.driver || current.driver || "", driverPhone: first.driverPhone || current.driverPhone || "",
+    leaderPhone: data.settings.leaderPhone || "", maintenancePhone: data.settings.maintenancePhone || "",
+    km: String(first.odometer ?? vehicle.odometer ?? ""), priority: highestSeverity(issues), location: "", problem,
+  });
+  return `${location.origin}${location.pathname.replace(/[^/]*$/, "aprovacao.html")}?${params.toString()}`;
+}
 function showCompletion(vehicle, issues, sendResult) {
   const severe = issues.some((issue) => issue.severity === "Grave");
   $("#successTitle").textContent = issues.length ? (severe ? "Veículo com bloqueio de deslocamento." : "Ocorrência registrada.") : "Tudo certo para seguir.";
@@ -224,6 +240,11 @@ function showCompletion(vehicle, issues, sendResult) {
   const message = buildWhatsAppMessage(vehicle, issues);
   const buttons = [];
   if (data.settings.maintenancePhone) buttons.push(`<a href="${whatsappLink(data.settings.maintenancePhone, message)}" target="_blank" rel="noopener">Enviar aviso para a base no WhatsApp</a>`);
+  if (data.settings.leaderPhone) {
+    const approvalMessage = `*APROVAÇÃO DE MANUTENÇÃO NECESSÁRIA*\n\n${message.replace(/\*/g, "")}\n\nAbra para aprovar ou recusar:\n${approvalUrl(vehicle, issues)}`;
+    buttons.push(`<a class="secondary-link" href="${whatsappLink(data.settings.leaderPhone, approvalMessage)}" target="_blank" rel="noopener">Enviar para aprovação do líder</a>`);
+  }
+  if (data.settings.fleetManagerPhone) buttons.push(`<a class="secondary-link" href="${whatsappLink(data.settings.fleetManagerPhone, `*CIÊNCIA — GESTÃO DE FROTA*\n\n${message.replace(/\*/g, "")}`)}" target="_blank" rel="noopener">Enviar ciência ao gestor de frota</a>`);
   if (vehicle.ownerPhone) buttons.push(`<a class="secondary-link" href="${whatsappLink(vehicle.ownerPhone, message)}" target="_blank" rel="noopener">Abrir WhatsApp do responsável</a>`);
   if (vehicle.email) buttons.push(`<a class="secondary-link" href="mailto:${encodeURIComponent(vehicle.email)}?subject=${encodeURIComponent(`Ocorrência ${vehicle.plate} — ${highestSeverity(issues)}`)}&body=${encodeURIComponent(message.replace(/\*/g, ""))}">Enviar e-mail ao responsável</a>`);
   actions.innerHTML = buttons.join("");
@@ -339,7 +360,7 @@ function saveMaintenance() {
   $("#maintenanceDialog").close(); renderControl();
 }
 function closeIssue(issueId) { const issue = data.issues.find((entry) => entry.id === issueId); if (issue) { issue.maintenance = { ...maintenanceOf(issue), status: "Concluída", updatedAt: new Date().toISOString() }; issue.status = "resolvida"; issue.resolvedAt = new Date().toISOString(); saveData(); if (data.settings.webhookUrl) void sendToIntegration({ type: "maintenance-update", issue, maintenance: issue.maintenance }); renderControl(); } }
-function saveSettings() { data.settings.webhookUrl = $("#webhookUrl").value.trim(); data.settings.maintenancePhone = phoneOnly($("#maintenancePhone").value); saveData(); $("#settingsDialog").close(); }
+function saveSettings() { data.settings.webhookUrl = $("#webhookUrl").value.trim(); data.settings.maintenancePhone = phoneOnly($("#maintenancePhone").value); data.settings.leaderPhone = phoneOnly($("#leaderPhone").value); data.settings.fleetManagerPhone = phoneOnly($("#fleetManagerPhone").value); saveData(); $("#settingsDialog").close(); }
 function dismissInstallBanner() { sessionStorage.setItem("checkfrota-install-dismissed", "1"); $("#installBanner").hidden = true; }
 
 function isInstalled() {
@@ -379,7 +400,7 @@ document.addEventListener("click", (event) => {
   if (target.id === "submitChecklist") submitChecklist();
   if (target.dataset.severity) { issueDraft.severity = target.dataset.severity; $$(".severity").forEach((button) => button.classList.toggle("active", button === target)); }
   if (target.id === "saveIssue") { event.preventDefault(); saveIssue(); }
-  if (target.id === "openSettings") { $("#webhookUrl").value = data.settings.webhookUrl; $("#maintenancePhone").value = data.settings.maintenancePhone; $("#settingsDialog").showModal(); }
+  if (target.id === "openSettings") { $("#webhookUrl").value = data.settings.webhookUrl; $("#maintenancePhone").value = data.settings.maintenancePhone; $("#leaderPhone").value = data.settings.leaderPhone || ""; $("#fleetManagerPhone").value = data.settings.fleetManagerPhone || ""; $("#settingsDialog").showModal(); }
   if (target.id === "installApp" || target.id === "installBannerButton" || target.id === "installFromDialog" || target.dataset.install === "app") requestInstall();
   if (target.id === "dismissInstallBanner") dismissInstallBanner();
   if (target.id === "closeInstallDialog") $("#installDialog").close();
