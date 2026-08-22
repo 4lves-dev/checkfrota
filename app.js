@@ -57,7 +57,19 @@ const phoneOnly = (phone = "") => phone.replace(/\D/g, "");
 function loadData() {
   try {
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    return stored ? { ...initialData, ...stored, settings: { ...initialData.settings, ...stored.settings } } : structuredClone(initialData);
+    if (!stored) return structuredClone(initialData);
+    // Atualiza aparelhos que ainda guardam os três veículos de demonstração,
+    // preservando veículos reais já cadastrados manualmente pela base.
+    const storedVehicles = Array.isArray(stored.vehicles) ? stored.vehicles : [];
+    const seededVehicles = initialData.vehicles.map((seed) => ({
+      ...seed,
+      ...(storedVehicles.find((vehicle) => vehicle.prefix === seed.prefix || vehicle.plate === seed.plate) || {}),
+    }));
+    const customVehicles = storedVehicles.filter((vehicle) =>
+      !["v1", "v2", "v3"].includes(vehicle.id) &&
+      !initialData.vehicles.some((seed) => seed.prefix === vehicle.prefix || seed.plate === vehicle.plate)
+    );
+    return { ...initialData, ...stored, vehicles: [...seededVehicles, ...customVehicles], settings: { ...initialData.settings, ...stored.settings } };
   } catch { return structuredClone(initialData); }
 }
 function saveData() { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
