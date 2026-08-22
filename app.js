@@ -244,17 +244,13 @@ function showCompletion(vehicle, issues, sendResult) {
   $("#successText").textContent = issues.length ? `O formulário foi salvo com ${issues.length} ocorrência(s). ${sendResult.sent ? "A integração de e-mail foi acionada." : "Configure a integração para o envio automático por e-mail."}` : "Checklist concluído e registrado no controle da frota.";
   const actions = $("#dispatchActions");
   if (!issues.length) { actions.innerHTML = ""; showScreen("success"); return; }
-  const message = buildWhatsAppMessage(vehicle, issues);
   const buttons = [];
-  if (data.settings.maintenancePhone) buttons.push(`<a href="${whatsappLink(data.settings.maintenancePhone, message)}" target="_blank" rel="noopener">Enviar aviso para a base no WhatsApp</a>`);
   const approvalTarget = issues[0]?.basePhone || current.basePhone || data.settings.leaderPhone;
   if (approvalTarget) {
+    const message = buildWhatsAppMessage(vehicle, issues);
     const approvalMessage = `*APROVAÇÃO DE MANUTENÇÃO NECESSÁRIA*\n\n${message.replace(/\*/g, "")}\n\nAbra para aprovar ou recusar:\n${approvalUrl(vehicle, issues)}`;
-    buttons.push(`<a class="secondary-link" href="${whatsappLink(approvalTarget, approvalMessage)}" target="_blank" rel="noopener">Enviar para aprovação da base</a>`);
+    buttons.push(`<a href="${whatsappLink(approvalTarget, approvalMessage)}" target="_blank" rel="noopener">Enviar para aprovação da liderança</a>`);
   }
-  if (data.settings.fleetManagerPhone) buttons.push(`<a class="secondary-link" href="${whatsappLink(data.settings.fleetManagerPhone, `*CIÊNCIA — GESTÃO DE FROTA*\n\n${message.replace(/\*/g, "")}`)}" target="_blank" rel="noopener">Enviar ciência ao gestor de frota</a>`);
-  if (vehicle.ownerPhone) buttons.push(`<a class="secondary-link" href="${whatsappLink(vehicle.ownerPhone, message)}" target="_blank" rel="noopener">Abrir WhatsApp do responsável</a>`);
-  if (vehicle.email) buttons.push(`<a class="secondary-link" href="mailto:${encodeURIComponent(vehicle.email)}?subject=${encodeURIComponent(`Ocorrência ${vehicle.plate} — ${highestSeverity(issues)}`)}&body=${encodeURIComponent(message.replace(/\*/g, ""))}">Enviar e-mail ao responsável</a>`);
   actions.innerHTML = buttons.join("");
   showScreen("success");
 }
