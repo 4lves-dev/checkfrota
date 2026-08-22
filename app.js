@@ -102,7 +102,7 @@ function renderStart() {
   $("#dailyDone").textContent = todaysInspections.length;
   $("#openIssues").textContent = data.issues.filter((issue) => issue.status === "aberta").length;
 }
-function renderBasePhone() { const base = $("#baseSelect").value; $("#basePhone").textContent = base ? `${base}: ${BASES[base]}` : "Selecione a base para assumir o telefone de envio."; }
+function renderBasePhone() { const base = $("#baseSelect").value; const phone = BASES[base] || ""; $("#basePhone").textContent = base ? `Telefone da Base ${base}: ${phone.replace(/^55(\d{2})(\d{5})(\d{4})$/, "($1) $2-$3")}` : "Selecione a base para assumir o telefone de envio."; }
 function renderVehicleOwner() {
   const vehicle = vehicleById($("#vehicleSelect").value);
   $("#vehicleOwner").textContent = vehicle ? `Responsável: ${vehicle.ownerName}${vehicle.email ? ` · ${vehicle.email}` : ""}` : "";
