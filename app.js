@@ -87,12 +87,8 @@ function showScreen(name) {
 function renderStart() {
   const select = $("#vehicleSelect");
   const rememberedDriver = localStorage.getItem("checkfrota-driver") || "";
-  const rememberedDriverPhone = localStorage.getItem("checkfrota-driver-phone") || "";
-  const rememberedLeader = localStorage.getItem("checkfrota-leader") || "";
   const rememberedBase = localStorage.getItem("checkfrota-base") || "";
   if (!$("#driverName").value) $("#driverName").value = rememberedDriver;
-  if (!$("#driverPhone").value) $("#driverPhone").value = rememberedDriverPhone;
-  if (!$("#leaderName").value) $("#leaderName").value = rememberedLeader;
   if (!$("#baseSelect").value) $("#baseSelect").value = rememberedBase;
   select.innerHTML = `<option value="">Selecione o veículo</option>${data.vehicles.map((vehicle) => `<option value="${vehicle.id}">Prefixo ${esc(vehicle.prefix || "—")} · ${esc(vehicle.plate)} · ${esc(vehicle.model || vehicle.type)}</option>`).join("")}`;
   if (current.vehicleId && vehicleById(current.vehicleId)) select.value = current.vehicleId;
@@ -110,8 +106,8 @@ function renderVehicleOwner() {
 
 function beginChecklist() {
   const driver = $("#driverName").value.trim();
-  const driverPhone = phoneOnly($("#driverPhone").value);
-  const leaderName = $("#leaderName").value.trim();
+  const driverPhone = "";
+  const leaderName = "";
   const baseName = $("#baseSelect").value;
   const basePhone = BASES[baseName] || "";
   const vehicleId = $("#vehicleSelect").value;
@@ -122,8 +118,6 @@ function beginChecklist() {
   if (!Number.isFinite(odometer) || odometer < 0) return alert("Informe a quilometragem atual do veículo.");
   current = { driver, driverPhone, leaderName, baseName, basePhone, vehicleId, odometer, states: Object.fromEntries(CHECKLIST.map((item) => [item.id, { status: "pending" }])), notes: "" };
   localStorage.setItem("checkfrota-driver", driver);
-  localStorage.setItem("checkfrota-driver-phone", driverPhone);
-  localStorage.setItem("checkfrota-leader", leaderName);
   localStorage.setItem("checkfrota-base", baseName);
   const vehicle = vehicleById(vehicleId);
   $("#checklistVehicle").textContent = `Prefixo ${vehicle.prefix || "—"} · ${vehicle.plate} · ${vehicle.model || vehicle.type}`;
