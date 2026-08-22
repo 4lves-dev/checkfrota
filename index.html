@@ -12,7 +12,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icons/icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=14" />
+    <link rel="stylesheet" href="styles.css?v=15" />
     <style>#installBanner[hidden] { display: none !important; }</style>
     <title>CheckFrota</title>
   </head>
@@ -187,6 +187,8 @@
         <input id="webhookUrl" type="url" placeholder="https://..." />
         <label for="maintenancePhone">WhatsApp da manutenção / base</label>
         <input id="maintenancePhone" inputmode="tel" placeholder="5512988400316" />
+        <label for="maintenanceGroupPhone">WhatsApp do grupo de manutenção / responsável pelo grupo</label>
+        <input id="maintenanceGroupPhone" inputmode="tel" placeholder="5512999999999" />
         <label for="leaderPhone">WhatsApp do líder aprovador</label>
         <input id="leaderPhone" inputmode="tel" placeholder="5512999999999" />
         <label for="fleetManagerPhone">WhatsApp do gestor de frota</label>
@@ -208,7 +210,7 @@
         <input id="maintenanceProvider" placeholder="Ex.: Oficina Central" />
         <label for="maintenanceFeedback">Retorno ou observação</label>
         <textarea id="maintenanceFeedback" placeholder="Ex.: manutenção confirmada para terça, às 08h."></textarea>
-        <button type="button" class="secondary-button" id="sendMaintenanceUpdate">Enviar retorno à base no WhatsApp</button>
+        <button type="button" class="secondary-button" id="sendMaintenanceUpdate">Enviar status ao grupo de manutenção</button>
         <button class="primary-button" value="default">Salvar retorno</button>
       </form>
     </dialog>
