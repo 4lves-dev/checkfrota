@@ -4,7 +4,9 @@ Aplicativo responsivo para a vistoria de caminhões, carros e utilitários. Ele 
 
 ## O que esta versão já faz
 
-- Cadastro da frota, responsável, WhatsApp e e-mail por veículo.
+- Cadastro da frota por prefixo, placa, tipo/modelo, responsável, WhatsApp e e-mail por veículo.
+- Quilometragem obrigatória no checklist; ela é registrada no histórico, ocorrências e relatório CSV.
+- Contratos do fornecedor e da URBAM exclusivos do painel de gestão, sem exibição ao motorista.
 - Checklist de saída com 12 itens de segurança e operação.
 - Registro de ocorrências com texto, foto opcional e gravidade **leve**, **média** ou **grave — veículo sem condição de deslocamento**.
 - Geração de um registro completo da inspeção e painel da base com ocorrências abertas, histórico, frota e relatório de solicitações.
@@ -66,3 +68,5 @@ e abra `http://localhost:4173`.
 - `app.js` — regras, dados, ocorrência, WhatsApp e integração por webhook.
 - `styles.css` — design adaptado a tela de celular.
 - `manifest.webmanifest` e `service-worker.js` — comportamento de aplicativo instalável/offline.
+
+
