@@ -234,9 +234,9 @@ function approvalUrl(vehicle, issues) {
     prefix: vehicle.prefix || "", type: vehicle.model || vehicle.type, plate: vehicle.plate,
     driver: first.driver || current.driver || "", driverPhone: first.driverPhone || current.driverPhone || "",
     leaderPhone: first.basePhone || current.basePhone || data.settings.leaderPhone || "", maintenancePhone: data.settings.maintenancePhone || "",
-    km: String(first.odometer ?? vehicle.odometer ?? ""), priority: highestSeverity(issues), location: "", problem,
+    km: String(first.odometer ?? vehicle.odometer ?? ""), baseName: first.baseName || current.baseName || "Não informada", priority: highestSeverity(issues), location: "", problem,
   });
-  return `${location.origin}${location.pathname.replace(/[^/]*$/, "aprovacao.html")}?v=27&${params.toString()}`;
+  return `${location.origin}${location.pathname.replace(/[^/]*$/, "aprovacao.html")}?v=28&${params.toString()}`;
 }
 function showCompletion(vehicle, issues, sendResult) {
   const severe = issues.some((issue) => issue.severity === "Grave");
