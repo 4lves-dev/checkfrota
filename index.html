@@ -12,7 +12,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icons/icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=18" />
+    <link rel="stylesheet" href="styles.css?v=19" />
     <style>#installBanner[hidden] { display: none !important; }</style>
     <title>CheckFrota</title>
   </head>
@@ -45,14 +45,16 @@
           <div class="card driver-card">
             <label for="driverName">Seu nome</label>
             <input id="driverName" type="text" placeholder="Ex.: João da Silva" autocomplete="name" />
-            <label for="driverPhone">Seu WhatsApp <em>para receber a ciência da aprovação</em></label>
-            <input id="driverPhone" type="tel" inputmode="tel" placeholder="5512999999999" autocomplete="tel" />
+            <label for="baseLeaderPhone">WhatsApp do líder da base</label>
+            <input id="baseLeaderPhone" type="tel" readonly placeholder="Selecione a base abaixo" />
             <label for="leaderName">Nome do líder</label>
             <input id="leaderName" type="text" placeholder="Ex.: Maria da Silva" />
             <label for="baseSelect">Base responsável pela aprovação</label>
             <select id="baseSelect"><option value="">Selecione a base</option><option value="Vertical">Base Vertical — (12) 98156-7218</option><option value="Abrigo">Base Abrigo — (12) 99788-4887</option><option value="Horizontal">Base Horizontal — (12) 98840-0697</option></select>
             <p class="helper" id="basePhone"></p>
             <p class="helper"><b>Bases disponíveis:</b><br>Base Vertical — (12) 98156-7218<br>Base Abrigo — (12) 99788-4887<br>Base Horizontal — (12) 98840-0697</p>
+            <label for="driverPhone">WhatsApp do motorista <em>opcional, para receber a ciência</em></label>
+            <input id="driverPhone" type="tel" inputmode="tel" placeholder="5512999999999" autocomplete="tel" />
             <label for="vehicleSelect">Veículo que vai utilizar</label>
             <select id="vehicleSelect" aria-label="Escolha o veículo"></select>
             <label for="odometer">Quilometragem atual (km)</label>
