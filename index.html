@@ -12,7 +12,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icons/icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=10" />
+    <link rel="stylesheet" href="styles.css?v=11" />
     <style>#installBanner[hidden] { display: none !important; }</style>
     <title>CheckFrota</title>
   </head>
@@ -47,6 +47,8 @@
             <input id="driverName" type="text" placeholder="Ex.: João da Silva" autocomplete="name" />
             <label for="vehicleSelect">Veículo que vai utilizar</label>
             <select id="vehicleSelect" aria-label="Escolha o veículo"></select>
+            <label for="odometer">Quilometragem atual (km)</label>
+            <input id="odometer" type="number" min="0" step="1" inputmode="numeric" placeholder="Ex.: 125480" />
             <p class="helper" id="vehicleOwner"></p>
             <button class="primary-button" id="startChecklist">Iniciar checklist <span>→</span></button>
           </div>
@@ -159,8 +161,14 @@
       <form method="dialog" id="vehicleForm">
         <div class="dialog-head"><div><p class="eyebrow">CADASTRO</p><h2 id="vehicleDialogTitle">Novo veículo</h2></div><button class="icon-button" value="cancel" aria-label="Fechar">×</button></div>
         <input type="hidden" id="editVehicleId" />
+        <label for="vehiclePrefix">Prefixo</label><input id="vehiclePrefix" required inputmode="numeric" placeholder="Ex.: 1446" />
         <label for="vehiclePlate">Placa / identificação</label><input id="vehiclePlate" required placeholder="ABC1D23" />
         <label for="vehicleType">Tipo</label><select id="vehicleType"><option>Caminhão</option><option>Carro</option><option>Utilitário</option><option>Outro</option></select>
+        <label for="vehicleModel">Modelo</label><input id="vehicleModel" placeholder="Ex.: VUC" />
+        <label for="vehicleOdometer">Quilometragem atual (km)</label><input id="vehicleOdometer" type="number" min="0" step="1" inputmode="numeric" />
+        <p class="dialog-copy">Dados abaixo são exclusivos da gestão e não aparecem no aplicativo do motorista.</p>
+        <label for="vehicleContract">Contrato do fornecedor</label><input id="vehicleContract" placeholder="Ex.: 066/25" />
+        <label for="vehicleUrbamContract">Contrato URBAM</label><input id="vehicleUrbamContract" placeholder="Ex.: 620/24" />
         <label for="vehicleOwnerName">Responsável / dono</label><input id="vehicleOwnerName" required placeholder="Nome do responsável" />
         <label for="vehicleOwnerPhone">WhatsApp do responsável</label><input id="vehicleOwnerPhone" inputmode="tel" placeholder="5512999999999" />
         <label for="vehicleEmail">E-mail para o formulário</label><input id="vehicleEmail" type="email" placeholder="manutencao@empresa.com" />
@@ -210,3 +218,5 @@
     <script src="app.js"></script>
   </body>
 </html>
+
+
