@@ -198,9 +198,9 @@
         <input id="maintenanceScheduledAt" type="datetime-local" />
         <label for="maintenanceProvider">Oficina / responsável <em>opcional</em></label>
         <input id="maintenanceProvider" placeholder="Ex.: Oficina Central" />
-        <label for="maintenanceFeedback">Retorno ou observação</label>
+        <label for="maintenanceFeedback">Retorno para ciência do grupo de manutenção</label>
         <textarea id="maintenanceFeedback" placeholder="Ex.: manutenção confirmada para terça, às 08h."></textarea>
-        <button type="button" class="secondary-button" id="sendMaintenanceUpdate">Enviar status ao grupo de manutenção</button>
+        <button type="button" class="secondary-button" id="sendMaintenanceUpdate">Enviar retorno de agendamento ao grupo</button>
         <button class="primary-button" value="default">Salvar retorno</button>
       </form>
     </dialog>
@@ -216,7 +216,7 @@
     <template id="emptyStateTemplate"><div class="empty-state"><span>⌁</span><p>Nenhum registro por aqui.</p></div></template>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="supabase-config.js?v=1"></script>
-    <script src="app.js?v=70"></script>
+    <script src="app.js?v=71"></script>
   </body>
 </html>
 
