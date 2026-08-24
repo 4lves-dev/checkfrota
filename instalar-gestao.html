@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0f2a43">
+  <title>Instalar CheckFrota Gestão</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; color: #14283d; background: #eef4f7; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; }
+    main { box-sizing: border-box; width: min(560px, calc(100% - 32px)); padding: 28px; background: #fff; border: 1px solid #d6e1e8; border-radius: 20px; box-shadow: 0 12px 30px #17324b18; text-align: center; }
+    h1 { margin: 0 0 10px; color: #0f2a43; font-size: clamp(24px, 6vw, 34px); }
+    p { line-height: 1.55; color: #526476; }
+    img { width: min(240px, 74vw); margin: 12px auto; border: 10px solid #fff; border-radius: 12px; box-shadow: 0 2px 14px #17324b20; }
+    a, button { display: block; box-sizing: border-box; width: 100%; padding: 14px 16px; border: 0; border-radius: 10px; background: #1477cf; color: #fff; text-decoration: none; font: 700 16px system-ui; cursor: pointer; }
+    #install { display: none; margin-top: 12px; background: #0f2a43; }
+    .hint { font-size: 14px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>CheckFrota Gestão</h1>
+    <p>Aplicativo do gestor para consultar chamados, acompanhar a manutenção e administrar a frota.</p>
+    <img alt="QR Code para abrir o aplicativo de Gestão da Frota" src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&amp;data=https%3A%2F%2F4lves-dev.github.io%2Fcheckfrota%2Fgestao.html%3Fv%3D43">
+    <a href="gestao.html?v=43">Abrir aplicativo de Gestão</a>
+    <button id="install" type="button">Instalar no dispositivo</button>
+    <p class="hint">No celular, abra no Chrome e use o menu do navegador para instalar/adicionar à tela inicial.</p>
+  </main>
+  <script>
+    let installPrompt;
+    const install = document.getElementById('install');
+    addEventListener('beforeinstallprompt', event => { event.preventDefault(); installPrompt = event; install.style.display = 'block'; });
+    install.onclick = async () => { if (!installPrompt) return; installPrompt.prompt(); await installPrompt.userChoice; installPrompt = null; install.style.display = 'none'; };
+  </script>
+</body>
+</html>
+
