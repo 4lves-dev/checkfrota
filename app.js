@@ -398,7 +398,7 @@ function renderIssues() {
       ${gallery}
       ${approvalBox}
       <p class="maintenance-meta"><b>Manutenção:</b> ${esc(maintenance.status)}${schedule}${maintenance.provider ? ` · ${esc(maintenance.provider)}` : ""}</p>
-      <div class="issue-actions">${issue.photoPath ? `<button class="small-button photo-button" data-view-photo="${issue.id}">📷 Ver foto</button>` : ""}<button class="small-button" data-maintenance-issue="${issue.id}">Agendar / retorno</button><button class="small-button whatsapp" data-maintenance-whatsapp="${issue.id}">Avisar base</button><button class="small-button" data-close-issue="${issue.id}">Marcar resolvida</button></div>
+      <div class="issue-actions">${issue.photoPath ? `<button class="small-button photo-button" data-view-photo="${issue.id}">📷 Ver foto</button>` : ""}<button class="small-button" data-maintenance-issue="${issue.id}">Agendar / retorno</button><button class="small-button whatsapp" data-whatsapp-issue="${issue.id}">Enviar ao proprietário</button><button class="small-button" data-close-issue="${issue.id}">Marcar resolvida</button></div>
     </article>`;
   }).join("");
 }
@@ -475,11 +475,19 @@ async function restoreFleet() {
 }
 function sendIssueWhatsApp(issueId) {
   const issue = data.issues.find((entry) => entry.id === issueId); if (!issue) return;
-  const vehicle = vehicleById(issue.vehicleId) || { plate: issue.vehiclePlate, type: issue.vehicleType };
-  const message = buildWhatsAppMessage(vehicle, [issue]);
+  const message = `*SOLICITAÇÃO DE MANUTENÇÃO — VEÍCULO*\n\nPrezado(a) responsável,\n\nSolicitamos avaliação e agendamento de manutenção para o veículo abaixo.\n\n*Veículo:* Prefixo ${issue.vehiclePrefix || "—"} · ${issue.vehicleModel || issue.vehicleType || "—"} · Placa ${issue.vehiclePlate || "—"}\n*Quilometragem:* ${issue.odometer ?? "—"} km\n*Base responsável:* ${issue.baseName || "—"}\n\n*Ocorrência relatada:*\n${issue.itemName || "Ocorrência"}: ${issue.description || "—"}\n\nPedimos, por gentileza, informar disponibilidade para atendimento e previsão de agendamento.\n\nAtenciosamente,\nCheckFrota — Gestão de Manutenção`;
   const target = issue.ownerPhone || data.settings.maintenancePhone;
   if (!target) return alert("Cadastre o número de WhatsApp do responsável ou da base nas configurações.");
   window.open(whatsappLink(target, message), "_blank", "noopener");
+}
+function buildSchedulingReturn(issue, maintenance = maintenanceOf(issue)) {
+  const schedule = maintenance.scheduledAt ? dateTime(maintenance.scheduledAt) : "A confirmar";
+  return `*RETORNO DE AGENDAMENTO — MANUTENÇÃO*\n\n*Veículo:* Prefixo ${issue.vehiclePrefix || "—"} · ${issue.vehiclePlate || "—"}\n*Ocorrência:* ${issue.itemName || "—"}\n*Situação:* ${maintenance.status || "Pendente"}\n*Agendamento:* ${schedule}\n${maintenance.provider ? `*Oficina / responsável:* ${maintenance.provider}\n` : ""}${maintenance.feedback ? `*Retorno:* ${maintenance.feedback}\n` : ""}\nEsta atualização foi registrada pela Gestão de Frota para ciência da equipe de manutenção.`;
+}
+function sendSchedulingReturn(issue, maintenance = maintenanceOf(issue)) {
+  const target = data.settings.maintenanceGroupPhone || MAINTENANCE_GROUP_PHONE;
+  if (!target) return alert("Cadastre o WhatsApp do grupo de manutenção em Configurações da base.");
+  window.open(whatsappLink(target, buildSchedulingReturn(issue, maintenance)), "_blank", "noopener");
 }
 async function dispatchManagerMaintenance(issueId) {
   const issue = data.issues.find((entry) => entry.id === issueId);
@@ -545,7 +553,7 @@ function saveMaintenance() {
   void cloudSave("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: issue.vehicleId, status: issue.status, data: issue });
   if (data.settings.webhookUrl) void sendToIntegration({ type: "maintenance-update", issue, maintenance: issue.maintenance });
   $("#maintenanceDialog").close(); renderControl();
-  if (issue.maintenance.status === "Agendada") { sendDriverMaintenanceWhatsApp(issue); sendMaintenanceWhatsApp(); }
+  if (issue.maintenance.status === "Agendada") { sendDriverMaintenanceWhatsApp(issue); sendSchedulingReturn(issue, issue.maintenance); }
 }
 function closeIssue(issueId) { const issue = data.issues.find((entry) => entry.id === issueId); if (issue) { issue.maintenance = { ...maintenanceOf(issue), status: "Concluída", updatedAt: new Date().toISOString() }; issue.status = "resolvida"; issue.resolvedAt = new Date().toISOString(); saveData(); if (data.settings.webhookUrl) void sendToIntegration({ type: "maintenance-update", issue, maintenance: issue.maintenance }); renderControl(); } }
 function saveSettings() { data.settings.webhookUrl = $("#webhookUrl").value.trim(); data.settings.maintenancePhone = phoneOnly($("#maintenancePhone").value); data.settings.maintenanceGroupPhone = phoneOnly($("#maintenanceGroupPhone").value); data.settings.leaderPhone = phoneOnly($("#leaderPhone").value); data.settings.fleetManagerPhone = phoneOnly($("#fleetManagerPhone").value); saveData(); $("#settingsDialog").close(); }
@@ -603,7 +611,7 @@ document.addEventListener("click", (event) => {
   if (target.dataset.maintenanceIssue) openMaintenanceIssue(target.dataset.maintenanceIssue);
   if (target.dataset.maintenanceWhatsapp) sendMaintenanceWhatsApp(target.dataset.maintenanceWhatsapp);
   if (target.dataset.closeIssue) closeIssue(target.dataset.closeIssue);
-  if (target.id === "sendMaintenanceUpdate") { const issue = data.issues.find((entry) => entry.id === $("#maintenanceIssueId").value); if (issue) { issue.maintenance = maintenanceFormValues(); sendMaintenanceWhatsApp(); } }
+  if (target.id === "sendMaintenanceUpdate") { const issue = data.issues.find((entry) => entry.id === $("#maintenanceIssueId").value); if (issue) { const maintenance = maintenanceFormValues(); issue.maintenance = maintenance; sendSchedulingReturn(issue, maintenance); } }
   if (target.id === "downloadReport") downloadReport();
 });
 $("#vehicleSelect").addEventListener("change", renderVehicleOwner);
