@@ -94,6 +94,7 @@ async function compressPhoto(file) {
   return blob ? new File([blob], file.name.replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" }) : file;
 }
 async function uploadIssuePhoto(issue, file) { if (!file || !CLOUD?.url) return ""; const path = `${issue.id}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`; try { const response = await fetch(`${CLOUD.url}/storage/v1/object/issue-photos/${path}`, { method: "POST", headers: { ...cloudHeaders(false), "Content-Type": file.type || "image/jpeg", "x-upsert": "false" }, body: file }); if (!response.ok) throw new Error(`Foto: ${response.status}`); return path; } catch (error) { console.warn("Não foi possível enviar a foto", error); return ""; } }
+async function openIssuePhoto(issueId) { const issue = data.issues.find((entry) => entry.id === issueId); if (!issue?.photoPath) return alert("Esta ocorrência não possui foto armazenada no banco de dados."); const preview = window.open("", "_blank", "noopener"); try { const response = await fetch(`${CLOUD.url}/storage/v1/object/sign/issue-photos/${issue.photoPath}`, { method: "POST", headers: cloudHeaders(), body: JSON.stringify({ expiresIn: 3600 }) }); const result = await response.json(); if (!response.ok || !result.signedURL) throw new Error("Não foi possível liberar a foto."); preview.location.replace(`${CLOUD.url}/storage/v1${result.signedURL}`); } catch (error) { preview.close(); alert(error.message || "Não foi possível abrir a foto."); } }
 async function cloudSyncSubmission(inspection, issues) { await cloudSave("fleet_inspections", { id: inspection.id, vehicle_id: inspection.vehicleId, data: inspection }); await Promise.all(issues.map((issue) => cloudSave("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: issue.vehicleId, status: issue.status, data: issue }))); }
 async function loadCloudManager() { if (!cloudToken()) return; try { const [issues, inspections, vehicles] = await Promise.all([cloudRequest("/rest/v1/fleet_issues?select=data&order=created_at.desc"), cloudRequest("/rest/v1/fleet_inspections?select=data&order=created_at.desc"), cloudRequest("/rest/v1/fleet_vehicles?select=data")]); if (issues) data.issues = issues.map((row) => row.data); if (inspections) data.inspections = inspections.map((row) => row.data); if (vehicles?.length) data.vehicles = vehicles.map((row) => row.data); saveData(); renderControl(); } catch (error) { console.warn("Não foi possível carregar a nuvem", error); } }
 
@@ -324,7 +325,7 @@ function renderIssues() {
       <p class="issue-desc">${esc(issue.description)}</p>
       <p class="meta">${esc(issue.driver)} · ${dateTime(issue.createdAt)}${issue.photoName ? ` · 📷 ${esc(issue.photoName)}` : ""}</p>
       <p class="maintenance-meta"><b>Manutenção:</b> ${esc(maintenance.status)}${schedule}${maintenance.provider ? ` · ${esc(maintenance.provider)}` : ""}</p>
-      <div class="issue-actions"><button class="small-button" data-maintenance-issue="${issue.id}">Agendar / retorno</button><button class="small-button whatsapp" data-maintenance-whatsapp="${issue.id}">Avisar base</button><button class="small-button" data-close-issue="${issue.id}">Marcar resolvida</button></div>
+      <div class="issue-actions">${issue.photoPath ? `<button class="small-button photo-button" data-view-photo="${issue.id}">📷 Ver foto</button>` : ""}<button class="small-button" data-maintenance-issue="${issue.id}">Agendar / retorno</button><button class="small-button whatsapp" data-maintenance-whatsapp="${issue.id}">Avisar base</button><button class="small-button" data-close-issue="${issue.id}">Marcar resolvida</button></div>
     </article>`;
   }).join("");
 }
@@ -490,6 +491,7 @@ document.addEventListener("click", (event) => {
   if (target.id === "newVehicle") openVehicleDialog();
   if (target.dataset.editVehicle) openVehicleDialog(target.dataset.editVehicle);
   if (target.dataset.deleteVehicle) deleteVehicle(target.dataset.deleteVehicle);
+  if (target.dataset.viewPhoto) void openIssuePhoto(target.dataset.viewPhoto);
   if (target.dataset.whatsappIssue) sendIssueWhatsApp(target.dataset.whatsappIssue);
   if (target.dataset.maintenanceIssue) openMaintenanceIssue(target.dataset.maintenanceIssue);
   if (target.dataset.maintenanceWhatsapp) sendMaintenanceWhatsApp(target.dataset.maintenanceWhatsapp);
