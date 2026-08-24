@@ -332,11 +332,17 @@ async function sendToIntegration(payload) {
     return { sent: response.ok, reason: response.ok ? "enviado" : "falhou" };
   } catch { return { sent: false, reason: "falhou" }; }
 }
-function buildWhatsAppMessage(vehicle, issues) {
+function buildWhatsAppMessage(vehicle, issues, inspection) {
   const severity = highestSeverity(issues);
-  const list = issues.map((issue) => `• ${issue.itemName || issue.item?.name} (${issue.severity}): ${issue.description}`).join("\n");
-  const createdAt = issues[0]?.createdAt || new Date();
-  return `*OCORRÊNCIA DE FROTA — ${severity.toUpperCase()}*\n\nVeículo: Prefixo ${vehicle.prefix || "—"} · ${vehicle.plate} (${vehicle.model || vehicle.type})\nQuilometragem: ${issues[0]?.odometer ?? vehicle.odometer ?? "Não informada"} km\nMotorista: ${issues[0]?.driver || current.driver || "Não informado"}\nBase: ${issues[0]?.baseName || current.baseName || "Não informada"}\nData: ${dateTime(createdAt)}\n\nOcorrência(s):\n${list}\n\nSolicitamos avaliação e manutenção do veículo.`;
+  const createdAt = inspection?.createdAt || issues[0]?.createdAt || new Date();
+  const checklist = (inspection?.items || CHECKLIST.map((item) => ({ ...item, ...current.states[item.id] }))).map((item) => {
+    if (item.status === "issue") {
+      const issue = item.issue || {};
+      return `⚠️ ${item.name} — OCORRÊNCIA (${issue.severity || "Não informada"})${issue.description ? `: ${issue.description}` : ""}`;
+    }
+    return `✅ ${item.name} — EM ORDEM`;
+  }).join("\n");
+  return `*CHECKFROTA — FORMULÁRIO DE INSPEÇÃO*\n*Solicitação de manutenção para avaliação da liderança*\n\n*Identificação do veículo*\nVeículo: Prefixo ${vehicle.prefix || "—"} · ${vehicle.plate} (${vehicle.model || vehicle.type})\nQuilometragem: ${inspection?.odometer ?? issues[0]?.odometer ?? vehicle.odometer ?? "Não informada"} km\nMotorista: ${inspection?.driver || issues[0]?.driver || current.driver || "Não informado"}\nBase: ${inspection?.baseName || issues[0]?.baseName || current.baseName || "Não informada"}\nData: ${dateTime(createdAt)}\n\n*Checklist completo*\n${checklist}\n\n*Resumo para decisão*\nOcorrências encontradas: ${issues.length}\nMaior gravidade: ${severity}\n\nSolicitamos avaliação e manutenção do veículo.`;
 }
 function whatsappLink(phone, message) { return `https://wa.me/${phoneOnly(phone)}?text=${encodeURIComponent(message)}`; }
 async function approvalUrl(vehicle, issues) {
@@ -367,7 +373,7 @@ async function showCompletion(inspection, vehicle, issues, sendResult) {
   const buttons = [];
   const approvalTarget = issues[0]?.basePhone || current.basePhone || data.settings.leaderPhone;
   if (approvalTarget) {
-    const message = buildWhatsAppMessage(vehicle, issues);
+    const message = buildWhatsAppMessage(vehicle, issues, inspection);
     const approvalMessage = `*APROVAÇÃO DE MANUTENÇÃO NECESSÁRIA*\n\n${message.replace(/\*/g, "")}\n\nAbra para verificar a foto, aprovar ou recusar:\n${await approvalUrl(vehicle, issues)}`;
     buttons.push(`<a href="${whatsappLink(approvalTarget, approvalMessage)}" target="_blank" rel="noopener">Enviar para aprovação da liderança</a>`);
   }
