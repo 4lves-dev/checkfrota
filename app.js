@@ -51,12 +51,17 @@ const RESPONSIBLES_BY_PREFIX = {
   "1456": "Locadora de Veículos Authana Ltda EPP", "1466": "Locadora de Veículos Authana Ltda EPP",
   "1894": "SGMK", "1922": "SGMK", "1484": "Locadora de Veículos Authana Ltda",
   "1485": "Locadora de Veículos Authana Ltda", "1486": "Locadora de Veículos Authana Ltda",
-  "1799": "SGMK", "1969": "ADR Transportes e Locações", "1126": "LTDA",
+  "1799": "SGMK", "1969": "ADR Transportes e Locações", "1126": "Job Locações",
   "1919": "JVN Comércio e Transportes Ltda", "1082": "Máximo Serviços e Locações Ltda",
   "1084": "Máximo Serviços e Locações Ltda", "1577": "Franco Castilho & Castilho",
   "1967": "SGMK", "1968": "SGMK", "157": "URBAM",
 };
-function withFleetResponsible(vehicle) { return { ...vehicle, ownerName: RESPONSIBLES_BY_PREFIX[vehicle.prefix] || vehicle.ownerName }; }
+const OWNER_PHONE_BY_PREFIX = {
+  "1446": "5512987003695", "1447": "5512987003695", "1456": "5512987003695", "1466": "5512987003695", "1484": "5512987003695", "1485": "5512987003695", "1486": "5512987003695",
+  "1894": "5512988201150", "1922": "5512988201150", "1799": "5512988201150", "1967": "5512988201150", "1968": "5512988201150",
+  "1969": "5512988604088", "1126": "5512996510614", "1919": "553597804552", "1082": "5512974059535", "1084": "5512974059535", "1577": "5512974034611",
+};
+function withFleetResponsible(vehicle) { return { ...vehicle, ownerName: RESPONSIBLES_BY_PREFIX[vehicle.prefix] || vehicle.ownerName, ownerPhone: OWNER_PHONE_BY_PREFIX[vehicle.prefix] || vehicle.ownerPhone }; }
 
 let data = loadData();
 let current = { driver: "", driverPhone: DRIVER_NOTIFICATION_PHONE, baseName: "", basePhone: "", vehicleId: "", odometer: "", states: {}, notes: "" };
@@ -67,6 +72,7 @@ const $ = (selector, scope = document) => scope.querySelector(selector);
 const $$ = (selector, scope = document) => [...scope.querySelectorAll(selector)];
 const esc = (value = "") => String(value).replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char]));
 const today = () => new Date().toISOString().slice(0, 10);
+function formatPhone(phone = "") { const digits = phoneOnly(phone); return digits.length === 13 && digits.startsWith("55") ? `+55 (${digits.slice(2, 4)}) ${digits.slice(4, 9)}-${digits.slice(9)}` : (digits ? `+${digits}` : ""); }
 const dateTime = (value) => new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
 const phoneOnly = (phone = "") => phone.replace(/\D/g, "");
 
@@ -82,6 +88,7 @@ function loadData() {
       const storedVehicle = storedVehicles.find((vehicle) => vehicle.prefix === seed.prefix || vehicle.plate === seed.plate);
       const merged = { ...withFleetResponsible(seed), ...(storedVehicle || {}) };
       if (!storedVehicle?.ownerName || storedVehicle.ownerName === "Responsável a cadastrar") merged.ownerName = RESPONSIBLES_BY_PREFIX[seed.prefix] || merged.ownerName;
+      if (!storedVehicle?.ownerPhone) merged.ownerPhone = OWNER_PHONE_BY_PREFIX[seed.prefix] || merged.ownerPhone;
       return merged;
     });
     const customVehicles = storedVehicles.filter((vehicle) =>
@@ -326,6 +333,11 @@ function renderHistory() {
 function renderVehicles() {
   const panel = $("#vehiclesPanel");
   panel.innerHTML = `<div class="section-action"><h3>Veículos cadastrados</h3><button class="add-button" id="newVehicle">+ Cadastrar</button></div>${data.vehicles.length ? data.vehicles.map((vehicle) => `<article class="vehicle-card"><div><h3>Prefixo ${esc(vehicle.prefix || "—")} · ${esc(vehicle.plate)} <span class="vehicle-label">· ${esc(vehicle.model || vehicle.type)}</span></h3><p>${esc(vehicle.ownerName)}${vehicle.contract ? ` · Contrato: ${esc(vehicle.contract)}` : ""}${vehicle.odometer !== "" ? ` · ${esc(vehicle.odometer)} km` : ""}</p></div><div class="issue-actions"><button class="small-button" data-edit-vehicle="${vehicle.id}">Editar</button><button class="small-button danger-button" data-delete-vehicle="${vehicle.id}">Excluir</button></div></article>`).join("") : ""}`;
+}
+function renderVehicles() {
+  const panel = $("#vehiclesPanel");
+  const cards = data.vehicles.map((vehicle) => `<article class="vehicle-card"><div><h3>Prefixo ${esc(vehicle.prefix || "—")} · ${esc(vehicle.plate)} <span class="vehicle-label">· ${esc(vehicle.model || vehicle.type)}</span></h3><p>${esc(vehicle.ownerName)}${vehicle.ownerPhone ? ` · Tel.: ${esc(formatPhone(vehicle.ownerPhone))}` : ""}${vehicle.contract ? ` · Contrato: ${esc(vehicle.contract)}` : ""}${vehicle.odometer !== "" ? ` · ${esc(vehicle.odometer)} km` : ""}</p></div><div class="issue-actions"><button class="small-button" data-edit-vehicle="${vehicle.id}">Editar</button><button class="small-button danger-button" data-delete-vehicle="${vehicle.id}">Excluir</button></div></article>`).join("");
+  panel.innerHTML = `<div class="section-action"><h3>Veículos cadastrados</h3><button class="add-button" id="newVehicle">+ Cadastrar</button></div>${cards}`;
 }
 function openVehicleDialog(id = "") {
   const vehicle = vehicleById(id);
