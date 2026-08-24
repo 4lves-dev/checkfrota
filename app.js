@@ -106,25 +106,17 @@ async function compressPhoto(file) {
   return blob ? new File([blob], file.name.replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" }) : file;
 }
 async function uploadIssuePhoto(issue, file) { if (!file || !CLOUD?.url) return ""; const path = `${issue.id}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`; try { const response = await fetch(`${CLOUD.url}/storage/v1/object/issue-photos/${path}`, { method: "POST", headers: { ...cloudHeaders(false), "Content-Type": file.type || "image/jpeg", "x-upsert": "false" }, body: file }); if (!response.ok) throw new Error(`Foto: ${response.status}`); return path; } catch (error) { console.warn("Não foi possível enviar a foto", error); return ""; } }
-async function issuePhotoLink(issue) { if (!issue?.photoPath || !CLOUD?.url) return ""; try { const response = await fetch(`${CLOUD.url}/storage/v1/object/sign/issue-photos/${issue.photoPath}`, { method: "POST", headers: cloudHeaders(), body: JSON.stringify({ expiresIn: 86400 }) }); const result = await response.json(); return response.ok && result.signedURL ? `${CLOUD.url}/storage/v1${result.signedURL}` : ""; } catch { return ""; } }
+function publicIssuePhotoUrl(issue) { if (!issue?.photoPath || !CLOUD?.url) return ""; const safePath = issue.photoPath.split("/").map(encodeURIComponent).join("/"); return `${CLOUD.url}/storage/v1/object/public/issue-photos/${safePath}`; }
+async function issuePhotoLink(issue) { return publicIssuePhotoUrl(issue); }
 async function openIssuePhoto(issueId) {
   const issue = data.issues.find((entry) => entry.id === issueId);
   if (!issue?.photoPath) return alert("Esta ocorrência não possui foto armazenada no banco de dados.");
   // Abrir a guia antes da chamada assíncrona evita bloqueio de pop-up. Não use
   // `noopener` aqui: nesse modo o navegador devolve uma janela nula e a foto
   // nunca recebe a URL assinada.
-  const preview = window.open("", "_blank");
-  try {
-    const response = await fetch(`${CLOUD.url}/storage/v1/object/sign/issue-photos/${issue.photoPath}`, { method: "POST", headers: cloudHeaders(), body: JSON.stringify({ expiresIn: 3600 }) });
-    const result = await response.json();
-    if (!response.ok || !result.signedURL) throw new Error("Não foi possível liberar a foto.");
-    const photoUrl = `${CLOUD.url}/storage/v1${result.signedURL}`;
-    if (preview) { preview.opener = null; preview.location.replace(photoUrl); }
-    else window.open(photoUrl, "_blank", "noopener");
-  } catch (error) {
-    if (preview) preview.close();
-    alert(error.message || "Não foi possível abrir a foto.");
-  }
+  const photoUrl = publicIssuePhotoUrl(issue);
+  const preview = window.open(photoUrl, "_blank", "noopener");
+  if (!preview) alert("O navegador bloqueou a nova guia da foto. Permita pop-ups para este aplicativo e tente novamente.");
 }
 async function cloudSyncSubmission(inspection, issues) { await Promise.all(issues.map((issue) => cloudSave("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: null, status: issue.status, data: issue }))); }
 async function syncLocalBacklog() {
