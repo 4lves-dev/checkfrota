@@ -1,4 +1,4 @@
-const CACHE = "checkfrota-v43";
+const CACHE = "checkfrota-v44";
 const ASSETS = ["./", "./index.html", "./gestao.html", "./instalar-gestao.html", "./aprovacao.html?v=28", "./styles.css?v=24", "./supabase-config.js?v=1", "./app.js?v=41", "./manifest.webmanifest", "./gestao-manifest.webmanifest", "./icons/icon.svg"];
 
 self.addEventListener("install", (event) => event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting())));
