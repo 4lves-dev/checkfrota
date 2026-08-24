@@ -106,6 +106,7 @@ async function compressPhoto(file) {
   return blob ? new File([blob], file.name.replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" }) : file;
 }
 async function uploadIssuePhoto(issue, file) { if (!file || !CLOUD?.url) return ""; const path = `${issue.id}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`; try { const response = await fetch(`${CLOUD.url}/storage/v1/object/issue-photos/${path}`, { method: "POST", headers: { ...cloudHeaders(false), "Content-Type": file.type || "image/jpeg", "x-upsert": "false" }, body: file }); if (!response.ok) throw new Error(`Foto: ${response.status}`); return path; } catch (error) { console.warn("Não foi possível enviar a foto", error); return ""; } }
+async function issuePhotoLink(issue) { if (!issue?.photoPath || !CLOUD?.url) return ""; try { const response = await fetch(`${CLOUD.url}/storage/v1/object/sign/issue-photos/${issue.photoPath}`, { method: "POST", headers: cloudHeaders(), body: JSON.stringify({ expiresIn: 86400 }) }); const result = await response.json(); return response.ok && result.signedURL ? `${CLOUD.url}/storage/v1${result.signedURL}` : ""; } catch { return ""; } }
 async function openIssuePhoto(issueId) { const issue = data.issues.find((entry) => entry.id === issueId); if (!issue?.photoPath) return alert("Esta ocorrência não possui foto armazenada no banco de dados."); const preview = window.open("", "_blank", "noopener"); try { const response = await fetch(`${CLOUD.url}/storage/v1/object/sign/issue-photos/${issue.photoPath}`, { method: "POST", headers: cloudHeaders(), body: JSON.stringify({ expiresIn: 3600 }) }); const result = await response.json(); if (!response.ok || !result.signedURL) throw new Error("Não foi possível liberar a foto."); preview.location.replace(`${CLOUD.url}/storage/v1${result.signedURL}`); } catch (error) { preview.close(); alert(error.message || "Não foi possível abrir a foto."); } }
 async function cloudSyncSubmission(inspection, issues) { await cloudSave("fleet_inspections", { id: inspection.id, vehicle_id: inspection.vehicleId, data: inspection }); await Promise.all(issues.map((issue) => cloudSave("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: issue.vehicleId, status: issue.status, data: issue }))); }
 async function syncLocalBacklog() {
@@ -275,7 +276,7 @@ async function submitChecklist() {
   try { await cloudSyncSubmission(inspection, newIssues); }
   catch (error) { console.warn("Não foi possível gravar o chamado no banco", error); alert("O chamado foi salvo neste aparelho, mas não foi enviado ao painel da Gestão. Verifique a conexão e envie novamente."); }
   const sendResult = await sendToIntegration({ inspection, vehicle, issues: newIssues });
-  showCompletion(vehicle, newIssues, sendResult);
+  await showCompletion(vehicle, newIssues, sendResult);
   current = { driver: current.driver, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, vehicleId: vehicle.id, odometer: "", states: {}, notes: "" };
   saveData();
 }
@@ -294,7 +295,7 @@ function buildWhatsAppMessage(vehicle, issues) {
   return `*OCORRÊNCIA DE FROTA — ${severity.toUpperCase()}*\n\nVeículo: Prefixo ${vehicle.prefix || "—"} · ${vehicle.plate} (${vehicle.model || vehicle.type})\nQuilometragem: ${issues[0]?.odometer ?? vehicle.odometer ?? "Não informada"} km\nMotorista: ${issues[0]?.driver || current.driver || "Não informado"}\nBase: ${issues[0]?.baseName || current.baseName || "Não informada"}\nData: ${dateTime(createdAt)}\n\nOcorrência(s):\n${list}\n\nSolicitamos avaliação e manutenção do veículo.`;
 }
 function whatsappLink(phone, message) { return `https://wa.me/${phoneOnly(phone)}?text=${encodeURIComponent(message)}`; }
-function approvalUrl(vehicle, issues) {
+async function approvalUrl(vehicle, issues) {
   const first = issues[0] || {};
   const problem = issues.map((issue) => `${issue.itemName || issue.item?.name}: ${issue.description}`).join(" | ");
   const params = new URLSearchParams({
@@ -304,9 +305,12 @@ function approvalUrl(vehicle, issues) {
     leaderPhone: first.basePhone || current.basePhone || data.settings.leaderPhone || "", maintenancePhone: data.settings.maintenancePhone || "",
     km: String(first.odometer ?? vehicle.odometer ?? ""), baseName: first.baseName || current.baseName || "Não informada", priority: highestSeverity(issues), location: "", problem,
   });
-  return `${location.origin}${location.pathname.replace(/[^/]*$/, "aprovacao.html")}?v=28&${params.toString()}`;
+  const photoUrl = await issuePhotoLink(first);
+  if (photoUrl) params.set("photoUrl", photoUrl);
+  if (first.photoName) params.set("photoName", first.photoName);
+  return `${location.origin}${location.pathname.replace(/[^/]*$/, "aprovacao.html")}?v=52&${params.toString()}`;
 }
-function showCompletion(vehicle, issues, sendResult) {
+async function showCompletion(vehicle, issues, sendResult) {
   const severe = issues.some((issue) => issue.severity === "Grave");
   $("#successTitle").textContent = issues.length ? (severe ? "Veículo com bloqueio de deslocamento." : "Ocorrência registrada.") : "Tudo certo para seguir.";
   $("#successText").textContent = issues.length ? `O formulário foi salvo com ${issues.length} ocorrência(s). ${sendResult.sent ? "A integração de e-mail foi acionada." : "Configure a integração para o envio automático por e-mail."}` : "Checklist concluído e registrado no controle da frota.";
@@ -316,7 +320,7 @@ function showCompletion(vehicle, issues, sendResult) {
   const approvalTarget = issues[0]?.basePhone || current.basePhone || data.settings.leaderPhone;
   if (approvalTarget) {
     const message = buildWhatsAppMessage(vehicle, issues);
-    const approvalMessage = `*APROVAÇÃO DE MANUTENÇÃO NECESSÁRIA*\n\n${message.replace(/\*/g, "")}\n\nAbra para aprovar ou recusar:\n${approvalUrl(vehicle, issues)}`;
+    const approvalMessage = `*APROVAÇÃO DE MANUTENÇÃO NECESSÁRIA*\n\n${message.replace(/\*/g, "")}\n\nAbra para verificar a foto, aprovar ou recusar:\n${await approvalUrl(vehicle, issues)}`;
     buttons.push(`<a href="${whatsappLink(approvalTarget, approvalMessage)}" target="_blank" rel="noopener">Enviar para aprovação da liderança</a>`);
   }
   actions.innerHTML = buttons.join("");
