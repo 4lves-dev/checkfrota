@@ -80,7 +80,19 @@ const CLOUD = window.CHECKFROTA_SUPABASE;
 function cloudToken() { return sessionStorage.getItem("checkfrota-supabase-token") || ""; }
 function cloudHeaders(json = true) { return { apikey: CLOUD?.publishableKey || "", Authorization: `Bearer ${cloudToken() || CLOUD?.publishableKey || ""}`, ...(json ? { "Content-Type": "application/json" } : {}) }; }
 async function cloudRequest(path, options = {}) { if (!CLOUD?.url) return null; const response = await fetch(`${CLOUD.url}${path}`, { ...options, headers: { ...cloudHeaders(options.json !== false), ...(options.headers || {}) } }); if (!response.ok) throw new Error(`Supabase: ${response.status}`); return response.status === 204 ? null : response.json(); }
-async function cloudSave(table, row) { try { await cloudRequest(`/rest/v1/${table}`, { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(row) }); } catch (error) { console.warn("Não foi possível sincronizar", error); } }
+async function cloudSave(table, row) {
+  if (!CLOUD?.url) throw new Error("A conexão com o banco de dados não está configurada.");
+  const response = await fetch(`${CLOUD.url}/rest/v1/${table}`, {
+    method: "POST",
+    headers: { ...cloudHeaders(), Prefer: "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify(row),
+  });
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`Banco de dados: ${response.status}${detail ? ` — ${detail}` : ""}`);
+  }
+  return true;
+}
 async function compressPhoto(file) {
   if (!file?.type?.startsWith("image/")) return file;
   const image = await createImageBitmap(file);
@@ -253,7 +265,8 @@ async function submitChecklist() {
   data.inspections.unshift(inspection);
   data.issues.unshift(...newIssues);
   saveData();
-  void cloudSyncSubmission(inspection, newIssues);
+  try { await cloudSyncSubmission(inspection, newIssues); }
+  catch (error) { console.warn("Não foi possível gravar o chamado no banco", error); alert("O chamado foi salvo neste aparelho, mas não foi enviado ao painel da Gestão. Verifique a conexão e envie novamente."); }
   const sendResult = await sendToIntegration({ inspection, vehicle, issues: newIssues });
   showCompletion(vehicle, newIssues, sendResult);
   current = { driver: current.driver, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, vehicleId: vehicle.id, odometer: "", states: {}, notes: "" };
