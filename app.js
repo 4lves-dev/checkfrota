@@ -297,7 +297,7 @@ async function submitChecklist() {
   try { await cloudSyncSubmission(inspection, newIssues); }
   catch (error) { console.warn("Não foi possível gravar o chamado no banco", error); alert(`O chamado foi salvo neste aparelho, mas o banco recusou o envio.\n\nDetalhe: ${error.message || "erro não informado"}`); }
   const sendResult = await sendToIntegration({ inspection, vehicle, issues: newIssues });
-  await showCompletion(vehicle, newIssues, sendResult);
+  await showCompletion(inspection, vehicle, newIssues, sendResult);
   current = { driver: current.driver, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, vehicleId: vehicle.id, odometer: "", states: {}, notes: "" };
   saveData();
 }
@@ -331,10 +331,14 @@ async function approvalUrl(vehicle, issues) {
   if (first.photoName) params.set("photoName", first.photoName);
   return `${location.origin}${location.pathname.replace(/[^/]*$/, "aprovacao.html")}?v=52&${params.toString()}`;
 }
-async function showCompletion(vehicle, issues, sendResult) {
+async function showCompletion(inspection, vehicle, issues, sendResult) {
   const severe = issues.some((issue) => issue.severity === "Grave");
   $("#successTitle").textContent = issues.length ? (severe ? "Veículo com bloqueio de deslocamento." : "Ocorrência registrada.") : "Tudo certo para seguir.";
   $("#successText").textContent = issues.length ? `O formulário foi salvo com ${issues.length} ocorrência(s). ${sendResult.sent ? "A integração de e-mail foi acionada." : "Configure a integração para o envio automático por e-mail."}` : "Checklist concluído e registrado no controle da frota.";
+  const form = $("#submittedForm");
+  const protocol = `MAN-${String(inspection.id || Date.now()).replaceAll("-", "").slice(-8).toUpperCase()}`;
+  const occurrenceRows = issues.length ? issues.map((issue) => `<article class="submitted-issue ${esc(issue.severity.toLowerCase())}"><div><b>${esc(issue.itemName)}</b><span class="chip ${esc(issue.severity.toLowerCase())}">${esc(issue.severity)}</span></div><p>${esc(issue.description)}</p>${issue.photoPath ? `<img src="${esc(publicIssuePhotoUrl(issue))}" alt="Foto da ocorrência ${esc(issue.itemName)}" loading="lazy">` : ""}</article>`).join("") : `<p class="form-empty">Nenhuma ocorrência informada.</p>`;
+  form.innerHTML = `<div class="form-top"><span class="form-mark">✓</span><div><small>CHECKFROTA · RESPOSTA ENVIADA</small><h2>Formulário de inspeção</h2></div></div><div class="form-protocol"><span>Protocolo</span><b>${esc(protocol)}</b></div><div class="form-fields"><div><span>Motorista</span><b>${esc(inspection.driver)}</b></div><div><span>Base</span><b>${esc(inspection.baseName)}</b></div><div><span>Veículo</span><b>Prefixo ${esc(vehicle.prefix)} · ${esc(vehicle.plate)}</b></div><div><span>Modelo</span><b>${esc(vehicle.model || vehicle.type)}</b></div><div><span>Quilometragem</span><b>${esc(inspection.odometer)} km</b></div><div><span>Data e hora</span><b>${esc(dateTime(inspection.createdAt))}</b></div></div><div class="form-occurrences"><h3>Ocorrências relatadas</h3>${occurrenceRows}</div>${inspection.notes ? `<div class="form-notes"><span>Observação geral</span><p>${esc(inspection.notes)}</p></div>` : ""}`;
   const actions = $("#dispatchActions");
   if (!issues.length) { actions.innerHTML = ""; showScreen("success"); return; }
   const buttons = [];
