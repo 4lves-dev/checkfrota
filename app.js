@@ -125,7 +125,19 @@ async function syncLocalBacklog() {
     await Promise.all(data.issues.map((issue) => cloudSave("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: null, status: issue.status || "aberta", data: issue })));
   } catch (error) { console.warn("Não foi possível migrar os chamados deste aparelho", error); }
 }
-async function loadCloudManager() { if (!cloudToken()) return; try { const [issues, inspections, vehicles] = await Promise.all([cloudRequest("/rest/v1/fleet_issues?select=data&order=created_at.desc"), cloudRequest("/rest/v1/fleet_inspections?select=data&order=created_at.desc"), cloudRequest("/rest/v1/fleet_vehicles?select=data")]); if (issues) data.issues = issues.map((row) => row.data); if (inspections) data.inspections = inspections.map((row) => row.data); if (vehicles?.length) data.vehicles = vehicles.map((row) => row.data); saveData(); renderControl(); } catch (error) { console.warn("Não foi possível carregar a nuvem", error); } }
+function mergeFleetVehicles(cloudVehicles = []) {
+  // O banco pode conter somente veículos criados manualmente. Ele nunca deve
+  // substituir a frota de referência e fazer caminhões sumirem do aplicativo.
+  const localVehicles = Array.isArray(data.vehicles) ? data.vehicles : [];
+  const allVehicles = [...cloudVehicles, ...localVehicles];
+  const findMatch = (vehicle) => allVehicles.find((entry) => entry && (entry.id === vehicle.id || entry.prefix === vehicle.prefix || entry.plate === vehicle.plate));
+  const standard = initialData.vehicles
+    .filter((seed) => !(data.removedVehicleIds || []).includes(seed.id))
+    .map((seed) => withFleetResponsible({ ...seed, ...(findMatch(seed) || {}) }));
+  const extras = allVehicles.filter((vehicle, index) => vehicle && !initialData.vehicles.some((seed) => seed.id === vehicle.id || seed.prefix === vehicle.prefix || seed.plate === vehicle.plate) && allVehicles.findIndex((entry) => entry && (entry.id === vehicle.id || entry.prefix === vehicle.prefix || entry.plate === vehicle.plate)) === index);
+  return [...standard, ...extras];
+}
+async function loadCloudManager() { if (!cloudToken()) return; try { const [issues, inspections, vehicles] = await Promise.all([cloudRequest("/rest/v1/fleet_issues?select=data&order=created_at.desc"), cloudRequest("/rest/v1/fleet_inspections?select=data&order=created_at.desc"), cloudRequest("/rest/v1/fleet_vehicles?select=data")]); if (issues) data.issues = issues.map((row) => row.data); if (inspections) data.inspections = inspections.map((row) => row.data); data.vehicles = mergeFleetVehicles((vehicles || []).map((row) => row.data).filter(Boolean)); saveData(); renderControl(); } catch (error) { console.warn("Não foi possível carregar a nuvem", error); } }
 
 function loadData() {
   try {
