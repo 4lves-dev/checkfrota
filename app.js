@@ -14,7 +14,7 @@ const CHECKLIST = [
   ["carga", "Carga / carroceria / amarração", "Operação"],
   ["kit", "Triângulo, macaco e extintor", "Segurança"],
 ].map(([id, name, category]) => ({ id, name, category }));
-const BASES = { Vertical: "5512981567218", Abrigo: "5512997884887", Horizontal: "5512988400697" };
+const BASES = { Vertical: "5512981567218", "Segurança / Elétrica": "5512981567218", Abrigo: "5512997884887", Horizontal: "5512988400697" };
 const DRIVER_NOTIFICATION_PHONE = "5512988400316";
 
 const initialData = {
