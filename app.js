@@ -84,7 +84,7 @@ async function cloudSave(table, row) {
   if (!CLOUD?.url) throw new Error("A conexão com o banco de dados não está configurada.");
   const response = await fetch(`${CLOUD.url}/rest/v1/${table}`, {
     method: "POST",
-    headers: { ...cloudHeaders(), Prefer: "resolution=merge-duplicates,return=minimal" },
+    headers: { ...cloudHeaders(), Prefer: "return=minimal" },
     body: JSON.stringify(row),
   });
   if (!response.ok) {
