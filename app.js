@@ -498,6 +498,8 @@ if ("serviceWorker" in navigator) window.addEventListener("load", () => navigato
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
 window.addEventListener("appinstalled", () => { document.body.classList.add("app-installed"); $("#installBanner").hidden = true; });
 if (isInstalled()) document.body.classList.add("app-installed"); else window.addEventListener("load", showInstallBanner);
-if (new URLSearchParams(location.search).get("gestao") === "1") showScreen("controle");
-else renderStart();
+if (new URLSearchParams(location.search).get("gestao") === "1") {
+  if (cloudToken()) showScreen("controle");
+  else location.replace("gestao.html?v=36");
+} else renderStart();
 
