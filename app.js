@@ -334,13 +334,13 @@ async function approvalUrl(vehicle, issues) {
     id: `MAN-${String(first.id || Date.now()).replaceAll("-", "").slice(-8)}`,
     prefix: vehicle.prefix || "", type: vehicle.model || vehicle.type, plate: vehicle.plate,
     driver: first.driver || current.driver || "", driverPhone: first.driverPhone || current.driverPhone || "",
-    leaderPhone: first.basePhone || current.basePhone || data.settings.leaderPhone || "", maintenancePhone: data.settings.maintenancePhone || "",
+    leaderPhone: first.basePhone || current.basePhone || data.settings.leaderPhone || "", maintenancePhone: data.settings.maintenancePhone || "", ownerPhone: first.ownerPhone || vehicle.ownerPhone || "", ownerName: first.ownerName || vehicle.ownerName || "",
     km: String(first.odometer ?? vehicle.odometer ?? ""), baseName: first.baseName || current.baseName || "Não informada", priority: highestSeverity(issues), location: "", problem,
   });
   const photoUrl = await issuePhotoLink(first);
   if (photoUrl) params.set("photoUrl", photoUrl);
   if (first.photoName) params.set("photoName", first.photoName);
-  return `${location.origin}${location.pathname.replace(/[^/]*$/, "aprovacao.html")}?v=64&${params.toString()}`;
+  return `${location.origin}${location.pathname.replace(/[^/]*$/, "aprovacao.html")}?v=65&${params.toString()}`;
 }
 async function showCompletion(inspection, vehicle, issues, sendResult) {
   const severe = issues.some((issue) => issue.severity === "Grave");
