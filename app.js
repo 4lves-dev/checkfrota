@@ -346,7 +346,7 @@ async function approvalUrl(vehicle, issues) {
   const photoUrl = await issuePhotoLink(first);
   if (photoUrl) params.set("photoUrl", photoUrl);
   if (first.photoName) params.set("photoName", first.photoName);
-  return `${location.origin}${location.pathname.replace(/[^/]*$/, "aprovacao.html")}?v=68&${params.toString()}`;
+  return `${location.origin}${location.pathname.replace(/[^/]*$/, "aprovacao.html")}?v=69&${params.toString()}`;
 }
 async function showCompletion(inspection, vehicle, issues, sendResult) {
   const severe = issues.some((issue) => issue.severity === "Grave");
