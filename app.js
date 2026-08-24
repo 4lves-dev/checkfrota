@@ -16,9 +16,10 @@ const CHECKLIST = [
 ].map(([id, name, category]) => ({ id, name, category }));
 const BASES = { Vertical: "5512981567218", Abrigo: "5512997884887", Horizontal: "5512988400697" };
 const DRIVER_NOTIFICATION_PHONE = "5512988400316";
+const EMAIL_AUTOMATION_URL = "https://script.google.com/macros/s/AKfycbyfdwx76UkQcv2fz1HXLERZrcVMfW1iaNvFALmFET1kIBBeXAQVvkH89iviTDxBCQOA/exec";
 
 const initialData = {
-  settings: { maintenancePhone: "5512988400316", maintenanceGroupPhone: "", leaderPhone: "", fleetManagerPhone: "", webhookUrl: "" },
+  settings: { maintenancePhone: "5512988400316", maintenanceGroupPhone: "", leaderPhone: "", fleetManagerPhone: "", webhookUrl: EMAIL_AUTOMATION_URL },
   vehicles: [
     { id: "v1446", prefix: "1446", plate: "SHR7161", type: "Carro", model: "Onix", ownerName: "Responsável a cadastrar", ownerPhone: "", email: "", contract: "50/23", urbamContract: "620/24", odometer: "" },
     { id: "v1447", prefix: "1447", plate: "SHL7J59", type: "Carro", model: "Onix", ownerName: "Responsável a cadastrar", ownerPhone: "", email: "", contract: "50/23", urbamContract: "482/22", odometer: "" },
@@ -158,7 +159,7 @@ function loadData() {
       !["v1", "v2", "v3"].includes(vehicle.id) &&
       !initialData.vehicles.some((seed) => seed.prefix === vehicle.prefix || seed.plate === vehicle.plate)
     );
-    return { ...initialData, ...stored, removedVehicleIds, vehicles: [...seededVehicles, ...customVehicles], settings: { ...initialData.settings, ...stored.settings } };
+    return { ...initialData, ...stored, removedVehicleIds, vehicles: [...seededVehicles, ...customVehicles], settings: { ...initialData.settings, ...stored.settings, webhookUrl: stored.settings?.webhookUrl || EMAIL_AUTOMATION_URL } };
   } catch { return structuredClone(initialData); }
 }
 function saveData() { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
@@ -311,7 +312,11 @@ async function submitChecklist() {
 async function sendToIntegration(payload) {
   if (!data.settings.webhookUrl) return { sent: false, reason: "sem integração" };
   try {
-    const response = await fetch(data.settings.webhookUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    const isGoogleAppsScript = data.settings.webhookUrl.includes("script.google.com/macros/s/");
+    const response = await fetch(data.settings.webhookUrl, isGoogleAppsScript
+      ? { method: "POST", mode: "no-cors", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(payload) }
+      : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    if (isGoogleAppsScript) return { sent: true, reason: "enviado ao Apps Script" };
     return { sent: response.ok, reason: response.ok ? "enviado" : "falhou" };
   } catch { return { sent: false, reason: "falhou" }; }
 }
