@@ -17,9 +17,10 @@ const CHECKLIST = [
 const BASES = { Vertical: "5512981567218", Abrigo: "5512997884887", Horizontal: "5512988400697" };
 const DRIVER_NOTIFICATION_PHONE = "5512988400316";
 const EMAIL_AUTOMATION_URL = "https://script.google.com/macros/s/AKfycbyfdwx76UkQcv2fz1HXLERZrcVMfW1iaNvFALmFET1kIBBeXAQVvkH89iviTDxBCQOA/exec";
+const MAINTENANCE_GROUP_PHONE = "5512996181645";
 
 const initialData = {
-  settings: { maintenancePhone: "5512988400316", maintenanceGroupPhone: "", leaderPhone: "", fleetManagerPhone: "", webhookUrl: EMAIL_AUTOMATION_URL },
+  settings: { maintenancePhone: "5512988400316", maintenanceGroupPhone: MAINTENANCE_GROUP_PHONE, leaderPhone: "", fleetManagerPhone: "", webhookUrl: EMAIL_AUTOMATION_URL },
   vehicles: [
     { id: "v1446", prefix: "1446", plate: "SHR7161", type: "Carro", model: "Onix", ownerName: "Responsável a cadastrar", ownerPhone: "", email: "", contract: "50/23", urbamContract: "620/24", odometer: "" },
     { id: "v1447", prefix: "1447", plate: "SHL7J59", type: "Carro", model: "Onix", ownerName: "Responsável a cadastrar", ownerPhone: "", email: "", contract: "50/23", urbamContract: "482/22", odometer: "" },
@@ -93,6 +94,11 @@ async function cloudSave(table, row) {
     throw new Error(`Banco de dados: ${response.status}${detail ? ` — ${detail}` : ""}`);
   }
   return true;
+}
+async function cloudUpdateIssue(issue) {
+  if (!CLOUD?.url || !issue?.id) return;
+  const response = await fetch(`${CLOUD.url}/rest/v1/fleet_issues?id=eq.${encodeURIComponent(issue.id)}`, { method: "PATCH", headers: { ...cloudHeaders(), Prefer: "return=minimal" }, body: JSON.stringify({ status: issue.status || "aberta", data: issue }) });
+  if (!response.ok) throw new Error(`Banco de dados: ${response.status}`);
 }
 async function compressPhoto(file) {
   if (!file?.type?.startsWith("image/")) return file;
@@ -331,7 +337,7 @@ async function approvalUrl(vehicle, issues) {
   const first = issues[0] || {};
   const problem = issues.map((issue) => `${issue.itemName || issue.item?.name}: ${issue.description}`).join(" | ");
   const params = new URLSearchParams({
-    id: `MAN-${String(first.id || Date.now()).replaceAll("-", "").slice(-8)}`,
+    id: `MAN-${String(first.id || Date.now()).replaceAll("-", "").slice(-8)}`, issueId: first.id || "",
     prefix: vehicle.prefix || "", type: vehicle.model || vehicle.type, plate: vehicle.plate,
     driver: first.driver || current.driver || "", driverPhone: first.driverPhone || current.driverPhone || "",
     leaderPhone: first.basePhone || current.basePhone || data.settings.leaderPhone || "", maintenancePhone: data.settings.maintenancePhone || "", ownerPhone: first.ownerPhone || vehicle.ownerPhone || "", ownerName: first.ownerName || vehicle.ownerName || "",
@@ -383,11 +389,14 @@ function renderIssues() {
     const isFirstFromCall = issues.findIndex((entry) => entry.inspectionId === issue.inspectionId) === index;
     const callPhotos = isFirstFromCall ? issues.filter((entry) => entry.inspectionId === issue.inspectionId && entry.photoPath) : [];
     const gallery = callPhotos.length ? `<div class="issue-photo-gallery"><b>Fotos do chamado (${callPhotos.length})</b><div>${callPhotos.map((photo) => `<button type="button" class="photo-thumb" data-view-photo="${photo.id}" title="Abrir foto de ${esc(photo.itemName)}"><img src="${esc(publicIssuePhotoUrl(photo))}" alt="Foto: ${esc(photo.itemName)}"><span>${esc(photo.itemName)}</span></button>`).join("")}</div></div>` : "";
+    const leaderApproval = issue.leaderApproval;
+    const approvalBox = leaderApproval?.status === "Aprovada" ? `<section class="manager-approval"><b>✓ Aprovado pela liderança</b><span>${esc(leaderApproval.approvedBy || `Base ${issue.baseName || ""}`)} · ${dateTime(leaderApproval.approvedAt)}</span><p>${esc(leaderApproval.note || "Sem observação da liderança.")}</p><textarea readonly aria-label="Mensagem aprovada para manutenção">${esc(leaderApproval.maintenanceMessage || "")}</textarea><div class="issue-actions"><button class="small-button" data-copy-manager-message="${issue.id}">Copiar mensagem</button><button class="small-button whatsapp" data-manager-dispatch="${issue.id}">${leaderApproval.dispatchStatus === "Enviado" ? "✓ Enviado ao grupo" : "Autorizar envio ao grupo"}</button></div></section>` : "";
     return `<article class="issue-card ${issue.severity.toLowerCase()}">
       <div class="card-heading"><div><h3>${esc(issue.itemName)}</h3><p class="vehicle-label">Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate)} · ${esc(issue.vehicleModel || issue.vehicleType)} · ${esc(issue.odometer ?? "—")} km</p></div><span class="chip ${issue.severity.toLowerCase()}">${esc(issue.severity)}</span></div>
       <p class="issue-desc">${esc(issue.description)}</p>
       <p class="meta">${esc(issue.driver)} · ${dateTime(issue.createdAt)}${issue.photoName ? ` · 📷 ${esc(issue.photoName)}` : ""}</p>
       ${gallery}
+      ${approvalBox}
       <p class="maintenance-meta"><b>Manutenção:</b> ${esc(maintenance.status)}${schedule}${maintenance.provider ? ` · ${esc(maintenance.provider)}` : ""}</p>
       <div class="issue-actions">${issue.photoPath ? `<button class="small-button photo-button" data-view-photo="${issue.id}">📷 Ver foto</button>` : ""}<button class="small-button" data-maintenance-issue="${issue.id}">Agendar / retorno</button><button class="small-button whatsapp" data-maintenance-whatsapp="${issue.id}">Avisar base</button><button class="small-button" data-close-issue="${issue.id}">Marcar resolvida</button></div>
     </article>`;
@@ -471,6 +480,22 @@ function sendIssueWhatsApp(issueId) {
   const target = issue.ownerPhone || data.settings.maintenancePhone;
   if (!target) return alert("Cadastre o número de WhatsApp do responsável ou da base nas configurações.");
   window.open(whatsappLink(target, message), "_blank", "noopener");
+}
+async function dispatchManagerMaintenance(issueId) {
+  const issue = data.issues.find((entry) => entry.id === issueId);
+  const approval = issue?.leaderApproval;
+  if (!issue || !approval?.maintenanceMessage) return alert("A mensagem aprovada ainda não está disponível.");
+  const phone = data.settings.maintenanceGroupPhone || MAINTENANCE_GROUP_PHONE;
+  window.open(whatsappLink(phone, approval.maintenanceMessage), "_blank", "noopener");
+  issue.leaderApproval = { ...approval, dispatchStatus: "Enviado", dispatchedAt: new Date().toISOString() };
+  saveData(); renderControl();
+  try { await cloudUpdateIssue(issue); } catch (error) { console.warn("Não foi possível registrar o envio", error); }
+}
+async function copyManagerMaintenanceMessage(issueId) {
+  const message = data.issues.find((entry) => entry.id === issueId)?.leaderApproval?.maintenanceMessage;
+  if (!message) return;
+  try { await navigator.clipboard.writeText(message); alert("Mensagem copiada."); }
+  catch { alert("Não foi possível copiar automaticamente. Selecione o texto da mensagem e copie."); }
 }
 function maintenanceFormValues() { return { status: $("#maintenanceStatus").value, scheduledAt: $("#maintenanceScheduledAt").value, provider: $("#maintenanceProvider").value.trim(), feedback: $("#maintenanceFeedback").value.trim(), updatedAt: new Date().toISOString() }; }
 function buildMaintenanceMessage(issue) {
@@ -572,6 +597,8 @@ document.addEventListener("click", (event) => {
   if (target.dataset.deleteVehicle) deleteVehicle(target.dataset.deleteVehicle);
   if (target.id === "restoreFleet") void restoreFleet();
   if (target.dataset.viewPhoto) void openIssuePhoto(target.dataset.viewPhoto);
+  if (target.dataset.managerDispatch) void dispatchManagerMaintenance(target.dataset.managerDispatch);
+  if (target.dataset.copyManagerMessage) void copyManagerMaintenanceMessage(target.dataset.copyManagerMessage);
   if (target.dataset.whatsappIssue) sendIssueWhatsApp(target.dataset.whatsappIssue);
   if (target.dataset.maintenanceIssue) openMaintenanceIssue(target.dataset.maintenanceIssue);
   if (target.dataset.maintenanceWhatsapp) sendMaintenanceWhatsApp(target.dataset.maintenanceWhatsapp);
