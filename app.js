@@ -78,7 +78,7 @@ const phoneOnly = (phone = "") => phone.replace(/\D/g, "");
 
 const CLOUD = window.CHECKFROTA_SUPABASE;
 function cloudToken() { return sessionStorage.getItem("checkfrota-supabase-token") || ""; }
-function cloudHeaders(json = true) { return { apikey: CLOUD?.publishableKey || "", Authorization: `Bearer ${cloudToken() || CLOUD?.publishableKey || ""}`, ...(json ? { "Content-Type": "application/json" } : {}) }; }
+function cloudHeaders(json = true) { const token = cloudToken(); return { apikey: CLOUD?.publishableKey || "", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(json ? { "Content-Type": "application/json" } : {}) }; }
 async function cloudRequest(path, options = {}) { if (!CLOUD?.url) return null; const response = await fetch(`${CLOUD.url}${path}`, { ...options, headers: { ...cloudHeaders(options.json !== false), ...(options.headers || {}) } }); if (!response.ok) throw new Error(`Supabase: ${response.status}`); return response.status === 204 ? null : response.json(); }
 async function cloudSave(table, row) {
   if (!CLOUD?.url) throw new Error("A conexão com o banco de dados não está configurada.");
