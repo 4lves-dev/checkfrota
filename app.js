@@ -42,6 +42,7 @@ const initialData = {
   ],
   inspections: [],
   issues: [],
+  removedVehicleIds: [],
 };
 
 let data = loadData();
@@ -63,7 +64,8 @@ function loadData() {
     // Atualiza aparelhos que ainda guardam os três veículos de demonstração,
     // preservando veículos reais já cadastrados manualmente pela base.
     const storedVehicles = Array.isArray(stored.vehicles) ? stored.vehicles : [];
-    const seededVehicles = initialData.vehicles.map((seed) => ({
+    const removedVehicleIds = Array.isArray(stored.removedVehicleIds) ? stored.removedVehicleIds : [];
+    const seededVehicles = initialData.vehicles.filter((seed) => !removedVehicleIds.includes(seed.id)).map((seed) => ({
       ...seed,
       ...(storedVehicles.find((vehicle) => vehicle.prefix === seed.prefix || vehicle.plate === seed.plate) || {}),
     }));
@@ -71,7 +73,7 @@ function loadData() {
       !["v1", "v2", "v3"].includes(vehicle.id) &&
       !initialData.vehicles.some((seed) => seed.prefix === vehicle.prefix || seed.plate === vehicle.plate)
     );
-    return { ...initialData, ...stored, vehicles: [...seededVehicles, ...customVehicles], settings: { ...initialData.settings, ...stored.settings } };
+    return { ...initialData, ...stored, removedVehicleIds, vehicles: [...seededVehicles, ...customVehicles], settings: { ...initialData.settings, ...stored.settings } };
   } catch { return structuredClone(initialData); }
 }
 function saveData() { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
@@ -308,7 +310,7 @@ function renderHistory() {
 }
 function renderVehicles() {
   const panel = $("#vehiclesPanel");
-  panel.innerHTML = `<div class="section-action"><h3>Veículos cadastrados</h3><button class="add-button" id="newVehicle">+ Cadastrar</button></div>${data.vehicles.length ? data.vehicles.map((vehicle) => `<article class="vehicle-card"><div><h3>Prefixo ${esc(vehicle.prefix || "—")} · ${esc(vehicle.plate)} <span class="vehicle-label">· ${esc(vehicle.model || vehicle.type)}</span></h3><p>${esc(vehicle.ownerName)}${vehicle.contract ? ` · Contrato: ${esc(vehicle.contract)}` : ""}${vehicle.odometer !== "" ? ` · ${esc(vehicle.odometer)} km` : ""}</p></div><button class="small-button" data-edit-vehicle="${vehicle.id}">Editar</button></article>`).join("") : ""}`;
+  panel.innerHTML = `<div class="section-action"><h3>Veículos cadastrados</h3><button class="add-button" id="newVehicle">+ Cadastrar</button></div>${data.vehicles.length ? data.vehicles.map((vehicle) => `<article class="vehicle-card"><div><h3>Prefixo ${esc(vehicle.prefix || "—")} · ${esc(vehicle.plate)} <span class="vehicle-label">· ${esc(vehicle.model || vehicle.type)}</span></h3><p>${esc(vehicle.ownerName)}${vehicle.contract ? ` · Contrato: ${esc(vehicle.contract)}` : ""}${vehicle.odometer !== "" ? ` · ${esc(vehicle.odometer)} km` : ""}</p></div><div class="issue-actions"><button class="small-button" data-edit-vehicle="${vehicle.id}">Editar</button><button class="small-button danger-button" data-delete-vehicle="${vehicle.id}">Excluir</button></div></article>`).join("") : ""}`;
 }
 function openVehicleDialog(id = "") {
   const vehicle = vehicleById(id);
@@ -324,6 +326,13 @@ function saveVehicle() {
   if (!detail.prefix || !detail.plate || !detail.ownerName) { $("#vehicleForm").reportValidity(); return; }
   if (id) Object.assign(vehicleById(id), detail); else data.vehicles.push({ id: crypto.randomUUID(), ...detail });
   saveData(); $("#vehicleDialog").close(); renderControl(); renderStart();
+}
+function deleteVehicle(id) {
+  const vehicle = vehicleById(id); if (!vehicle) return;
+  if (!confirm(`Excluir o veículo Prefixo ${vehicle.prefix || "—"} · ${vehicle.plate} da lista de uso? O histórico de chamados será preservado.`)) return;
+  data.vehicles = data.vehicles.filter((entry) => entry.id !== id);
+  if (initialData.vehicles.some((entry) => entry.id === id)) data.removedVehicleIds = [...new Set([...(data.removedVehicleIds || []), id])];
+  saveData(); renderControl(); renderStart();
 }
 function sendIssueWhatsApp(issueId) {
   const issue = data.issues.find((entry) => entry.id === issueId); if (!issue) return;
@@ -367,6 +376,11 @@ function sendMaintenanceWhatsApp() {
   if (!target) return alert("Cadastre o WhatsApp do grupo de manutenção em Configurações da base.");
   window.open(whatsappLink(target, buildMaintenanceGroupMessage()), "_blank", "noopener");
 }
+function sendDriverMaintenanceWhatsApp(issue) {
+  const target = issue.driverPhone;
+  if (!target) return;
+  window.open(whatsappLink(target, buildMaintenanceMessage(issue)), "_blank", "noopener");
+}
 function saveMaintenance() {
   const issue = data.issues.find((entry) => entry.id === $("#maintenanceIssueId").value); if (!issue) return;
   issue.maintenance = maintenanceFormValues();
@@ -375,7 +389,7 @@ function saveMaintenance() {
   saveData();
   if (data.settings.webhookUrl) void sendToIntegration({ type: "maintenance-update", issue, maintenance: issue.maintenance });
   $("#maintenanceDialog").close(); renderControl();
-  if (issue.maintenance.status === "Agendada") sendMaintenanceWhatsApp();
+  if (issue.maintenance.status === "Agendada") { sendDriverMaintenanceWhatsApp(issue); sendMaintenanceWhatsApp(); }
 }
 function closeIssue(issueId) { const issue = data.issues.find((entry) => entry.id === issueId); if (issue) { issue.maintenance = { ...maintenanceOf(issue), status: "Concluída", updatedAt: new Date().toISOString() }; issue.status = "resolvida"; issue.resolvedAt = new Date().toISOString(); saveData(); if (data.settings.webhookUrl) void sendToIntegration({ type: "maintenance-update", issue, maintenance: issue.maintenance }); renderControl(); } }
 function saveSettings() { data.settings.webhookUrl = $("#webhookUrl").value.trim(); data.settings.maintenancePhone = phoneOnly($("#maintenancePhone").value); data.settings.maintenanceGroupPhone = phoneOnly($("#maintenanceGroupPhone").value); data.settings.leaderPhone = phoneOnly($("#leaderPhone").value); data.settings.fleetManagerPhone = phoneOnly($("#fleetManagerPhone").value); saveData(); $("#settingsDialog").close(); }
@@ -424,6 +438,7 @@ document.addEventListener("click", (event) => {
   if (target.id === "closeInstallDialog") $("#installDialog").close();
   if (target.id === "newVehicle") openVehicleDialog();
   if (target.dataset.editVehicle) openVehicleDialog(target.dataset.editVehicle);
+  if (target.dataset.deleteVehicle) deleteVehicle(target.dataset.deleteVehicle);
   if (target.dataset.whatsappIssue) sendIssueWhatsApp(target.dataset.whatsappIssue);
   if (target.dataset.maintenanceIssue) openMaintenanceIssue(target.dataset.maintenanceIssue);
   if (target.dataset.maintenanceWhatsapp) sendMaintenanceWhatsApp(target.dataset.maintenanceWhatsapp);
