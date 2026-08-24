@@ -1,5 +1,5 @@
-const CACHE = "checkfrota-v67";
-const ASSETS = ["./", "./index.html", "./gestao.html", "./instalar-gestao.html", "./aprovacao.html?v=66", "./styles.css?v=28", "./supabase-config.js?v=1", "./app.js?v=67", "./manifest.webmanifest", "./gestao-manifest.webmanifest", "./icons/icon.svg"];
+const CACHE = "checkfrota-v68";
+const ASSETS = ["./", "./index.html", "./gestao.html", "./instalar-gestao.html", "./aprovacao.html?v=68", "./styles.css?v=28", "./supabase-config.js?v=1", "./app.js?v=68", "./manifest.webmanifest", "./gestao-manifest.webmanifest", "./icons/icon.svg"];
 
 self.addEventListener("install", (event) => event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting())));
 self.addEventListener("activate", (event) => event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)))).then(() => self.clients.claim())));
