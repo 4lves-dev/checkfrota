@@ -381,7 +381,7 @@ function renderVehicles() {
 function renderVehicles() {
   const panel = $("#vehiclesPanel");
   const cards = data.vehicles.map((vehicle) => `<article class="vehicle-card"><div><h3>Prefixo ${esc(vehicle.prefix || "—")} · ${esc(vehicle.plate)} <span class="vehicle-label">· ${esc(vehicle.model || vehicle.type)}</span></h3><p>${esc(vehicle.ownerName)}${vehicle.ownerPhone ? ` · Tel.: ${esc(formatPhone(vehicle.ownerPhone))}` : ""}${vehicle.contract ? ` · Contrato: ${esc(vehicle.contract)}` : ""}${vehicle.odometer !== "" ? ` · ${esc(vehicle.odometer)} km` : ""}</p></div><div class="issue-actions"><button class="small-button" data-edit-vehicle="${vehicle.id}">Editar</button><button class="small-button danger-button" data-delete-vehicle="${vehicle.id}">Excluir</button></div></article>`).join("");
-  panel.innerHTML = `<div class="section-action"><h3>Veículos cadastrados</h3><button class="add-button" id="newVehicle">+ Cadastrar</button></div>${cards}`;
+  panel.innerHTML = `<div class="section-action"><h3>Veículos cadastrados</h3><div class="vehicle-actions"><button class="restore-button" id="restoreFleet">↺ Restaurar frota</button><button class="add-button" id="newVehicle">+ Cadastrar</button></div></div>${cards}`;
 }
 function openVehicleDialog(id = "") {
   const vehicle = vehicleById(id);
@@ -404,6 +404,21 @@ function deleteVehicle(id) {
   data.vehicles = data.vehicles.filter((entry) => entry.id !== id);
   if (initialData.vehicles.some((entry) => entry.id === id)) data.removedVehicleIds = [...new Set([...(data.removedVehicleIds || []), id])];
   saveData(); renderControl(); renderStart();
+}
+async function restoreFleet() {
+  if (!confirm("Restaurar todos os veículos da frota cadastrada, incluindo caminhões que tenham sido excluídos?")) return;
+  const currentVehicles = data.vehicles;
+  const standardVehicles = initialData.vehicles.map((seed) => {
+    const existing = currentVehicles.find((vehicle) => vehicle.id === seed.id || vehicle.prefix === seed.prefix || vehicle.plate === seed.plate);
+    return withFleetResponsible({ ...seed, ...(existing || {}) });
+  });
+  const customVehicles = currentVehicles.filter((vehicle) => !initialData.vehicles.some((seed) => seed.id === vehicle.id || seed.prefix === vehicle.prefix || seed.plate === vehicle.plate));
+  data.vehicles = [...standardVehicles, ...customVehicles];
+  data.removedVehicleIds = [];
+  saveData();
+  try { await Promise.all(standardVehicles.map((vehicle) => cloudSave("fleet_vehicles", { id: vehicle.id, prefix: vehicle.prefix, plate: vehicle.plate, data: vehicle }))); }
+  catch (error) { console.warn("Não foi possível salvar a frota restaurada no banco", error); }
+  renderControl(); renderStart();
 }
 function sendIssueWhatsApp(issueId) {
   const issue = data.issues.find((entry) => entry.id === issueId); if (!issue) return;
@@ -511,6 +526,7 @@ document.addEventListener("click", (event) => {
   if (target.id === "newVehicle") openVehicleDialog();
   if (target.dataset.editVehicle) openVehicleDialog(target.dataset.editVehicle);
   if (target.dataset.deleteVehicle) deleteVehicle(target.dataset.deleteVehicle);
+  if (target.id === "restoreFleet") void restoreFleet();
   if (target.dataset.viewPhoto) void openIssuePhoto(target.dataset.viewPhoto);
   if (target.dataset.whatsappIssue) sendIssueWhatsApp(target.dataset.whatsappIssue);
   if (target.dataset.maintenanceIssue) openMaintenanceIssue(target.dataset.maintenanceIssue);
