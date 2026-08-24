@@ -45,6 +45,19 @@ const initialData = {
   removedVehicleIds: [],
 };
 
+// Responsáveis recuperados da relação original de frota.
+const RESPONSIBLES_BY_PREFIX = {
+  "1446": "Locadora de Veículos Authana Ltda EPP", "1447": "Locadora de Veículos Authana Ltda EPP",
+  "1456": "Locadora de Veículos Authana Ltda EPP", "1466": "Locadora de Veículos Authana Ltda EPP",
+  "1894": "SGMK", "1922": "SGMK", "1484": "Locadora de Veículos Authana Ltda",
+  "1485": "Locadora de Veículos Authana Ltda", "1486": "Locadora de Veículos Authana Ltda",
+  "1799": "SGMK", "1969": "ADR Transportes e Locações", "1126": "LTDA",
+  "1919": "JVN Comércio e Transportes Ltda", "1082": "Máximo Serviços e Locações Ltda",
+  "1084": "Máximo Serviços e Locações Ltda", "1577": "Franco Castilho & Castilho",
+  "1967": "SGMK", "1968": "SGMK", "157": "URBAM",
+};
+function withFleetResponsible(vehicle) { return { ...vehicle, ownerName: RESPONSIBLES_BY_PREFIX[vehicle.prefix] || vehicle.ownerName }; }
+
 let data = loadData();
 let current = { driver: "", driverPhone: DRIVER_NOTIFICATION_PHONE, baseName: "", basePhone: "", vehicleId: "", odometer: "", states: {}, notes: "" };
 let issueDraft = { itemId: null, severity: "Leve" };
@@ -60,15 +73,17 @@ const phoneOnly = (phone = "") => phone.replace(/\D/g, "");
 function loadData() {
   try {
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (!stored) return structuredClone(initialData);
+    if (!stored) { const initial = structuredClone(initialData); initial.vehicles = initial.vehicles.map(withFleetResponsible); return initial; }
     // Atualiza aparelhos que ainda guardam os três veículos de demonstração,
     // preservando veículos reais já cadastrados manualmente pela base.
     const storedVehicles = Array.isArray(stored.vehicles) ? stored.vehicles : [];
     const removedVehicleIds = Array.isArray(stored.removedVehicleIds) ? stored.removedVehicleIds : [];
-    const seededVehicles = initialData.vehicles.filter((seed) => !removedVehicleIds.includes(seed.id)).map((seed) => ({
-      ...seed,
-      ...(storedVehicles.find((vehicle) => vehicle.prefix === seed.prefix || vehicle.plate === seed.plate) || {}),
-    }));
+    const seededVehicles = initialData.vehicles.filter((seed) => !removedVehicleIds.includes(seed.id)).map((seed) => {
+      const storedVehicle = storedVehicles.find((vehicle) => vehicle.prefix === seed.prefix || vehicle.plate === seed.plate);
+      const merged = { ...withFleetResponsible(seed), ...(storedVehicle || {}) };
+      if (!storedVehicle?.ownerName || storedVehicle.ownerName === "Responsável a cadastrar") merged.ownerName = RESPONSIBLES_BY_PREFIX[seed.prefix] || merged.ownerName;
+      return merged;
+    });
     const customVehicles = storedVehicles.filter((vehicle) =>
       !["v1", "v2", "v3"].includes(vehicle.id) &&
       !initialData.vehicles.some((seed) => seed.prefix === vehicle.prefix || seed.plate === vehicle.plate)
