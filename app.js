@@ -81,6 +81,18 @@ function cloudToken() { return sessionStorage.getItem("checkfrota-supabase-token
 function cloudHeaders(json = true) { return { apikey: CLOUD?.publishableKey || "", Authorization: `Bearer ${cloudToken() || CLOUD?.publishableKey || ""}`, ...(json ? { "Content-Type": "application/json" } : {}) }; }
 async function cloudRequest(path, options = {}) { if (!CLOUD?.url) return null; const response = await fetch(`${CLOUD.url}${path}`, { ...options, headers: { ...cloudHeaders(options.json !== false), ...(options.headers || {}) } }); if (!response.ok) throw new Error(`Supabase: ${response.status}`); return response.status === 204 ? null : response.json(); }
 async function cloudSave(table, row) { try { await cloudRequest(`/rest/v1/${table}`, { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(row) }); } catch (error) { console.warn("Não foi possível sincronizar", error); } }
+async function compressPhoto(file) {
+  if (!file?.type?.startsWith("image/")) return file;
+  const image = await createImageBitmap(file);
+  const maxSide = 1600;
+  const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(image.width * scale));
+  canvas.height = Math.max(1, Math.round(image.height * scale));
+  canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.72));
+  return blob ? new File([blob], file.name.replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" }) : file;
+}
 async function uploadIssuePhoto(issue, file) { if (!file || !CLOUD?.url) return ""; const path = `${issue.id}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`; try { const response = await fetch(`${CLOUD.url}/storage/v1/object/issue-photos/${path}`, { method: "POST", headers: { ...cloudHeaders(false), "Content-Type": file.type || "image/jpeg", "x-upsert": "false" }, body: file }); if (!response.ok) throw new Error(`Foto: ${response.status}`); return path; } catch (error) { console.warn("Não foi possível enviar a foto", error); return ""; } }
 async function cloudSyncSubmission(inspection, issues) { await cloudSave("fleet_inspections", { id: inspection.id, vehicle_id: inspection.vehicleId, data: inspection }); await Promise.all(issues.map((issue) => cloudSave("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: issue.vehicleId, status: issue.status, data: issue }))); }
 async function loadCloudManager() { if (!cloudToken()) return; try { const [issues, inspections, vehicles] = await Promise.all([cloudRequest("/rest/v1/fleet_issues?select=data&order=created_at.desc"), cloudRequest("/rest/v1/fleet_inspections?select=data&order=created_at.desc"), cloudRequest("/rest/v1/fleet_vehicles?select=data")]); if (issues) data.issues = issues.map((row) => row.data); if (inspections) data.inspections = inspections.map((row) => row.data); if (vehicles?.length) data.vehicles = vehicles.map((row) => row.data); saveData(); renderControl(); } catch (error) { console.warn("Não foi possível carregar a nuvem", error); } }
@@ -235,7 +247,7 @@ async function submitChecklist() {
     itemName: issue.item.name, severity: issue.severity, description: issue.description, photoName: issue.photoName, _photoFile: issue.photoFile || null,
     maintenance: { status: "Pendente", scheduledAt: "", provider: "", feedback: "", updatedAt: "" },
   }));
-  await Promise.all(newIssues.map(async (issue) => { issue.photoPath = await uploadIssuePhoto(issue, issue._photoFile); delete issue._photoFile; }));
+  await Promise.all(newIssues.map(async (issue) => { const compressedPhoto = await compressPhoto(issue._photoFile); issue.photoSize = compressedPhoto?.size || 0; issue.photoPath = await uploadIssuePhoto(issue, compressedPhoto); delete issue._photoFile; }));
   vehicle.odometer = current.odometer;
   data.inspections.unshift(inspection);
   data.issues.unshift(...newIssues);
