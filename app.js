@@ -76,6 +76,15 @@ function formatPhone(phone = "") { const digits = phoneOnly(phone); return digit
 const dateTime = (value) => new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
 const phoneOnly = (phone = "") => phone.replace(/\D/g, "");
 
+const CLOUD = window.CHECKFROTA_SUPABASE;
+function cloudToken() { return sessionStorage.getItem("checkfrota-supabase-token") || ""; }
+function cloudHeaders(json = true) { return { apikey: CLOUD?.publishableKey || "", Authorization: `Bearer ${cloudToken() || CLOUD?.publishableKey || ""}`, ...(json ? { "Content-Type": "application/json" } : {}) }; }
+async function cloudRequest(path, options = {}) { if (!CLOUD?.url) return null; const response = await fetch(`${CLOUD.url}${path}`, { ...options, headers: { ...cloudHeaders(options.json !== false), ...(options.headers || {}) } }); if (!response.ok) throw new Error(`Supabase: ${response.status}`); return response.status === 204 ? null : response.json(); }
+async function cloudSave(table, row) { try { await cloudRequest(`/rest/v1/${table}`, { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(row) }); } catch (error) { console.warn("Não foi possível sincronizar", error); } }
+async function uploadIssuePhoto(issue, file) { if (!file || !CLOUD?.url) return ""; const path = `${issue.id}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`; try { const response = await fetch(`${CLOUD.url}/storage/v1/object/issue-photos/${path}`, { method: "POST", headers: { ...cloudHeaders(false), "Content-Type": file.type || "image/jpeg", "x-upsert": "false" }, body: file }); if (!response.ok) throw new Error(`Foto: ${response.status}`); return path; } catch (error) { console.warn("Não foi possível enviar a foto", error); return ""; } }
+async function cloudSyncSubmission(inspection, issues) { await cloudSave("fleet_inspections", { id: inspection.id, vehicle_id: inspection.vehicleId, data: inspection }); await Promise.all(issues.map((issue) => cloudSave("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: issue.vehicleId, status: issue.status, data: issue }))); }
+async function loadCloudManager() { if (!cloudToken()) return; try { const [issues, inspections, vehicles] = await Promise.all([cloudRequest("/rest/v1/fleet_issues?select=data&order=created_at.desc"), cloudRequest("/rest/v1/fleet_inspections?select=data&order=created_at.desc"), cloudRequest("/rest/v1/fleet_vehicles?select=data")]); if (issues) data.issues = issues.map((row) => row.data); if (inspections) data.inspections = inspections.map((row) => row.data); if (vehicles?.length) data.vehicles = vehicles.map((row) => row.data); saveData(); renderControl(); } catch (error) { console.warn("Não foi possível carregar a nuvem", error); } }
+
 function loadData() {
   try {
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
@@ -105,7 +114,7 @@ function checkById(id) { return CHECKLIST.find((item) => item.id === id); }
 function showScreen(name) {
   $$(".screen").forEach((screen) => screen.classList.toggle("active", screen.dataset.screen === name));
   window.scrollTo({ top: 0, behavior: "smooth" });
-  if (name === "controle") renderControl();
+  if (name === "controle") { renderControl(); void loadCloudManager(); }
   if (name === "inicio") renderStart();
 }
 
@@ -185,7 +194,7 @@ function saveIssue() {
   const photo = $("#issuePhoto").files[0];
   current.states[issueDraft.itemId] = {
     status: "issue",
-    issue: { severity: issueDraft.severity, description, photoName: photo?.name || "" },
+    issue: { severity: issueDraft.severity, description, photoName: photo?.name || "", photoFile: photo || null },
   };
   $("#issueDialog").close();
   renderChecklist();
@@ -223,13 +232,15 @@ async function submitChecklist() {
     id: crypto.randomUUID(), inspectionId: inspection.id, status: "aberta", createdAt: inspection.createdAt,
     driver: current.driver, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, vehicleId: vehicle.id, vehiclePrefix: vehicle.prefix || "", vehiclePlate: vehicle.plate, vehicleType: vehicle.type, vehicleModel: vehicle.model || "", odometer: current.odometer,
     ownerName: vehicle.ownerName, ownerPhone: vehicle.ownerPhone, email: vehicle.email,
-    itemName: issue.item.name, severity: issue.severity, description: issue.description, photoName: issue.photoName,
+    itemName: issue.item.name, severity: issue.severity, description: issue.description, photoName: issue.photoName, _photoFile: issue.photoFile || null,
     maintenance: { status: "Pendente", scheduledAt: "", provider: "", feedback: "", updatedAt: "" },
   }));
+  await Promise.all(newIssues.map(async (issue) => { issue.photoPath = await uploadIssuePhoto(issue, issue._photoFile); delete issue._photoFile; }));
   vehicle.odometer = current.odometer;
   data.inspections.unshift(inspection);
   data.issues.unshift(...newIssues);
   saveData();
+  void cloudSyncSubmission(inspection, newIssues);
   const sendResult = await sendToIntegration({ inspection, vehicle, issues: newIssues });
   showCompletion(vehicle, newIssues, sendResult);
   current = { driver: current.driver, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, vehicleId: vehicle.id, odometer: "", states: {}, notes: "" };
@@ -352,7 +363,7 @@ function saveVehicle() {
   const detail = { prefix: $("#vehiclePrefix").value.trim(), plate: $("#vehiclePlate").value.trim().toUpperCase(), type: $("#vehicleType").value, model: $("#vehicleModel").value.trim(), contract: $("#vehicleContract").value.trim(), urbamContract: $("#vehicleUrbamContract").value.trim(), odometer: $("#vehicleOdometer").value === "" ? "" : Number($("#vehicleOdometer").value), ownerName: $("#vehicleOwnerName").value.trim(), ownerPhone: phoneOnly($("#vehicleOwnerPhone").value), email: $("#vehicleEmail").value.trim() };
   if (!detail.prefix || !detail.plate || !detail.ownerName) { $("#vehicleForm").reportValidity(); return; }
   if (id) Object.assign(vehicleById(id), detail); else data.vehicles.push({ id: crypto.randomUUID(), ...detail });
-  saveData(); $("#vehicleDialog").close(); renderControl(); renderStart();
+  saveData(); void cloudSave("fleet_vehicles", { id: vehicleById(id || data.vehicles[data.vehicles.length - 1].id)?.id || id, prefix: detail.prefix, plate: detail.plate, data: vehicleById(id || data.vehicles[data.vehicles.length - 1].id) }); $("#vehicleDialog").close(); renderControl(); renderStart();
 }
 function deleteVehicle(id) {
   const vehicle = vehicleById(id); if (!vehicle) return;
@@ -414,6 +425,7 @@ function saveMaintenance() {
   if (issue.maintenance.status === "Concluída") { issue.status = "resolvida"; issue.resolvedAt = new Date().toISOString(); }
   else if (issue.status === "resolvida") { issue.status = "aberta"; delete issue.resolvedAt; }
   saveData();
+  void cloudSave("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: issue.vehicleId, status: issue.status, data: issue });
   if (data.settings.webhookUrl) void sendToIntegration({ type: "maintenance-update", issue, maintenance: issue.maintenance });
   $("#maintenanceDialog").close(); renderControl();
   if (issue.maintenance.status === "Agendada") { sendDriverMaintenanceWhatsApp(issue); sendMaintenanceWhatsApp(); }
