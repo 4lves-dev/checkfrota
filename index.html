@@ -12,7 +12,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icons/icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=26" />
+    <link rel="stylesheet" href="styles.css?v=27" />
     <style>#installBanner[hidden] { display: none !important; }</style>
     <title>CheckFrota</title>
   </head>
@@ -46,6 +46,8 @@
           <div class="card driver-card">
             <label for="driverName">Seu nome</label>
             <input id="driverName" type="text" placeholder="Ex.: João da Silva" autocomplete="name" />
+            <label for="driverEmail">E-mail para receber uma cópia <em>opcional</em></label>
+            <input id="driverEmail" type="email" placeholder="nome@empresa.com.br" autocomplete="email" />
             <label for="baseSelect">Base responsável pela aprovação</label>
             <select id="baseSelect"><option value="">Selecione a base</option><option value="Vertical">Base Vertical / Segurança / Elétrica — (12) 98156-7218</option><option value="Abrigo">Base Abrigo / Manutenção / Linha Verde / Lavagem — (12) 99788-4887</option><option value="Horizontal">Base Horizontal — (12) 98840-0697</option></select>
             <p class="helper" id="basePhone"></p>
@@ -214,7 +216,7 @@
     <template id="emptyStateTemplate"><div class="empty-state"><span>⌁</span><p>Nenhum registro por aqui.</p></div></template>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="supabase-config.js?v=1"></script>
-    <script src="app.js?v=61"></script>
+    <script src="app.js?v=62"></script>
   </body>
 </html>
 
