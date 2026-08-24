@@ -274,7 +274,7 @@ async function submitChecklist() {
   data.issues.unshift(...newIssues);
   saveData();
   try { await cloudSyncSubmission(inspection, newIssues); }
-  catch (error) { console.warn("Não foi possível gravar o chamado no banco", error); alert("O chamado foi salvo neste aparelho, mas não foi enviado ao painel da Gestão. Verifique a conexão e envie novamente."); }
+  catch (error) { console.warn("Não foi possível gravar o chamado no banco", error); alert(`O chamado foi salvo neste aparelho, mas o banco recusou o envio.\n\nDetalhe: ${error.message || "erro não informado"}`); }
   const sendResult = await sendToIntegration({ inspection, vehicle, issues: newIssues });
   await showCompletion(vehicle, newIssues, sendResult);
   current = { driver: current.driver, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, vehicleId: vehicle.id, odometer: "", states: {}, notes: "" };
