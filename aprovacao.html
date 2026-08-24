@@ -16,8 +16,9 @@ function decide(status) {
   const message = `*${status === "Aprovada" ? "MANUTENÇÃO APROVADA" : "SOLICITAÇÃO RECUSADA"} — ${r.id}*\n\n${text(r)}\n\nStatus: ${status}.\nAprovado pelo líder da Base ${r.baseName || "não informada"}.${note ? "\nObservação do líder: " + note : ""}`;
   localStorage.setItem(`aprovafrota-${r.id}`, JSON.stringify({ ...r, status, note, decidedAt: new Date().toISOString() }));
   $("decisionBox").className = "decision " + (status === "Aprovada" ? "" : "refused");
-  $("decisionBox").innerHTML = `<b>${status === "Aprovada" ? "MANUTENÇÃO APROVADA" : "SOLICITAÇÃO RECUSADA"}</b><p>${note || "Sem observações."}</p>${status === "Aprovada" ? `<div class="actions"><a class="btn primary" target="_blank" rel="noopener" href="${wa(TRUCK_MAINTENANCE_PHONE, message)}">Enviar chamado aprovado para manutenção de caminhões</a></div>` : ""}`;
+  $("decisionBox").innerHTML = `<b>${status === "Aprovada" ? "MANUTENÇÃO APROVADA" : "SOLICITAÇÃO RECUSADA"}</b><p>${status === "Aprovada" ? "Abrindo WhatsApp da manutenção de caminhões com a mensagem completa." : (note || "Sem observações.")}</p>`;
   $("decisionBox").classList.remove("hidden");
+  if (status === "Aprovada") window.open(wa(TRUCK_MAINTENANCE_PHONE, message), "_blank", "noopener");
 }
 $("approve").onclick = () => decide("Aprovada");
 $("refuse").onclick = () => decide("Recusada");
