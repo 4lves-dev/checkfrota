@@ -18,7 +18,7 @@ const BASES = { Vertical: "5512981567218", Abrigo: "5512997884887", Horizontal: 
 const LEADER_BASE_LABELS = { Vertical: "Base Vertical / Segurança / Elétrica", Horizontal: "Base Horizontal", Abrigo: "Base Abrigo / Manutenção / Linha Verde / Lavagem" };
 const DRIVER_NOTIFICATION_PHONE = "5512988400316";
 const EMAIL_AUTOMATION_URL = "https://script.google.com/macros/s/AKfycbyfdwx76UkQcv2fz1HXLERZrcVMfW1iaNvFALmFET1kIBBeXAQVvkH89iviTDxBCQOA/exec";
-const EMAIL_COPY_RECIPIENT = "coplacsiv@gmail.com";
+const EMAIL_COPY_RECIPIENT = "urbamfrotabylucthi@gmail.com";
 const MAINTENANCE_GROUP_PHONE = "5512996181645";
 
 const initialData = {
