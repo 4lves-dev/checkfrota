@@ -33,20 +33,20 @@
         <section class="screen active" id="inicio" data-screen="inicio">
           <div class="hero">
             <p class="eyebrow">CONTROLE DE FROTA</p>
-            <h1>Olá, motorista.</h1>
+            <h1>Olá, colaborador.</h1>
             <p>Faça a inspeção antes de sair. Se algo estiver errado, a manutenção será avisada na hora.</p>
           </div>
 
           <button class="install-card" data-install="app" aria-label="Instalar o aplicativo CheckFrota neste celular">
             <span class="install-card-icon">⇩</span>
-            <span class="install-card-copy"><small>APLICATIVO PARA MOTORISTA</small><b>Instalar CheckFrota no celular</b><em>Abra com um toque, direto pela tela inicial.</em></span>
+            <span class="install-card-copy"><small>APLICATIVO PARA COLABORADOR</small><b>Instalar CheckFrota no celular</b><em>Abra com um toque, direto pela tela inicial.</em></span>
             <span class="install-card-arrow">›</span>
           </button>
 
           <div class="card driver-card">
             <label for="driverRegistration">Matrícula do colaborador</label>
             <input id="driverRegistration" type="text" inputmode="numeric" placeholder="Ex.: 12345" autocomplete="off" required />
-            <p class="helper" id="driverLookupHint">Digite a matrícula para localizar o nome do motorista.</p>
+            <p class="helper" id="driverLookupHint">Digite a matrícula para localizar o nome do colaborador.</p>
             <label for="driverName">Nome do colaborador</label>
             <input id="driverName" type="text" placeholder="O nome será preenchido pela matrícula" autocomplete="name" readonly />
             <label for="driverRole">Função</label>
@@ -139,7 +139,7 @@
           <section class="storage-indicator" id="storageIndicator" aria-live="polite"></section>
           <section class="daily-checklist-alert" id="dailyChecklistAlert" hidden aria-live="polite"></section>
           <section class="notification-setting" aria-labelledby="notificationTitle"><div><b id="notificationTitle">Notificação diária no computador</b><p id="notificationStatus">Ative para receber o aviso de veículos sem checklist após as 08h.</p></div><button type="button" class="small-button" id="enableDailyNotifications">🔔 Ativar notificações</button></section>
-          <div class="tabs" role="tablist"><button class="tab active" data-tab="issues">Ocorrências</button><button class="tab" data-tab="reports">Relatório</button><button class="tab" data-tab="history">Histórico</button><button class="tab" data-tab="vehicles">Veículos</button><button class="tab" data-tab="drivers">Motoristas</button></div>
+          <div class="tabs" role="tablist"><button class="tab active" data-tab="issues">Ocorrências</button><button class="tab" data-tab="reports">Relatório</button><button class="tab" data-tab="history">Histórico</button><button class="tab" data-tab="vehicles">Veículos</button><button class="tab" data-tab="drivers">Colaboradores</button></div>
           <div id="issuesPanel" class="tab-panel active"></div><div id="reportsPanel" class="tab-panel"></div><div id="historyPanel" class="tab-panel"></div><div id="vehiclesPanel" class="tab-panel"></div><div id="driversPanel" class="tab-panel"></div>
         </section>
 
@@ -246,7 +246,7 @@
     <template id="emptyStateTemplate"><div class="empty-state"><span>⌁</span><p>Nenhum registro por aqui.</p></div></template>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="supabase-config.js?v=1"></script>
-    <script src="app.js?v=94"></script>
+    <script src="app.js?v=95"></script>
   </body>
 </html>
 
