@@ -16,7 +16,7 @@ const CHECKLIST = [
 ].map(([id, name, category]) => ({ id, name, category }));
 const BASES = { Vertical: "5512981567218", Abrigo: "5512997884887", Horizontal: "5512988400697" };
 const LEADER_BASE_LABELS = { Vertical: "Base Vertical / Segurança / Elétrica", Horizontal: "Base Horizontal", Abrigo: "Base Abrigo / Manutenção / Linha Verde / Lavagem" };
-const DRIVER_NOTIFICATION_PHONE = "5512988400316";
+const DRIVER_NOTIFICATION_PHONE = "";
 const EMAIL_AUTOMATION_URL = "https://script.google.com/macros/s/AKfycbyfdwx76UkQcv2fz1HXLERZrcVMfW1iaNvFALmFET1kIBBeXAQVvkH89iviTDxBCQOA/exec";
 const EMAIL_COPY_RECIPIENT = "urbamfrotabylucthi@gmail.com";
 const MAINTENANCE_GROUP_PHONE = "5512996181645";
@@ -218,8 +218,10 @@ function showScreen(name) {
 function renderStart() {
   const select = $("#vehicleSelect");
   const rememberedDriverRegistration = localStorage.getItem("checkfrota-driver-registration") || "";
+  const rememberedDriverPhone = localStorage.getItem("checkfrota-driver-phone") || "";
   const rememberedBase = localStorage.getItem("checkfrota-base") || "";
   if (!$("#driverRegistration").value) $("#driverRegistration").value = rememberedDriverRegistration;
+  if (!$("#driverPhone").value) $("#driverPhone").value = formatPhone(rememberedDriverPhone);
   const correctionRegistration = new URLSearchParams(location.search).get("matricula");
   if (correctionRegistration) $("#driverRegistration").value = correctionRegistration;
   lookupDriverRegistration();
@@ -278,18 +280,21 @@ function beginChecklist() {
   const driverRegistration = registeredDriver?.registration || "";
   const driverRole = registeredDriver?.role || "";
   const driverEmail = EMAIL_COPY_RECIPIENT;
-  const driverPhone = DRIVER_NOTIFICATION_PHONE;
+  const phoneDigits = phoneOnly($("#driverPhone").value);
+  const driverPhone = phoneDigits.length === 10 || phoneDigits.length === 11 ? `55${phoneDigits}` : phoneDigits;
   const baseName = $("#baseSelect").value;
   const basePhone = BASES[baseName] || "";
   const vehicleId = $("#vehicleSelect").value;
   const odometer = Number($("#odometer").value);
   if (!driverRegistration) return alert("Digite uma matrícula cadastrada antes de iniciar.");
+  if (!/^55\d{10,11}$/.test(driverPhone)) return alert("Informe um WhatsApp válido do colaborador, com DDD.");
   if (!vehicleId) return alert("Selecione o veículo que será utilizado.");
   if (!basePhone) return alert("Selecione a base responsável pela aprovação.");
   if (!Number.isFinite(odometer) || odometer < 0) return alert("Informe a quilometragem atual do veículo.");
   current = { driver, driverRegistration, driverRole, driverEmail, driverPhone, baseName, basePhone, vehicleId, odometer, states: Object.fromEntries(CHECKLIST.map((item) => [item.id, { status: "pending" }])), notes: "" };
   localStorage.setItem("checkfrota-driver", driver);
   localStorage.setItem("checkfrota-driver-registration", driverRegistration);
+  localStorage.setItem("checkfrota-driver-phone", driverPhone);
   localStorage.setItem("checkfrota-base", baseName);
   const vehicle = vehicleById(vehicleId);
   $("#checklistVehicle").textContent = `Prefixo ${vehicle.prefix || "—"} · ${vehicle.plate} · ${vehicle.model || vehicle.type}`;
@@ -427,7 +432,7 @@ async function approvalUrl(vehicle, issues) {
   const photoUrl = await issuePhotoLink(first);
   if (photoUrl) params.set("photoUrl", photoUrl);
   if (first.photoName) params.set("photoName", first.photoName);
-  return `${location.origin}${location.pathname.replace(/[^/]*$/, "aprovacao.html")}?v=96&${params.toString()}`;
+  return `${location.origin}${location.pathname.replace(/[^/]*$/, "aprovacao.html")}?v=98&${params.toString()}`;
 }
 async function showCompletion(inspection, vehicle, issues, sendResult) {
   const severe = issues.some((issue) => issue.severity === "Grave");
@@ -826,7 +831,7 @@ $("#settingsForm").addEventListener("submit", (event) => { event.preventDefault(
 $("#maintenanceForm").addEventListener("submit", (event) => { event.preventDefault(); saveMaintenance(); });
 $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").forEach((button) => button.classList.toggle("active", button === tab)); $$(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab.dataset.tab}Panel`)); }));
 
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=97").catch(() => {}));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=98").catch(() => {}));
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
 window.addEventListener("appinstalled", () => { document.body.classList.add("app-installed"); $("#installBanner").hidden = true; });
 if (isInstalled()) document.body.classList.add("app-installed"); else window.addEventListener("load", showInstallBanner);
