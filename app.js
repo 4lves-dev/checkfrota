@@ -1,5 +1,5 @@
-Warning: truncated output (original token count: 25357)
-Total output lines: 1000
+Warning: truncated output (original token count: 25365)
+Total output lines: 1002
 
 /* URBAM Frota - MVP local-first. Dados ficam neste navegador até uma integração ser configurada. */
 const STORAGE_KEY = "checkfrota-v1";
@@ -237,11 +237,13 @@ function renderReturnedIssues() {
 }
 async function loadReturnedIssuesForCollaborator() {
   const registration = $("#driverRegistration")?.value.replace(/\D/g, "") || localStorage.getItem("checkfrota-driver-registration") || "";
-  const phone = phoneOnly($("#driverPhone")?.value || localStorage.getItem("checkfrota-driver-phone") || "");
   if (!CLOUD?.url || !registration) return;
   try {
-    const rows = await cloudRequest(`/rest/v1/fleet_issues?select=data,status&data->>driverRegistration=eq.${encodeURIComponent(registration)}&status=in.(retificacao,recusada)&order=created_at.desc`);
-    returnedIssues = (rows || []).map((row) => row.data).filter((issue) => issue && (!phone || phoneOnly(issue.driverPhone || "") === phone) && ["Retificação solicitada", "Recusada"].includes(issue.leaderApproval?.status));
+    // A matrícula é obrigatória e identifica o colaborador. Não use o
+    // telefone como bloqueio: ele pode ter sido digitado com outro formato ou
+    // atualizado após o chamado, o que escondia a retificação indevidamente.
+    const rows = await cloudRequest(`/rest/v1/fleet_issues?select=data,status&data->>driverRegistration=eq.${encodeURIComponent(registration)}&order=created_at.desc`);
+    returnedIssues = (rows || []).map((row) => row.data).filter((issue) => issue && ["Retificação solicitada", "Recusada"].includes(issue.leaderApproval?.status));
     returnedIssues.forEach(notifyReturnedIssue); renderReturnedIssues();
   } catch (error) { console.warn("Não foi possível buscar devoluções do colaborador", error); }
 }
@@ -429,7 +431,7 @@ function beginChecklist() {
 function renderChecklist() {
   const items = $("#checklistItems");
   items.innerHTML = CHECKLIST.map((item) => {
-    const state = current.states[i…5357 tokens truncated…e] || `Base ${base}`}: ${formatPhone(phone)}.` : "Escolha a base para conferir o número que receberá o link.";
+  …5365 tokens truncated…e] || `Base ${base}`}: ${formatPhone(phone)}.` : "Escolha a base para conferir o número que receberá o link.";
 }
 function sendLeaderInstall() {
   const base = $("#leaderInstallBase")?.value; const phone = BASES[base];
@@ -761,7 +763,7 @@ $("#settingsForm").addEventListener("submit", (event) => { event.preventDefault(
 $("#maintenanceForm").addEventListener("submit", (event) => { event.preventDefault(); saveMaintenance(); });
 $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").forEach((button) => button.classList.toggle("active", button === tab)); $$(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab.dataset.tab}Panel`)); }));
 
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=110").catch(() => {}));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=111").catch(() => {}));
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
 window.addEventListener("appinstalled", () => { document.body.classList.add("app-installed"); $("#installBanner").hidden = true; });
 if (isInstalled()) document.body.classList.add("app-installed"); else window.addEventListener("load", showInstallBanner);
