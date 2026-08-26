@@ -12,7 +12,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icons/icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=105" />
+    <link rel="stylesheet" href="styles.css?v=107" />
     <style>#installBanner[hidden] { display: none !important; }</style>
     <title>URBAM Frota</title>
   </head>
@@ -125,6 +125,7 @@
             <div><p class="eyebrow">PAINEL DA BASE</p><h1>Controle da frota</h1></div>
           </div>
           <button class="base-settings-button" id="openSettings">⚙ Configurações da base</button>
+          <section class="management-quick-actions" aria-label="Ações rápidas da gestão"><button class="add-button" id="quickNewVehicle">+ Veículo ou caminhão</button><button class="add-button" id="quickNewEmployee">+ Colaborador</button></section>
           <section class="leader-install-card" aria-labelledby="leaderInstallTitle">
             <div>
               <p class="eyebrow">LIDERANÇA</p>
@@ -265,7 +266,7 @@
     <template id="emptyStateTemplate"><div class="empty-state"><span>⌁</span><p>Nenhum registro por aqui.</p></div></template>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="supabase-config.js?v=1"></script>
-    <script src="app.js?v=106"></script>
+    <script src="app.js?v=107"></script>
   </body>
 </html>
 
