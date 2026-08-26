@@ -1,4 +1,4 @@
-+-- Execute este arquivo no SQL Editor do projeto Supabase do URBAM Frota.
+-- Execute este arquivo no SQL Editor do projeto Supabase do URBAM Frota.
 -- A tabela centraliza matrícula, nome e função. Auxiliares de serviços gerais não foram incluídos.
 
 create table if not exists public.fleet_employees (
@@ -16,6 +16,11 @@ drop policy if exists "Consulta pública de colaboradores ativos" on public.flee
 create policy "Consulta pública de colaboradores ativos"
 on public.fleet_employees for select
 using (active = true);
+
+drop policy if exists "Gestão administra colaboradores" on public.fleet_employees;
+create policy "Gestão administra colaboradores"
+on public.fleet_employees for all to authenticated
+using (true) with check (true);
 
 insert into public.fleet_employees (registration, name, role, active) values
   ('18593', 'JULIO CESAR VIEIRA DA SILVA', 'Engenheiro civil', true),
@@ -104,5 +109,4 @@ on conflict (registration) do update set
   role = excluded.role,
   active = excluded.active,
   updated_at = now();
-
 
