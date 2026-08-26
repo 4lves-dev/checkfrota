@@ -20,6 +20,7 @@ const DRIVER_NOTIFICATION_PHONE = "5512988400316";
 const EMAIL_AUTOMATION_URL = "https://script.google.com/macros/s/AKfycbyfdwx76UkQcv2fz1HXLERZrcVMfW1iaNvFALmFET1kIBBeXAQVvkH89iviTDxBCQOA/exec";
 const EMAIL_COPY_RECIPIENT = "urbamfrotabylucthi@gmail.com";
 const MAINTENANCE_GROUP_PHONE = "5512996181645";
+const DAILY_CHECKLIST_ALERT_PHONE = "5512981111336";
 
 const initialData = {
   settings: { maintenancePhone: "5512988400316", maintenanceGroupPhone: MAINTENANCE_GROUP_PHONE, leaderPhone: "", fleetManagerPhone: "", webhookUrl: EMAIL_AUTOMATION_URL },
@@ -398,6 +399,31 @@ function renderControl() {
   $("#weekChecks").textContent = data.inspections.filter((inspection) => new Date(inspection.createdAt).getTime() >= since).length;
   renderIssues(); renderReports(); renderHistory(); renderVehicles();
   renderLeaderInstallTarget();
+  renderDailyChecklistAlert();
+}
+function todayStart() { const value = new Date(); value.setHours(0, 0, 0, 0); return value.getTime(); }
+function vehiclesWithoutChecklistToday() {
+  const start = todayStart();
+  const completed = new Set(data.inspections.filter((inspection) => new Date(inspection.createdAt).getTime() >= start).map((inspection) => inspection.vehicleId));
+  return data.vehicles.filter((vehicle) => vehicle?.id && !completed.has(vehicle.id));
+}
+function renderDailyChecklistAlert() {
+  const panel = $("#dailyChecklistAlert"); if (!panel) return;
+  const hour = new Date().getHours();
+  if (hour < 8) { panel.hidden = true; return; }
+  const missing = vehiclesWithoutChecklistToday();
+  panel.hidden = false;
+  if (!missing.length) { panel.className = "daily-checklist-alert clear"; panel.innerHTML = `<b>✓ Checklist diário em dia</b><p>Todos os veículos cadastrados possuem checklist registrado hoje.</p>`; return; }
+  panel.className = "daily-checklist-alert";
+  panel.innerHTML = `<div><p class="eyebrow">ALERTA DIÁRIO · APÓS 08H</p><h2>${missing.length} veículo(s) sem checklist hoje</h2><p>Verifique os carros e caminhões abaixo antes da liberação.</p></div><ul>${missing.map((vehicle) => `<li>Prefixo ${esc(vehicle.prefix || "—")} · ${esc(vehicle.plate || "sem placa")} · ${esc(vehicle.model || vehicle.type || "Veículo")}</li>`).join("")}</ul><button type="button" class="small-button whatsapp" id="sendDailyChecklistAlert">Enviar alerta à gestora</button>`;
+}
+function sendDailyChecklistAlert() {
+  const missing = vehiclesWithoutChecklistToday();
+  if (!missing.length) return alert("Todos os veículos cadastrados possuem checklist hoje.");
+  const date = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" }).format(new Date());
+  const list = missing.map((vehicle, index) => `${index + 1}. Prefixo ${vehicle.prefix || "—"} · ${vehicle.plate || "sem placa"} · ${vehicle.model || vehicle.type || "Veículo"}`).join("\n");
+  const message = `*CHECKFROTA — ALERTA DIÁRIO DE CHECKLIST*\n\nData: ${date}\nHorário da conferência: ${new Intl.DateTimeFormat("pt-BR", { timeStyle: "short" }).format(new Date())}\n\nHá ${missing.length} carro(s) ou caminhão(ões) sem checklist registrado hoje:\n\n${list}\n\nSolicitamos verificar a situação e providenciar o preenchimento antes da operação.`;
+  window.open(whatsappLink(DAILY_CHECKLIST_ALERT_PHONE, message), "_blank", "noopener");
 }
 function renderLeaderInstallTarget() {
   const select = $("#leaderInstallBase"); const hint = $("#leaderInstallHint");
@@ -641,6 +667,7 @@ document.addEventListener("click", (event) => {
   if (target.dataset.deleteVehicle) deleteVehicle(target.dataset.deleteVehicle);
   if (target.id === "restoreFleet") void restoreFleet();
   if (target.id === "sendLeaderInstall") sendLeaderInstall();
+  if (target.id === "sendDailyChecklistAlert") sendDailyChecklistAlert();
   if (target.dataset.viewPhoto) void openIssuePhoto(target.dataset.viewPhoto);
   if (target.dataset.managerDispatch) void dispatchManagerMaintenance(target.dataset.managerDispatch);
   if (target.dataset.copyManagerMessage) void copyManagerMaintenanceMessage(target.dataset.copyManagerMessage);
@@ -661,7 +688,7 @@ $("#settingsForm").addEventListener("submit", (event) => { event.preventDefault(
 $("#maintenanceForm").addEventListener("submit", (event) => { event.preventDefault(); saveMaintenance(); });
 $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").forEach((button) => button.classList.toggle("active", button === tab)); $$(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab.dataset.tab}Panel`)); }));
 
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=84").catch(() => {}));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=85").catch(() => {}));
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
 window.addEventListener("appinstalled", () => { document.body.classList.add("app-installed"); $("#installBanner").hidden = true; });
 if (isInstalled()) document.body.classList.add("app-installed"); else window.addEventListener("load", showInstallBanner);
