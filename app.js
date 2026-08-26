@@ -693,14 +693,14 @@ function vehicleHistoryMarkup(vehicle) {
 function renderVehicles() {
   const panel = $("#vehiclesPanel");
   const cards = data.vehicles.map((vehicle) => `<article class="vehicle-card"><div><h3>Prefixo ${esc(vehicle.prefix || "—")} · ${esc(vehicle.plate)} <span class="vehicle-label">· ${esc(vehicle.model || vehicle.type)}</span></h3><p>${esc(vehicle.ownerName)}${vehicle.manager ? ` · Gestor: ${esc(vehicle.manager)}` : ""}${vehicle.base ? ` · Base: ${esc(vehicle.base)}` : ""}${vehicle.ownerPhone ? ` · Tel.: ${esc(formatPhone(vehicle.ownerPhone))}` : ""}${vehicle.contract ? ` · Contrato: ${esc(vehicle.contract)}` : ""}${vehicle.odometer !== "" ? ` · ${esc(vehicle.odometer)} km` : ""}</p></div><div class="issue-actions"><button class="small-button" data-vehicle-history="${vehicle.id}">${selectedVehicleHistoryId === vehicle.id ? "Fechar ficha" : "Ver ficha"}</button><button class="small-button" data-edit-vehicle="${vehicle.id}">Editar</button><button class="small-button danger-button" data-delete-vehicle="${vehicle.id}">Excluir</button></div>${selectedVehicleHistoryId === vehicle.id ? vehicleHistoryMarkup(vehicle) : ""}</article>`).join("");
-  panel.innerHTML = `<div class="section-action"><h3>Veículos cadastrados</h3><div class="vehicle-actions"><button class="restore-button" id="restoreFleet">↺ Restaurar frota</button><button class="add-button" id="newVehicle">+ Cadastrar</button></div></div>${cards}`;
+  panel.innerHTML = `<div class="section-action"><h3>Veículos e caminhões cadastrados</h3><div class="vehicle-actions"><button class="restore-button" id="restoreFleet">↺ Restaurar frota</button><button class="add-button" id="newVehicle">+ Cadastrar veículo/caminhão</button></div></div>${cards}`;
 }
 function renderDrivers() {
   const panel = $("#driversPanel");
   if (!panel) return;
-  const registered = [...DRIVER_REGISTRY].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  const registered = [...(employeeDatabase.length ? employeeDatabase : DRIVER_REGISTRY)].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
   const missing = driversMissingRegistration().sort((a, b) => a.localeCompare(b, "pt-BR"));
-  panel.innerHTML = `<section class="driver-registry"><div class="section-action"><div><h3>Banco de colaboradores</h3><p>Digite a matrícula no aplicativo para preencher o nome automaticamente.</p></div><span class="chip ok">${registered.length} cadastrados</span></div><div class="driver-grid">${registered.map((driver) => `<article class="driver-row"><b>${esc(driver.name)}</b><span>Matrícula ${esc(driver.registration)}</span></article>`).join("")}</div></section><section class="missing-drivers"><div class="section-action"><div><h3>Colaboradores sem matrícula</h3><p>Relação identificada na primeira tabela e ainda sem vínculo na segunda.</p></div><span class="chip grave">${missing.length} pendentes</span></div>${missing.length ? `<ul>${missing.map((name) => `<li>${esc(name)}</li>`).join("")}</ul>` : "<p>Todos os colaboradores possuem matrícula cadastrada.</p>"}</section>`;
+  panel.innerHTML = `<section class="driver-registry"><div class="section-action"><div><h3>Banco de colaboradores</h3><p>Digite a matrícula no aplicativo para preencher o nome automaticamente.</p></div><div class="vehicle-actions"><span class="chip ok">${registered.length} cadastrados</span><button class="add-button" id="newEmployee">+ Cadastrar colaborador</button></div></div><div class="driver-grid">${registered.map((driver) => `<article class="driver-row"><b>${esc(driver.name)}</b><span>Matrícula ${esc(driver.registration)}${driver.role ? ` · ${esc(driver.role)}` : ""}</span></article>`).join("")}</div></section><section class="missing-drivers"><div class="section-action"><div><h3>Colaboradores sem matrícula</h3><p>Relação identificada na primeira tabela e ainda sem vínculo na segunda.</p></div><span class="chip grave">${missing.length} pendentes</span></div>${missing.length ? `<ul>${missing.map((name) => `<li>${esc(name)}</li>`).join("")}</ul>` : "<p>Todos os colaboradores possuem matrícula cadastrada.</p>"}</section>`;
 }
 function renderAuditLog() {
   const panel = $("#auditPanel");
@@ -715,6 +715,24 @@ function openVehicleDialog(id = "") {
   $("#vehiclePrefix").value = vehicle?.prefix || ""; $("#vehiclePlate").value = vehicle?.plate || ""; $("#vehicleType").value = vehicle?.type || "Caminhão"; $("#vehicleModel").value = vehicle?.model || ""; $("#vehicleContract").value = vehicle?.contract || ""; $("#vehicleUrbamContract").value = vehicle?.urbamContract || ""; $("#vehicleOdometer").value = vehicle?.odometer ?? "";
   $("#vehicleOwnerName").value = vehicle?.ownerName || ""; $("#vehicleOwnerPhone").value = vehicle?.ownerPhone || ""; $("#vehicleEmail").value = vehicle?.email || "";
   $("#vehicleDialog").showModal();
+}
+function openEmployeeDialog() {
+  if (!cloudToken()) return alert("Entre no painel de Gestão para cadastrar colaboradores.");
+  $("#employeeRegistration").value = ""; $("#employeeName").value = ""; $("#employeeRole").value = "";
+  $("#employeeDialog").showModal();
+}
+async function saveEmployee() {
+  if (!cloudToken()) return alert("Entre no painel de Gestão para cadastrar colaboradores.");
+  const registration = $("#employeeRegistration").value.replace(/\D/g, "");
+  const name = $("#employeeName").value.trim().toUpperCase();
+  const role = $("#employeeRole").value.trim();
+  if (!registration || !name || !role) { $("#employeeForm").reportValidity(); return; }
+  try {
+    const rows = await cloudRequest("/rest/v1/fleet_employees?on_conflict=registration", { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=representation" }, body: JSON.stringify({ registration, name, role, active: true }) });
+    const saved = rows?.[0] || { registration, name, role, active: true };
+    employeeDatabase = [...employeeDatabase.filter((entry) => String(entry.registration) !== registration), saved];
+    $("#employeeDialog").close(); renderDrivers(); alert("Colaborador salvo no banco de dados.");
+  } catch (error) { alert("Não foi possível salvar o colaborador no banco. Verifique se a tabela e as permissões do Supabase foram configuradas."); console.warn(error); }
 }
 function saveVehicle() {
   const id = $("#editVehicleId").value;
@@ -876,6 +894,7 @@ document.addEventListener("click", (event) => {
   if (target.id === "dismissInstallBanner") dismissInstallBanner();
   if (target.id === "closeInstallDialog") $("#installDialog").close();
   if (target.id === "newVehicle") openVehicleDialog();
+  if (target.id === "newEmployee") openEmployeeDialog();
   if (target.dataset.vehicleHistory) { selectedVehicleHistoryId = selectedVehicleHistoryId === target.dataset.vehicleHistory ? "" : target.dataset.vehicleHistory; renderVehicles(); }
   if (target.dataset.editVehicle) openVehicleDialog(target.dataset.editVehicle);
   if (target.dataset.deleteVehicle) deleteVehicle(target.dataset.deleteVehicle);
@@ -903,11 +922,12 @@ $("#leaderInstallBase")?.addEventListener("change", renderLeaderInstallTarget);
 $("#dismissInstallBanner").addEventListener("click", dismissInstallBanner);
 $("#issueForm").addEventListener("submit", (event) => { event.preventDefault(); saveIssue(); });
 $("#vehicleForm").addEventListener("submit", (event) => { event.preventDefault(); saveVehicle(); });
+$("#employeeForm").addEventListener("submit", (event) => { event.preventDefault(); void saveEmployee(); });
 $("#settingsForm").addEventListener("submit", (event) => { event.preventDefault(); saveSettings(); });
 $("#maintenanceForm").addEventListener("submit", (event) => { event.preventDefault(); saveMaintenance(); });
 $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").forEach((button) => button.classList.toggle("active", button === tab)); $$(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab.dataset.tab}Panel`)); }));
 
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=104").catch(() => {}));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=106").catch(() => {}));
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
 window.addEventListener("appinstalled", () => { document.body.classList.add("app-installed"); $("#installBanner").hidden = true; });
 if (isInstalled()) document.body.classList.add("app-installed"); else window.addEventListener("load", showInstallBanner);
