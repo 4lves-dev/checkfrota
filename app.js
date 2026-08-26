@@ -85,13 +85,22 @@ const DRIVER_REGISTRY = [
   ["12894", "RODOLFO DONIZETTI DA ROSA"], ["16590", "FRANCISCO VILAMAR FERNANDES DA SILVA"], ["18380", "ROMERIO EDUARDO DE OLIVEIRA"], ["18876", "RODOLFO CARLOS DA SILVA"], ["18930", "RAFAEL GERARDO DE OLIVEIRA JUNIOR"], ["25940", "EDSON JOSIAS RODRIGUES"], ["22940", "MAICON JOSIAS RODRIGUES"], ["15552", "MARCELO CESAR MEDEIROS"], ["18848", "ROBSON ALEXANDRE DA SILVA"], ["22666", "SAULO DE CARVALHO SILVA"], ["14087", "PAULO DE FREITAS CARDOSO"],
   ["15723", "CARLOS ALEXANDRE APARECIDO RAMOS"], ["23584", "CLAUDINEI FERNANDES TEIXEIRA"], ["15809", "LUIS ANTONIO VICHI"], ["18472", "RODOLFO APARECIDO DA SILVA"], ["25363", "VALNEI APARECIDO LIMA"]
 ].map(([registration, name]) => ({ registration, name }));
+const EMPLOYEE_ROLE_BY_REGISTRATION = {
+  "18593": "Engenheiro civil", "17672": "Analista administrativo", "18920": "Almoxarife", "17208": "Coordenadora", "23761": "Escriturário", "23764": "Escriturário", "25310": "Escriturário", "18919": "Líder operacional", "24846": "Pintor predial",
+  "18365": "Motorista", "22748": "Motorista", "23141": "Pintor predial", "18123": "Pintor predial", "14246": "Pintor predial", "25082": "Pintor predial", "14443": "Pintor predial", "17096": "Motorista", "17148": "Operador de máquinas leves", "18918": "Pintor predial", "23480": "Pintor predial",
+  "14361": "Motorista", "13534": "Operador de máquinas leves", "13111": "Líder operacional", "24117": "Pintor predial", "14381": "Motorista", "22445": "Líder operacional", "14119": "Motorista", "23806": "Pintor predial", "24134": "Pintor predial",
+  "15239": "Líder operacional I", "20869": "Monitor de serviços gerais", "17213": "Pedreiro I", "17879": "Motorista", "14840": "Monitor de serviços gerais", "18407": "Pintor predial", "24040": "Pintor predial", "13948": "Líder operacional II", "22911": "Monitor de serviços gerais", "18849": "Pedreiro I", "17695": "Monitor de serviços gerais", "22773": "Pintor predial", "18938": "Pintor predial", "16847": "Líder operacional",
+  "23957": "Monitor de serviços gerais", "16428": "Motorista", "18095": "Monitor de serviços gerais", "18739": "Pedreiro I", "13902": "Eletricista de manutenção", "17255": "Motorista", "23135": "Escriturário", "24321": "Serralheiro", "13997": "Líder operacional", "18873": "Monitor de serviços gerais", "18890": "Monitor de serviços gerais", "22244": "Motorista", "16746": "Pedreiro I", "15516": "Motorista",
+  "12894": "Eletricista de manutenção", "16590": "Motorista", "18380": "Escriturário", "18876": "Serralheiro", "18930": "Serralheiro", "25940": "Líder de obras", "22940": "Líder de obras", "15552": "Pedreiro I", "18848": "Pedreiro I", "22666": "Motorista", "14087": "Eletricista de manutenção",
+  "15723": "Motorista", "23584": "Motorista", "15809": "Motorista", "18472": "Motorista", "25363": "Motorista"
+};
 const DRIVER_LIST_SOURCE = ["ADENILSON SILVA PEREIRA", "ALEIXO DE OLIVEIRA CEZAR", "ANDRE DE JESUS COUTINHO", "ANDRE PEREIRA DO CARMO", "CARLOS ALEXANDRE APARECIDO RAMOS", "CARLOS ROBERTO DE MORAIS FILHO", "CLAUDINEI FERNANDES TEIXEIRA", "DANIEL DOS SANTOS DE SA", "EDSON DO AMARAL DE CARVALHO", "FRANCISCO VILAMAR FERNANDES DA SILVA", "JOAO PAULO DA ROCHA", "JOAO SILVERIO DA SILVA", "JOSE RODOLFO TELES", "LUIS ANTONIO VICHI", "MARCO ALEXANDRE DE OLIVEIRA", "RENATO TARTAGLIONE FONSECA", "RODOLFO APARECIDO DA SILVA", "ROMEU CLEMENTE DE OLIVEIRA", "SAULO DE CARVALHO SILVA", "TIAGO APARECIDO DE MORAES", "VALNEI APARECIDO LIMA"];
 const driverNameKey = (name = "") => String(name).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/\s+/g, " ").trim();
-const driverByRegistration = (registration = "") => DRIVER_REGISTRY.find((driver) => driver.registration === String(registration).replace(/\D/g, ""));
+const driverByRegistration = (registration = "") => { const driver = DRIVER_REGISTRY.find((entry) => entry.registration === String(registration).replace(/\D/g, "")); return driver ? { ...driver, role: EMPLOYEE_ROLE_BY_REGISTRATION[driver.registration] || "Funcionário" } : null; };
 const driversMissingRegistration = () => DRIVER_LIST_SOURCE.filter((name) => !DRIVER_REGISTRY.some((driver) => driverNameKey(driver.name) === driverNameKey(name)));
 
 let data = loadData();
-let current = { driver: "", driverRegistration: "", driverEmail: EMAIL_COPY_RECIPIENT, driverPhone: DRIVER_NOTIFICATION_PHONE, baseName: "", basePhone: "", vehicleId: "", odometer: "", states: {}, notes: "" };
+let current = { driver: "", driverRegistration: "", driverRole: "", driverEmail: EMAIL_COPY_RECIPIENT, driverPhone: DRIVER_NOTIFICATION_PHONE, baseName: "", basePhone: "", vehicleId: "", odometer: "", states: {}, notes: "" };
 let issueDraft = { itemId: null, severity: "Leve" };
 let deferredInstallPrompt = null;
 let managerIssueFilters = { base: "", vehicle: "", date: "", owner: "" };
@@ -229,11 +238,13 @@ function renderStart() {
 function lookupDriverRegistration() {
   const registrationInput = $("#driverRegistration");
   const nameInput = $("#driverName");
+  const roleInput = $("#driverRole");
   const hint = $("#driverLookupHint");
   if (!registrationInput || !nameInput || !hint) return null;
   const registration = registrationInput.value.replace(/\D/g, "");
   if (!registration) {
     nameInput.value = "";
+    if (roleInput) roleInput.value = "";
     hint.textContent = "Digite a matrícula para localizar o nome do motorista.";
     hint.className = "helper";
     return null;
@@ -241,12 +252,14 @@ function lookupDriverRegistration() {
   const driver = driverByRegistration(registration);
   if (!driver) {
     nameInput.value = "";
+    if (roleInput) roleInput.value = "";
     hint.textContent = "Matrícula não cadastrada. Procure a Gestão.";
     hint.className = "helper warning";
     return null;
   }
   registrationInput.value = driver.registration;
   nameInput.value = driver.name;
+  if (roleInput) roleInput.value = driver.role;
   hint.textContent = `Motorista localizado: ${driver.name}.`;
   hint.className = "helper ok";
   return driver;
@@ -261,6 +274,7 @@ function beginChecklist() {
   const registeredDriver = lookupDriverRegistration();
   const driver = registeredDriver?.name || "";
   const driverRegistration = registeredDriver?.registration || "";
+  const driverRole = registeredDriver?.role || "";
   const driverEmail = EMAIL_COPY_RECIPIENT;
   const driverPhone = DRIVER_NOTIFICATION_PHONE;
   const baseName = $("#baseSelect").value;
@@ -271,7 +285,7 @@ function beginChecklist() {
   if (!vehicleId) return alert("Selecione o veículo que será utilizado.");
   if (!basePhone) return alert("Selecione a base responsável pela aprovação.");
   if (!Number.isFinite(odometer) || odometer < 0) return alert("Informe a quilometragem atual do veículo.");
-  current = { driver, driverRegistration, driverEmail, driverPhone, baseName, basePhone, vehicleId, odometer, states: Object.fromEntries(CHECKLIST.map((item) => [item.id, { status: "pending" }])), notes: "" };
+  current = { driver, driverRegistration, driverRole, driverEmail, driverPhone, baseName, basePhone, vehicleId, odometer, states: Object.fromEntries(CHECKLIST.map((item) => [item.id, { status: "pending" }])), notes: "" };
   localStorage.setItem("checkfrota-driver", driver);
   localStorage.setItem("checkfrota-driver-registration", driverRegistration);
   localStorage.setItem("checkfrota-base", baseName);
@@ -329,6 +343,7 @@ function reviewChecklist() {
   $("#reviewSummary").innerHTML = `<section class="review-box card">
     <div class="review-row"><span>Motorista</span><b>${esc(current.driver)}</b></div>
     ${current.driverRegistration ? `<div class="review-row"><span>Matrícula</span><b>${esc(current.driverRegistration)}</b></div>` : ""}
+    ${current.driverRole ? `<div class="review-row"><span>Função</span><b>${esc(current.driverRole)}</b></div>` : ""}
     ${current.driverEmail ? `<div class="review-row"><span>Cópia do formulário</span><b>${esc(current.driverEmail)}</b></div>` : ""}
     <div class="review-row"><span>Veículo</span><b>Prefixo ${esc(vehicleById(current.vehicleId).prefix || "—")} · ${esc(vehicleById(current.vehicleId).plate)}</b></div>
     <div class="review-row"><span>Quilometragem</span><b>${esc(current.odometer)} km</b></div>
@@ -348,14 +363,14 @@ async function submitChecklist() {
   current.notes = $("#generalNotes").value.trim();
   const vehicle = vehicleById(current.vehicleId);
   const inspection = {
-    id: crypto.randomUUID(), createdAt: new Date().toISOString(), driver: current.driver, driverRegistration: current.driverRegistration, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone,
+    id: crypto.randomUUID(), createdAt: new Date().toISOString(), driver: current.driver, driverRegistration: current.driverRegistration, driverRole: current.driverRole, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone,
     vehicleId: vehicle.id, vehiclePrefix: vehicle.prefix || "", vehiclePlate: vehicle.plate, vehicleType: vehicle.type, vehicleModel: vehicle.model || "", vehicleBase: vehicle.base || "", odometer: current.odometer, notes: current.notes,
     items: CHECKLIST.map((item) => ({ ...item, ...current.states[item.id] })),
   };
   const currentIssues = getCurrentIssues();
   const newIssues = currentIssues.map((issue) => ({
     id: crypto.randomUUID(), inspectionId: inspection.id, status: "aberta", createdAt: inspection.createdAt,
-    driver: current.driver, driverRegistration: current.driverRegistration, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, vehicleId: vehicle.id, vehiclePrefix: vehicle.prefix || "", vehiclePlate: vehicle.plate, vehicleType: vehicle.type, vehicleModel: vehicle.model || "", vehicleBase: vehicle.base || "", odometer: current.odometer,
+    driver: current.driver, driverRegistration: current.driverRegistration, driverRole: current.driverRole, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, vehicleId: vehicle.id, vehiclePrefix: vehicle.prefix || "", vehiclePlate: vehicle.plate, vehicleType: vehicle.type, vehicleModel: vehicle.model || "", vehicleBase: vehicle.base || "", odometer: current.odometer,
     ownerName: vehicle.ownerName, ownerPhone: vehicle.ownerPhone, email: vehicle.email,
     itemName: issue.item.name, severity: issue.severity, description: issue.description, photoName: issue.photoName, _photoFile: issue.photoFile || null,
     maintenance: { status: "Pendente", scheduledAt: "", provider: "", feedback: "", updatedAt: "" },
@@ -369,7 +384,7 @@ async function submitChecklist() {
   catch (error) { console.warn("Não foi possível gravar o chamado no banco", error); alert(`O chamado foi salvo neste aparelho, mas o banco recusou o envio.\n\nDetalhe: ${error.message || "erro não informado"}`); }
   const sendResult = await sendToIntegration({ inspection, vehicle, issues: newIssues });
   await showCompletion(inspection, vehicle, newIssues, sendResult);
-  current = { driver: current.driver, driverRegistration: current.driverRegistration, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, vehicleId: vehicle.id, odometer: "", states: {}, notes: "" };
+  current = { driver: current.driver, driverRegistration: current.driverRegistration, driverRole: current.driverRole, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, vehicleId: vehicle.id, odometer: "", states: {}, notes: "" };
   saveData();
 }
 
@@ -419,7 +434,7 @@ async function showCompletion(inspection, vehicle, issues, sendResult) {
   const form = $("#submittedForm");
   const protocol = `MAN-${String(inspection.id || Date.now()).replaceAll("-", "").slice(-8).toUpperCase()}`;
   const occurrenceRows = issues.length ? issues.map((issue) => `<article class="submitted-issue ${esc(issue.severity.toLowerCase())}"><div><b>${esc(issue.itemName)}</b><span class="chip ${esc(issue.severity.toLowerCase())}">${esc(issue.severity)}</span></div><p>${esc(issue.description)}</p>${issue.photoPath ? `<img src="${esc(publicIssuePhotoUrl(issue))}" alt="Foto da ocorrência ${esc(issue.itemName)}" loading="lazy">` : ""}</article>`).join("") : `<p class="form-empty">Nenhuma ocorrência informada.</p>`;
-  form.innerHTML = `<div class="form-top"><span class="form-mark">✓</span><div><small>CHECKFROTA · RESPOSTA ENVIADA</small><h2>Formulário de inspeção</h2></div></div><div class="form-protocol"><span>Protocolo</span><b>${esc(protocol)}</b></div><div class="form-fields"><div><span>Motorista</span><b>${esc(inspection.driver)}</b></div>${inspection.driverRegistration ? `<div><span>Matrícula</span><b>${esc(inspection.driverRegistration)}</b></div>` : ""}<div><span>Base</span><b>${esc(inspection.baseName)}</b></div>${inspection.driverEmail ? `<div><span>Cópia para e-mail</span><b>${esc(inspection.driverEmail)}</b></div>` : ""}<div><span>Veículo</span><b>Prefixo ${esc(vehicle.prefix)} · ${esc(vehicle.plate)}</b></div><div><span>Modelo</span><b>${esc(vehicle.model || vehicle.type)}</b></div><div><span>Quilometragem</span><b>${esc(inspection.odometer)} km</b></div><div><span>Data e hora</span><b>${esc(dateTime(inspection.createdAt))}</b></div></div><div class="form-occurrences"><h3>Ocorrências relatadas</h3>${occurrenceRows}</div>${inspection.notes ? `<div class="form-notes"><span>Observação geral</span><p>${esc(inspection.notes)}</p></div>` : ""}`;
+  form.innerHTML = `<div class="form-top"><span class="form-mark">✓</span><div><small>CHECKFROTA · RESPOSTA ENVIADA</small><h2>Formulário de inspeção</h2></div></div><div class="form-protocol"><span>Protocolo</span><b>${esc(protocol)}</b></div><div class="form-fields"><div><span>Motorista</span><b>${esc(inspection.driver)}</b></div>${inspection.driverRegistration ? `<div><span>Matrícula</span><b>${esc(inspection.driverRegistration)}</b></div>` : ""}${inspection.driverRole ? `<div><span>Função</span><b>${esc(inspection.driverRole)}</b></div>` : ""}<div><span>Base</span><b>${esc(inspection.baseName)}</b></div>${inspection.driverEmail ? `<div><span>Cópia para e-mail</span><b>${esc(inspection.driverEmail)}</b></div>` : ""}<div><span>Veículo</span><b>Prefixo ${esc(vehicle.prefix)} · ${esc(vehicle.plate)}</b></div><div><span>Modelo</span><b>${esc(vehicle.model || vehicle.type)}</b></div><div><span>Quilometragem</span><b>${esc(inspection.odometer)} km</b></div><div><span>Data e hora</span><b>${esc(dateTime(inspection.createdAt))}</b></div></div><div class="form-occurrences"><h3>Ocorrências relatadas</h3>${occurrenceRows}</div>${inspection.notes ? `<div class="form-notes"><span>Observação geral</span><p>${esc(inspection.notes)}</p></div>` : ""}`;
   const actions = $("#dispatchActions");
   if (!issues.length) { actions.innerHTML = ""; showScreen("success"); return; }
   const buttons = [];
@@ -809,7 +824,7 @@ $("#settingsForm").addEventListener("submit", (event) => { event.preventDefault(
 $("#maintenanceForm").addEventListener("submit", (event) => { event.preventDefault(); saveMaintenance(); });
 $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").forEach((button) => button.classList.toggle("active", button === tab)); $$(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab.dataset.tab}Panel`)); }));
 
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=92").catch(() => {}));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=93").catch(() => {}));
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
 window.addEventListener("appinstalled", () => { document.body.classList.add("app-installed"); $("#installBanner").hidden = true; });
 if (isInstalled()) document.body.classList.add("app-installed"); else window.addEventListener("load", showInstallBanner);
