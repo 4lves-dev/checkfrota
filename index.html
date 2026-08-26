@@ -201,6 +201,17 @@
       </form>
     </dialog>
 
+    <dialog id="employeeDialog" class="issue-dialog">
+      <form method="dialog" id="employeeForm">
+        <div class="dialog-head"><div><p class="eyebrow">BANCO DE COLABORADORES</p><h2>Novo colaborador</h2></div><button class="icon-button" value="cancel" aria-label="Fechar">×</button></div>
+        <p class="dialog-copy">A matrícula preencherá automaticamente o nome e a função no checklist.</p>
+        <label for="employeeRegistration">Matrícula</label><input id="employeeRegistration" required inputmode="numeric" placeholder="Ex.: 12345" />
+        <label for="employeeName">Nome completo</label><input id="employeeName" required placeholder="Nome do colaborador" />
+        <label for="employeeRole">Função</label><input id="employeeRole" required placeholder="Ex.: Motorista, Monitor, Pintor" />
+        <button class="primary-button" value="default">Salvar colaborador no banco</button>
+      </form>
+    </dialog>
+
     <dialog id="settingsDialog" class="issue-dialog">
       <form method="dialog" id="settingsForm">
         <div class="dialog-head"><div><p class="eyebrow">INTEGRAÇÃO</p><h2>Configurações</h2></div><button class="icon-button" value="cancel" aria-label="Fechar">×</button></div>
@@ -254,7 +265,7 @@
     <template id="emptyStateTemplate"><div class="empty-state"><span>⌁</span><p>Nenhum registro por aqui.</p></div></template>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="supabase-config.js?v=1"></script>
-    <script src="app.js?v=105"></script>
+    <script src="app.js?v=106"></script>
   </body>
 </html>
 
