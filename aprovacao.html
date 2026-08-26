@@ -8,7 +8,7 @@
   </style>
 </head>
 <body>
-  <header><a href="index.html">← Voltar ao CheckFrota</a><h1>AprovaFrota</h1><p>Solicitação e ciência de manutenção</p></header>
+  <header><a href="index.html">← Voltar ao URBAM Frota</a><h1>URBAM Frota · Aprovação</h1><p>Solicitação e ciência de manutenção</p></header>
   <main class="wrap"><section class="card"><h2>Aprovação do líder</h2><p class="hint">Confira o chamado e a foto antes de registrar sua decisão.</p><p id="ticket"></p><div class="details" id="details"></div><img class="photo hidden" id="photo" alt="Foto anexada ao chamado"><label>Observação do líder<textarea id="note" placeholder="Ex.: autorizado levar à oficina indicada ou descreva a retificação necessária."></textarea></label><div class="actions"><button class="approve" id="approve">Aprovar manutenção</button><button class="return" id="returnDriver">Devolver para retificação</button><button class="refuse" id="refuse">Recusar solicitação</button></div><div class="hidden" id="decision"></div></section></main>
   <script src="supabase-config.js?v=1"></script><script>
     const $=id=>document.getElementById(id),clean=p=>String(p||'').replace(/\D/g,''),q=new URLSearchParams(location.search),r=Object.fromEntries(q.entries()),truckMaintenance='5512996181645',CLOUD=window.CHECKFROTA_SUPABASE;
