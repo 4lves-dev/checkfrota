@@ -79,6 +79,8 @@ let data = loadData();
 let current = { driver: "", driverRegistration: "", driverEmail: EMAIL_COPY_RECIPIENT, driverPhone: DRIVER_NOTIFICATION_PHONE, baseName: "", basePhone: "", vehicleId: "", odometer: "", states: {}, notes: "" };
 let issueDraft = { itemId: null, severity: "Leve" };
 let deferredInstallPrompt = null;
+let managerIssueFilters = { base: "", vehicle: "", date: "", owner: "" };
+let selectedVehicleHistoryId = "";
 
 const $ = (selector, scope = document) => scope.querySelector(selector);
 const $$ = (selector, scope = document) => [...scope.querySelectorAll(selector)];
@@ -401,8 +403,18 @@ function renderControl() {
   renderIssues(); renderReports(); renderHistory(); renderVehicles();
   renderLeaderInstallTarget();
   renderDailyChecklistAlert();
+  renderStorageIndicator();
   renderNotificationSettings();
   startDailyChecklistNotifications();
+}
+function formatBytes(bytes = 0) { if (!bytes) return "0 MB"; const mb = bytes / (1024 * 1024); return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(mb >= 10 ? 0 : 1)} MB`; }
+function renderStorageIndicator() {
+  const panel = $("#storageIndicator"); if (!panel) return;
+  const photos = data.issues.filter((issue) => issue.photoPath || issue.photoUrl);
+  const bytes = photos.reduce((total, issue) => total + Number(issue.photoSize || 0), 0);
+  const ratio = Math.min(100, (bytes / (1024 * 1024 * 1024)) * 100);
+  panel.className = `storage-indicator ${ratio >= 80 ? "warning" : ""}`;
+  panel.innerHTML = `<div><b>Armazenamento de fotos</b><p>${photos.length} foto(s) registrada(s) · uso estimado: ${formatBytes(bytes)} de 1 GB.</p></div><div class="storage-progress" aria-label="Uso estimado de armazenamento"><i style="width:${ratio}%"></i></div><small>${ratio >= 80 ? "Atenção: faça backup e remova fotos antigas após confirmar o relatório." : "Este cálculo considera as fotos enviadas pelo CheckFrota."}</small>`;
 }
 function todayStart() { const value = new Date(); value.setHours(0, 0, 0, 0); return value.getTime(); }
 function vehiclesWithoutChecklistToday() {
@@ -471,13 +483,29 @@ function sendLeaderInstall() {
   const message = `*CHECKFROTA — APLICATIVO DA LIDERANÇA*\n\nOlá, ${label}.\n\nEste é o link de instalação do painel da liderança desta base:\n${link}\n\nApós instalar, utilize o aplicativo para consultar as ocorrências e registrar a aprovação ou recusa.`;
   window.open(whatsappLink(phone, message), "_blank", "noopener");
 }
+function localDateValue(value) { const date = new Date(value); if (Number.isNaN(date.getTime())) return ""; const offset = date.getTimezoneOffset() * 60000; return new Date(date.getTime() - offset).toISOString().slice(0, 10); }
+function issueMatchesManagerFilters(issue) {
+  const filter = managerIssueFilters;
+  return (!filter.base || issue.baseName === filter.base) && (!filter.vehicle || issue.vehicleId === filter.vehicle) && (!filter.date || localDateValue(issue.createdAt) === filter.date) && (!filter.owner || (issue.ownerName || "") === filter.owner);
+}
+function renderIssueFilters(issues) {
+  const bases = [...new Set(issues.map((issue) => issue.baseName).filter(Boolean))].sort();
+  const vehicles = data.vehicles.filter((vehicle) => issues.some((issue) => issue.vehicleId === vehicle.id));
+  const owners = [...new Set(issues.map((issue) => issue.ownerName).filter(Boolean))].sort();
+  return `<section class="manager-filters"><div><b>Pendências da frota</b><small>Filtre por base, veículo, data ou responsável.</small></div><label>Base<select id="issueFilterBase"><option value="">Todas</option>${bases.map((value) => `<option value="${esc(value)}" ${managerIssueFilters.base === value ? "selected" : ""}>${esc(value)}</option>`).join("")}</select></label><label>Veículo<select id="issueFilterVehicle"><option value="">Todos</option>${vehicles.map((vehicle) => `<option value="${esc(vehicle.id)}" ${managerIssueFilters.vehicle === vehicle.id ? "selected" : ""}>${esc(vehicle.prefix)} · ${esc(vehicle.plate)}</option>`).join("")}</select></label><label>Data<input id="issueFilterDate" type="date" value="${esc(managerIssueFilters.date)}"></label><label>Responsável<select id="issueFilterOwner"><option value="">Todos</option>${owners.map((value) => `<option value="${esc(value)}" ${managerIssueFilters.owner === value ? "selected" : ""}>${esc(value)}</option>`).join("")}</select></label><button type="button" class="small-button" id="clearIssueFilters">Limpar filtros</button></section>`;
+}
+function bindIssueFilters() {
+  [["#issueFilterBase", "base"], ["#issueFilterVehicle", "vehicle"], ["#issueFilterDate", "date"], ["#issueFilterOwner", "owner"]].forEach(([selector, key]) => $(selector)?.addEventListener("change", (event) => { managerIssueFilters[key] = event.target.value; renderIssues(); }));
+}
 function empty() { return $("#emptyStateTemplate").content.cloneNode(true); }
-function maintenanceOf(issue) { return { status: "Pendente", scheduledAt: "", provider: "", feedback: "", ...issue.maintenance }; }
+function maintenanceOf(issue) { return { status: "Pendente", scheduledAt: "", returnAt: "", provider: "", service: "", cost: "", feedback: "", ...issue.maintenance }; }
 function renderIssues() {
-  const panel = $("#issuesPanel"); panel.innerHTML = "";
-  const issues = data.issues.filter((issue) => issue.status === "aberta").sort((a,b) => severityRank(b.severity) - severityRank(a.severity) || new Date(b.createdAt)-new Date(a.createdAt));
-  if (!issues.length) { panel.append(empty()); return; }
-  panel.innerHTML = issues.map((issue, index) => {
+  const panel = $("#issuesPanel");
+  const allIssues = data.issues.filter((issue) => issue.status !== "resolvida" && maintenanceOf(issue).status !== "Concluída").sort((a,b) => severityRank(b.severity) - severityRank(a.severity) || new Date(b.createdAt)-new Date(a.createdAt));
+  const issues = allIssues.filter(issueMatchesManagerFilters);
+  panel.innerHTML = renderIssueFilters(allIssues);
+  if (!issues.length) { panel.append(empty()); bindIssueFilters(); return; }
+  panel.innerHTML += issues.map((issue, index) => {
     const maintenance = maintenanceOf(issue);
     const schedule = maintenance.scheduledAt ? ` · ${dateTime(maintenance.scheduledAt)}` : "";
     const isFirstFromCall = issues.findIndex((entry) => entry.inspectionId === issue.inspectionId) === index;
@@ -491,10 +519,11 @@ function renderIssues() {
       <p class="meta">${esc(issue.driver)} · ${dateTime(issue.createdAt)}${issue.photoName ? ` · 📷 ${esc(issue.photoName)}` : ""}</p>
       ${gallery}
       ${approvalBox}
-      <p class="maintenance-meta"><b>Manutenção:</b> ${esc(maintenance.status)}${schedule}${maintenance.provider ? ` · ${esc(maintenance.provider)}` : ""}</p>
+      <p class="maintenance-meta"><b>Manutenção:</b> ${esc(maintenance.status)}${schedule}${maintenance.returnAt ? ` · retorno: ${dateTime(maintenance.returnAt)}` : ""}${maintenance.provider ? ` · ${esc(maintenance.provider)}` : ""}${maintenance.service ? ` · ${esc(maintenance.service)}` : ""}${maintenance.cost !== "" ? ` · R$ ${Number(maintenance.cost).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : ""}</p>
       <div class="issue-actions">${issue.photoPath ? `<button class="small-button photo-button" data-view-photo="${issue.id}">📷 Ver foto</button>` : ""}<button class="small-button" data-maintenance-issue="${issue.id}">Agendar / retorno</button><button class="small-button whatsapp" data-whatsapp-issue="${issue.id}">Enviar ao proprietário</button><button class="small-button" data-close-issue="${issue.id}">Marcar resolvida</button></div>
     </article>`;
   }).join("");
+  bindIssueFilters();
 }
 function renderReports() {
   const panel = $("#reportsPanel");
@@ -506,10 +535,10 @@ function renderReports() {
 }
 function downloadReport() {
   if (!window.XLSX) return alert("Não foi possível carregar o recurso de Excel. Verifique sua conexão e tente novamente.");
-  const rows = data.issues.map((issue) => { const maintenance = maintenanceOf(issue); return { "Data": dateTime(issue.createdAt), "Prefixo": issue.vehiclePrefix || "", "Placa": issue.vehiclePlate, "Tipo / modelo": issue.vehicleModel || issue.vehicleType, "Quilometragem (km)": issue.odometer ?? "", "Ocorrência": issue.itemName, "Gravidade": issue.severity, "Descrição": issue.description, "Motorista": issue.driver, "Situação": maintenance.status, "Agendamento": maintenance.scheduledAt ? dateTime(maintenance.scheduledAt) : "", "Oficina / responsável": maintenance.provider, "Retorno": maintenance.feedback }; });
+  const rows = data.issues.map((issue) => { const maintenance = maintenanceOf(issue); return { "Data": dateTime(issue.createdAt), "Prefixo": issue.vehiclePrefix || "", "Placa": issue.vehiclePlate, "Tipo / modelo": issue.vehicleModel || issue.vehicleType, "Quilometragem (km)": issue.odometer ?? "", "Ocorrência": issue.itemName, "Gravidade": issue.severity, "Descrição": issue.description, "Motorista": issue.driver, "Matrícula": issue.driverRegistration || "", "Situação": maintenance.status, "Agendamento": maintenance.scheduledAt ? dateTime(maintenance.scheduledAt) : "", "Previsão de retorno": maintenance.returnAt ? dateTime(maintenance.returnAt) : "", "Oficina / responsável": maintenance.provider, "Serviço": maintenance.service, "Custo (R$)": maintenance.cost === "" ? "" : maintenance.cost, "Retorno": maintenance.feedback }; });
   const workbook = XLSX.utils.book_new();
   const sheet = XLSX.utils.json_to_sheet(rows.length ? rows : [{ "Data": "Nenhuma solicitação registrada" }]);
-  sheet["!cols"] = [{ wch: 18 }, { wch: 10 }, { wch: 13 }, { wch: 28 }, { wch: 19 }, { wch: 25 }, { wch: 12 }, { wch: 45 }, { wch: 24 }, { wch: 16 }, { wch: 20 }, { wch: 28 }, { wch: 45 }];
+  sheet["!cols"] = [{ wch: 18 }, { wch: 10 }, { wch: 13 }, { wch: 28 }, { wch: 19 }, { wch: 25 }, { wch: 12 }, { wch: 45 }, { wch: 24 }, { wch: 16 }, { wch: 16 }, { wch: 20 }, { wch: 20 }, { wch: 28 }, { wch: 32 }, { wch: 15 }, { wch: 45 }];
   XLSX.utils.book_append_sheet(workbook, sheet, "Solicitações");
   XLSX.writeFile(workbook, `relatorio-solicitacoes-${today()}.xlsx`, { compression: true });
 }
@@ -525,9 +554,16 @@ function renderVehicles() {
   const panel = $("#vehiclesPanel");
   panel.innerHTML = `<div class="section-action"><h3>Veículos cadastrados</h3><button class="add-button" id="newVehicle">+ Cadastrar</button></div>${data.vehicles.length ? data.vehicles.map((vehicle) => `<article class="vehicle-card"><div><h3>Prefixo ${esc(vehicle.prefix || "—")} · ${esc(vehicle.plate)} <span class="vehicle-label">· ${esc(vehicle.model || vehicle.type)}</span></h3><p>${esc(vehicle.ownerName)}${vehicle.contract ? ` · Contrato: ${esc(vehicle.contract)}` : ""}${vehicle.odometer !== "" ? ` · ${esc(vehicle.odometer)} km` : ""}</p></div><div class="issue-actions"><button class="small-button" data-edit-vehicle="${vehicle.id}">Editar</button><button class="small-button danger-button" data-delete-vehicle="${vehicle.id}">Excluir</button></div></article>`).join("") : ""}`;
 }
+function vehicleHistoryMarkup(vehicle) {
+  const inspections = data.inspections.filter((inspection) => inspection.vehicleId === vehicle.id).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const issues = data.issues.filter((issue) => issue.vehicleId === vehicle.id).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const totalCost = issues.reduce((total, issue) => total + Number(maintenanceOf(issue).cost || 0), 0);
+  const photos = issues.filter((issue) => issue.photoPath || issue.photoUrl);
+  return `<section class="vehicle-history"><div class="vehicle-history-summary"><b>Ficha do veículo</b><span>${inspections.length} checklist(s) · ${issues.length} ocorrência(s) · custo: R$ ${totalCost.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span></div><div class="vehicle-history-list">${inspections.length ? inspections.slice(0, 12).map((inspection) => { const count = (inspection.items || []).filter((item) => item.status === "issue").length; return `<p><b>${dateTime(inspection.createdAt)}</b> · ${esc(inspection.driver)}${inspection.driverRegistration ? ` · matrícula ${esc(inspection.driverRegistration)}` : ""} · ${esc(inspection.odometer)} km · ${count ? `${count} ocorrência(s)` : "Checklist OK"}</p>`; }).join("") : "<p>Nenhum checklist registrado para este veículo.</p>"}</div>${issues.length ? `<div class="vehicle-history-list">${issues.map((issue) => { const maintenance = maintenanceOf(issue); return `<p><b>${esc(issue.itemName)}</b> · ${esc(maintenance.status)}${maintenance.provider ? ` · ${esc(maintenance.provider)}` : ""}${maintenance.cost !== "" ? ` · R$ ${Number(maintenance.cost).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : ""}</p>`; }).join("")}</div>` : ""}${photos.length ? `<div class="issue-photo-gallery"><b>Fotos vinculadas ao veículo (${photos.length})</b><div>${photos.map((issue) => `<button type="button" class="photo-thumb" data-view-photo="${issue.id}"><img src="${esc(publicIssuePhotoUrl(issue))}" alt="Foto: ${esc(issue.itemName)}"><span>${esc(issue.itemName)}</span></button>`).join("")}</div></div>` : ""}</section>`;
+}
 function renderVehicles() {
   const panel = $("#vehiclesPanel");
-  const cards = data.vehicles.map((vehicle) => `<article class="vehicle-card"><div><h3>Prefixo ${esc(vehicle.prefix || "—")} · ${esc(vehicle.plate)} <span class="vehicle-label">· ${esc(vehicle.model || vehicle.type)}</span></h3><p>${esc(vehicle.ownerName)}${vehicle.base ? ` · Base: ${esc(vehicle.base)}` : ""}${vehicle.ownerPhone ? ` · Tel.: ${esc(formatPhone(vehicle.ownerPhone))}` : ""}${vehicle.contract ? ` · Contrato: ${esc(vehicle.contract)}` : ""}${vehicle.odometer !== "" ? ` · ${esc(vehicle.odometer)} km` : ""}</p></div><div class="issue-actions"><button class="small-button" data-edit-vehicle="${vehicle.id}">Editar</button><button class="small-button danger-button" data-delete-vehicle="${vehicle.id}">Excluir</button></div></article>`).join("");
+  const cards = data.vehicles.map((vehicle) => `<article class="vehicle-card"><div><h3>Prefixo ${esc(vehicle.prefix || "—")} · ${esc(vehicle.plate)} <span class="vehicle-label">· ${esc(vehicle.model || vehicle.type)}</span></h3><p>${esc(vehicle.ownerName)}${vehicle.base ? ` · Base: ${esc(vehicle.base)}` : ""}${vehicle.ownerPhone ? ` · Tel.: ${esc(formatPhone(vehicle.ownerPhone))}` : ""}${vehicle.contract ? ` · Contrato: ${esc(vehicle.contract)}` : ""}${vehicle.odometer !== "" ? ` · ${esc(vehicle.odometer)} km` : ""}</p></div><div class="issue-actions"><button class="small-button" data-vehicle-history="${vehicle.id}">${selectedVehicleHistoryId === vehicle.id ? "Fechar ficha" : "Ver ficha"}</button><button class="small-button" data-edit-vehicle="${vehicle.id}">Editar</button><button class="small-button danger-button" data-delete-vehicle="${vehicle.id}">Excluir</button></div>${selectedVehicleHistoryId === vehicle.id ? vehicleHistoryMarkup(vehicle) : ""}</article>`).join("");
   panel.innerHTML = `<div class="section-action"><h3>Veículos cadastrados</h3><div class="vehicle-actions"><button class="restore-button" id="restoreFleet">↺ Restaurar frota</button><button class="add-button" id="newVehicle">+ Cadastrar</button></div></div>${cards}`;
 }
 function openVehicleDialog(id = "") {
@@ -599,10 +635,10 @@ async function copyManagerMaintenanceMessage(issueId) {
   try { await navigator.clipboard.writeText(message); alert("Mensagem copiada."); }
   catch { alert("Não foi possível copiar automaticamente. Selecione o texto da mensagem e copie."); }
 }
-function maintenanceFormValues() { return { status: $("#maintenanceStatus").value, scheduledAt: $("#maintenanceScheduledAt").value, provider: $("#maintenanceProvider").value.trim(), feedback: $("#maintenanceFeedback").value.trim(), updatedAt: new Date().toISOString() }; }
+function maintenanceFormValues() { return { status: $("#maintenanceStatus").value, scheduledAt: $("#maintenanceScheduledAt").value, returnAt: $("#maintenanceReturnAt").value, provider: $("#maintenanceProvider").value.trim(), service: $("#maintenanceService").value.trim(), cost: $("#maintenanceCost").value === "" ? "" : Number($("#maintenanceCost").value), feedback: $("#maintenanceFeedback").value.trim(), updatedAt: new Date().toISOString() }; }
 function buildMaintenanceMessage(issue) {
   const maintenance = maintenanceOf(issue);
-  return `*RETORNO DE MANUTENÇÃO — ${maintenance.status.toUpperCase()}*\n\nVeículo: Prefixo ${issue.vehiclePrefix || "—"} · ${issue.vehiclePlate} (${issue.vehicleModel || issue.vehicleType})\nQuilometragem: ${issue.odometer ?? "Não informada"} km\nOcorrência: ${issue.itemName}\nGravidade: ${issue.severity}\nMotorista: ${issue.driver}\n${maintenance.scheduledAt ? `Agendamento: ${dateTime(maintenance.scheduledAt)}\n` : ""}${maintenance.provider ? `Oficina / responsável: ${maintenance.provider}\n` : ""}${maintenance.feedback ? `Retorno: ${maintenance.feedback}\n` : ""}\nSolicitação original: ${issue.description}`;
+  return `*RETORNO DE MANUTENÇÃO — ${maintenance.status.toUpperCase()}*\n\nVeículo: Prefixo ${issue.vehiclePrefix || "—"} · ${issue.vehiclePlate} (${issue.vehicleModel || issue.vehicleType})\nQuilometragem: ${issue.odometer ?? "Não informada"} km\nOcorrência: ${issue.itemName}\nGravidade: ${issue.severity}\nMotorista: ${issue.driver}\n${maintenance.scheduledAt ? `Agendamento: ${dateTime(maintenance.scheduledAt)}\n` : ""}${maintenance.returnAt ? `Previsão de retorno: ${dateTime(maintenance.returnAt)}\n` : ""}${maintenance.provider ? `Oficina / responsável: ${maintenance.provider}\n` : ""}${maintenance.service ? `Serviço: ${maintenance.service}\n` : ""}${maintenance.cost !== "" ? `Custo: R$ ${Number(maintenance.cost).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}\n` : ""}${maintenance.feedback ? `Retorno: ${maintenance.feedback}\n` : ""}\nSolicitação original: ${issue.description}`;
 }
 function buildMaintenanceGroupMessage() {
   const issues = data.issues.filter((issue) => issue.status === "aberta" || maintenanceOf(issue).status !== "Concluída")
@@ -625,6 +661,9 @@ function openMaintenanceIssue(issueId) {
   $("#maintenanceStatus").value = maintenance.status;
   $("#maintenanceScheduledAt").value = maintenance.scheduledAt ? maintenance.scheduledAt.slice(0, 16) : "";
   $("#maintenanceProvider").value = maintenance.provider;
+  $("#maintenanceService").value = maintenance.service || "";
+  $("#maintenanceCost").value = maintenance.cost ?? "";
+  $("#maintenanceReturnAt").value = maintenance.returnAt ? maintenance.returnAt.slice(0, 16) : "";
   $("#maintenanceFeedback").value = maintenance.feedback;
   $("#maintenanceDialog").showModal();
 }
@@ -695,12 +734,14 @@ document.addEventListener("click", (event) => {
   if (target.id === "dismissInstallBanner") dismissInstallBanner();
   if (target.id === "closeInstallDialog") $("#installDialog").close();
   if (target.id === "newVehicle") openVehicleDialog();
+  if (target.dataset.vehicleHistory) { selectedVehicleHistoryId = selectedVehicleHistoryId === target.dataset.vehicleHistory ? "" : target.dataset.vehicleHistory; renderVehicles(); }
   if (target.dataset.editVehicle) openVehicleDialog(target.dataset.editVehicle);
   if (target.dataset.deleteVehicle) deleteVehicle(target.dataset.deleteVehicle);
   if (target.id === "restoreFleet") void restoreFleet();
   if (target.id === "sendLeaderInstall") sendLeaderInstall();
   if (target.id === "sendDailyChecklistAlert") sendDailyChecklistAlert();
   if (target.id === "enableDailyNotifications") void enableDailyNotifications();
+  if (target.id === "clearIssueFilters") { managerIssueFilters = { base: "", vehicle: "", date: "", owner: "" }; renderIssues(); }
   if (target.dataset.viewPhoto) void openIssuePhoto(target.dataset.viewPhoto);
   if (target.dataset.managerDispatch) void dispatchManagerMaintenance(target.dataset.managerDispatch);
   if (target.dataset.copyManagerMessage) void copyManagerMaintenanceMessage(target.dataset.copyManagerMessage);
@@ -721,7 +762,7 @@ $("#settingsForm").addEventListener("submit", (event) => { event.preventDefault(
 $("#maintenanceForm").addEventListener("submit", (event) => { event.preventDefault(); saveMaintenance(); });
 $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").forEach((button) => button.classList.toggle("active", button === tab)); $$(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab.dataset.tab}Panel`)); }));
 
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=86").catch(() => {}));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=87").catch(() => {}));
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
 window.addEventListener("appinstalled", () => { document.body.classList.add("app-installed"); $("#installBanner").hidden = true; });
 if (isInstalled()) document.body.classList.add("app-installed"); else window.addEventListener("load", showInstallBanner);
