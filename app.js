@@ -76,6 +76,13 @@ const BASE_BY_PREFIX = {
 };
 const MANAGER_BY_PREFIX = { "1968": "Julio — Gestor de Contratos" };
 function withFleetResponsible(vehicle) { return { ...vehicle, base: BASE_BY_PREFIX[vehicle.prefix] || vehicle.base || "", manager: MANAGER_BY_PREFIX[vehicle.prefix] || vehicle.manager || "", ownerName: RESPONSIBLES_BY_PREFIX[vehicle.prefix] || vehicle.ownerName, ownerPhone: OWNER_PHONE_BY_PREFIX[vehicle.prefix] || vehicle.ownerPhone }; }
+const DRIVER_REGISTRY = [
+  { registration: "18365", name: "EDSON DO AMARAL DE CARVALHO" }, { registration: "22748", name: "RENATO TARTAGLIONE FONSECA" }, { registration: "17096", name: "MARCO ALEXANDRE DE OLIVEIRA" }, { registration: "14361", name: "ALEIXO DE OLIVEIRA CEZAR" }, { registration: "14119", name: "ANDRE PEREIRA DO CARMO" }, { registration: "18779", name: "TIAGO APARECIDO DE MORAES" }, { registration: "17793", name: "JOAO PAULO DA ROCHA" }, { registration: "16428", name: "CARLOS ROBERTO DE MORAIS FILHO" }, { registration: "18359", name: "ROMEU CLEMENTE DE OLIVEIRA" }, { registration: "17255", name: "DANIEL DOS SANTOS DE SA" }, { registration: "22244", name: "JOAO SILVERIO DA SILVA" }, { registration: "15516", name: "ANDRE DE JESUS COUTINHO" }, { registration: "16590", name: "FRANCISCO VILAMAR FERNANDES DA SILVA" }, { registration: "22666", name: "SAULO DE CARVALHO SILVA" }
+];
+const DRIVER_LIST_SOURCE = ["ADENILSON SILVA PEREIRA", "ALEIXO DE OLIVEIRA CEZAR", "ANDRE DE JESUS COUTINHO", "ANDRE PEREIRA DO CARMO", "CARLOS ALEXANDRE APARECIDO RAMOS", "CARLOS ROBERTO DE MORAIS FILHO", "CLAUDINEI FERNANDES TEIXEIRA", "DANIEL DOS SANTOS DE SA", "EDSON DO AMARAL DE CARVALHO", "FRANCISCO VILAMAR FERNANDES DA SILVA", "JOAO PAULO DA ROCHA", "JOAO SILVERIO DA SILVA", "JOSE RODOLFO TELES", "LUIS ANTONIO VICHI", "MARCO ALEXANDRE DE OLIVEIRA", "RENATO TARTAGLIONE FONSECA", "RODOLFO APARECIDO DA SILVA", "ROMEU CLEMENTE DE OLIVEIRA", "SAULO DE CARVALHO SILVA", "TIAGO APARECIDO DE MORAES", "VALNEI APARECIDO LIMA"];
+const driverNameKey = (name = "") => String(name).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/\s+/g, " ").trim();
+const driverByRegistration = (registration = "") => DRIVER_REGISTRY.find((driver) => driver.registration === String(registration).replace(/\D/g, ""));
+const driversMissingRegistration = () => DRIVER_LIST_SOURCE.filter((name) => !DRIVER_REGISTRY.some((driver) => driverNameKey(driver.name) === driverNameKey(name)));
 
 let data = loadData();
 let current = { driver: "", driverRegistration: "", driverEmail: EMAIL_COPY_RECIPIENT, driverPhone: DRIVER_NOTIFICATION_PHONE, baseName: "", basePhone: "", vehicleId: "", odometer: "", states: {}, notes: "" };
@@ -195,11 +202,10 @@ function showScreen(name) {
 
 function renderStart() {
   const select = $("#vehicleSelect");
-  const rememberedDriver = localStorage.getItem("checkfrota-driver") || "";
   const rememberedDriverRegistration = localStorage.getItem("checkfrota-driver-registration") || "";
   const rememberedBase = localStorage.getItem("checkfrota-base") || "";
-  if (!$("#driverName").value) $("#driverName").value = rememberedDriver;
   if (!$("#driverRegistration").value) $("#driverRegistration").value = rememberedDriverRegistration;
+  lookupDriverRegistration();
   if (!$("#baseSelect").value) $("#baseSelect").value = rememberedBase;
   select.innerHTML = `<option value="">Selecione o veículo</option>${data.vehicles.map((vehicle) => `<option value="${vehicle.id}">Prefixo ${esc(vehicle.prefix || "—")} · ${esc(vehicle.plate)} · ${esc(vehicle.model || vehicle.type)}${vehicle.base ? ` · ${esc(vehicle.base)}` : ""}</option>`).join("")}`;
   if (current.vehicleId && vehicleById(current.vehicleId)) select.value = current.vehicleId;
@@ -214,6 +220,31 @@ function renderStart() {
   $("#dailyDone").textContent = todaysInspections.length;
   $("#openIssues").textContent = data.issues.filter((issue) => issue.status === "aberta").length;
 }
+function lookupDriverRegistration() {
+  const registrationInput = $("#driverRegistration");
+  const nameInput = $("#driverName");
+  const hint = $("#driverLookupHint");
+  if (!registrationInput || !nameInput || !hint) return null;
+  const registration = registrationInput.value.replace(/\D/g, "");
+  if (!registration) {
+    nameInput.value = "";
+    hint.textContent = "Digite a matrícula para localizar o nome do motorista.";
+    hint.className = "helper";
+    return null;
+  }
+  const driver = driverByRegistration(registration);
+  if (!driver) {
+    nameInput.value = "";
+    hint.textContent = "Matrícula não cadastrada. Procure a Gestão.";
+    hint.className = "helper warning";
+    return null;
+  }
+  registrationInput.value = driver.registration;
+  nameInput.value = driver.name;
+  hint.textContent = `Motorista localizado: ${driver.name}.`;
+  hint.className = "helper ok";
+  return driver;
+}
 function renderBasePhone() { const base = $("#baseSelect").value; const phone = BASES[base] || ""; const formatted = phone.replace(/^55(\d{2})(\d{5})(\d{4})$/, "($1) $2-$3"); $("#basePhone").textContent = base ? `Telefone da Base ${base}: ${formatted}` : "Selecione a base para assumir o telefone de envio."; }
 function renderVehicleOwner() {
   const vehicle = vehicleById($("#vehicleSelect").value);
@@ -221,16 +252,16 @@ function renderVehicleOwner() {
 }
 
 function beginChecklist() {
-  const driver = $("#driverName").value.trim();
-  const driverRegistration = $("#driverRegistration").value.trim();
+  const registeredDriver = lookupDriverRegistration();
+  const driver = registeredDriver?.name || "";
+  const driverRegistration = registeredDriver?.registration || "";
   const driverEmail = EMAIL_COPY_RECIPIENT;
   const driverPhone = DRIVER_NOTIFICATION_PHONE;
   const baseName = $("#baseSelect").value;
   const basePhone = BASES[baseName] || "";
   const vehicleId = $("#vehicleSelect").value;
   const odometer = Number($("#odometer").value);
-  if (!driver) return alert("Informe seu nome antes de iniciar.");
-  if (!driverRegistration) return alert("Informe sua matrícula antes de iniciar.");
+  if (!driverRegistration) return alert("Digite uma matrícula cadastrada antes de iniciar.");
   if (!vehicleId) return alert("Selecione o veículo que será utilizado.");
   if (!basePhone) return alert("Selecione a base responsável pela aprovação.");
   if (!Number.isFinite(odometer) || odometer < 0) return alert("Informe a quilometragem atual do veículo.");
@@ -402,7 +433,7 @@ function renderControl() {
   $("#seriousCount").textContent = open.filter((issue) => issue.severity === "Grave").length;
   const since = Date.now() - 7 * 24 * 60 * 60 * 1000;
   $("#weekChecks").textContent = data.inspections.filter((inspection) => new Date(inspection.createdAt).getTime() >= since).length;
-  renderIssues(); renderReports(); renderHistory(); renderVehicles();
+  renderIssues(); renderReports(); renderHistory(); renderVehicles(); renderDrivers();
   renderLeaderInstallTarget();
   renderDailyChecklistAlert();
   renderStorageIndicator();
@@ -567,6 +598,13 @@ function renderVehicles() {
   const panel = $("#vehiclesPanel");
   const cards = data.vehicles.map((vehicle) => `<article class="vehicle-card"><div><h3>Prefixo ${esc(vehicle.prefix || "—")} · ${esc(vehicle.plate)} <span class="vehicle-label">· ${esc(vehicle.model || vehicle.type)}</span></h3><p>${esc(vehicle.ownerName)}${vehicle.manager ? ` · Gestor: ${esc(vehicle.manager)}` : ""}${vehicle.base ? ` · Base: ${esc(vehicle.base)}` : ""}${vehicle.ownerPhone ? ` · Tel.: ${esc(formatPhone(vehicle.ownerPhone))}` : ""}${vehicle.contract ? ` · Contrato: ${esc(vehicle.contract)}` : ""}${vehicle.odometer !== "" ? ` · ${esc(vehicle.odometer)} km` : ""}</p></div><div class="issue-actions"><button class="small-button" data-vehicle-history="${vehicle.id}">${selectedVehicleHistoryId === vehicle.id ? "Fechar ficha" : "Ver ficha"}</button><button class="small-button" data-edit-vehicle="${vehicle.id}">Editar</button><button class="small-button danger-button" data-delete-vehicle="${vehicle.id}">Excluir</button></div>${selectedVehicleHistoryId === vehicle.id ? vehicleHistoryMarkup(vehicle) : ""}</article>`).join("");
   panel.innerHTML = `<div class="section-action"><h3>Veículos cadastrados</h3><div class="vehicle-actions"><button class="restore-button" id="restoreFleet">↺ Restaurar frota</button><button class="add-button" id="newVehicle">+ Cadastrar</button></div></div>${cards}`;
+}
+function renderDrivers() {
+  const panel = $("#driversPanel");
+  if (!panel) return;
+  const registered = [...DRIVER_REGISTRY].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  const missing = driversMissingRegistration().sort((a, b) => a.localeCompare(b, "pt-BR"));
+  panel.innerHTML = `<section class="driver-registry"><div class="section-action"><div><h3>Banco de motoristas</h3><p>Digite a matrícula no aplicativo para preencher o nome automaticamente.</p></div><span class="chip ok">${registered.length} cadastrados</span></div><div class="driver-grid">${registered.map((driver) => `<article class="driver-row"><b>${esc(driver.name)}</b><span>Matrícula ${esc(driver.registration)}</span></article>`).join("")}</div></section><section class="missing-drivers"><div class="section-action"><div><h3>Motoristas sem matrícula</h3><p>Relação identificada na primeira tabela e ainda sem vínculo na segunda.</p></div><span class="chip grave">${missing.length} pendentes</span></div>${missing.length ? `<ul>${missing.map((name) => `<li>${esc(name)}</li>`).join("")}</ul>` : "<p>Todos os motoristas possuem matrícula cadastrada.</p>"}</section>`;
 }
 function openVehicleDialog(id = "") {
   const vehicle = vehicleById(id);
@@ -756,6 +794,7 @@ document.addEventListener("click", (event) => {
 });
 $("#vehicleSelect").addEventListener("change", renderVehicleOwner);
 $("#baseSelect").addEventListener("change", renderBasePhone);
+$("#driverRegistration")?.addEventListener("input", lookupDriverRegistration);
 $("#leaderInstallBase")?.addEventListener("change", renderLeaderInstallTarget);
 $("#dismissInstallBanner").addEventListener("click", dismissInstallBanner);
 $("#issueForm").addEventListener("submit", (event) => { event.preventDefault(); saveIssue(); });
@@ -764,7 +803,7 @@ $("#settingsForm").addEventListener("submit", (event) => { event.preventDefault(
 $("#maintenanceForm").addEventListener("submit", (event) => { event.preventDefault(); saveMaintenance(); });
 $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").forEach((button) => button.classList.toggle("active", button === tab)); $$(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab.dataset.tab}Panel`)); }));
 
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=88").catch(() => {}));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=89").catch(() => {}));
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
 window.addEventListener("appinstalled", () => { document.body.classList.add("app-installed"); $("#installBanner").hidden = true; });
 if (isInstalled()) document.body.classList.add("app-installed"); else window.addEventListener("load", showInstallBanner);
