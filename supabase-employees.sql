@@ -18,9 +18,11 @@ on public.fleet_employees for select
 using (active = true);
 
 drop policy if exists "Gestão administra colaboradores" on public.fleet_employees;
-create policy "Gestão administra colaboradores"
+drop policy if exists "Administrador Master administra colaboradores" on public.fleet_employees;
+create policy "Administrador Master administra colaboradores"
 on public.fleet_employees for all to authenticated
-using (true) with check (true);
+using (lower(coalesce(auth.jwt() ->> 'email', '')) = 'luciano.silva@urbam.com.br')
+with check (lower(coalesce(auth.jwt() ->> 'email', '')) = 'luciano.silva@urbam.com.br');
 
 insert into public.fleet_employees (registration, name, role, active) values
   ('18593', 'JULIO CESAR VIEIRA DA SILVA', 'Engenheiro civil', true),
