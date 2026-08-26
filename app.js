@@ -15,6 +15,7 @@ const CHECKLIST = [
   ["kit", "Triângulo, macaco e extintor", "Segurança"],
 ].map(([id, name, category]) => ({ id, name, category }));
 const BASES = { Vertical: "5512981567218", Abrigo: "5512997884887", Horizontal: "5512988400697" };
+const LEADER_BASE_LABELS = { Vertical: "Base Vertical / Segurança / Elétrica", Horizontal: "Base Horizontal", Abrigo: "Base Abrigo / Manutenção / Linha Verde / Lavagem" };
 const DRIVER_NOTIFICATION_PHONE = "5512988400316";
 const EMAIL_AUTOMATION_URL = "https://script.google.com/macros/s/AKfycbyfdwx76UkQcv2fz1HXLERZrcVMfW1iaNvFALmFET1kIBBeXAQVvkH89iviTDxBCQOA/exec";
 const MAINTENANCE_GROUP_PHONE = "5512996181645";
@@ -388,6 +389,21 @@ function renderControl() {
   const since = Date.now() - 7 * 24 * 60 * 60 * 1000;
   $("#weekChecks").textContent = data.inspections.filter((inspection) => new Date(inspection.createdAt).getTime() >= since).length;
   renderIssues(); renderReports(); renderHistory(); renderVehicles();
+  renderLeaderInstallTarget();
+}
+function renderLeaderInstallTarget() {
+  const select = $("#leaderInstallBase"); const hint = $("#leaderInstallHint");
+  if (!select || !hint) return;
+  const base = select.value; const phone = BASES[base];
+  hint.textContent = phone ? `O link será enviado para ${LEADER_BASE_LABELS[base] || `Base ${base}`}: ${formatPhone(phone)}.` : "Escolha a base para conferir o número que receberá o link.";
+}
+function sendLeaderInstall() {
+  const base = $("#leaderInstallBase")?.value; const phone = BASES[base];
+  if (!phone) return alert("Selecione Base Vertical, Base Horizontal ou Base Abrigo.");
+  const label = LEADER_BASE_LABELS[base] || `Base ${base}`;
+  const link = `https://4lves-dev.github.io/checkfrota/instalar-lider.html?v=75&base=${encodeURIComponent(base)}`;
+  const message = `*CHECKFROTA — APLICATIVO DA LIDERANÇA*\n\nOlá, ${label}.\n\nEste é o link de instalação do painel da liderança desta base:\n${link}\n\nApós instalar, utilize o aplicativo para consultar as ocorrências e registrar a aprovação ou recusa.`;
+  window.open(whatsappLink(phone, message), "_blank", "noopener");
 }
 function empty() { return $("#emptyStateTemplate").content.cloneNode(true); }
 function maintenanceOf(issue) { return { status: "Pendente", scheduledAt: "", provider: "", feedback: "", ...issue.maintenance }; }
@@ -616,6 +632,7 @@ document.addEventListener("click", (event) => {
   if (target.dataset.editVehicle) openVehicleDialog(target.dataset.editVehicle);
   if (target.dataset.deleteVehicle) deleteVehicle(target.dataset.deleteVehicle);
   if (target.id === "restoreFleet") void restoreFleet();
+  if (target.id === "sendLeaderInstall") sendLeaderInstall();
   if (target.dataset.viewPhoto) void openIssuePhoto(target.dataset.viewPhoto);
   if (target.dataset.managerDispatch) void dispatchManagerMaintenance(target.dataset.managerDispatch);
   if (target.dataset.copyManagerMessage) void copyManagerMaintenanceMessage(target.dataset.copyManagerMessage);
@@ -628,6 +645,7 @@ document.addEventListener("click", (event) => {
 });
 $("#vehicleSelect").addEventListener("change", renderVehicleOwner);
 $("#baseSelect").addEventListener("change", renderBasePhone);
+$("#leaderInstallBase")?.addEventListener("change", renderLeaderInstallTarget);
 $("#dismissInstallBanner").addEventListener("click", dismissInstallBanner);
 $("#issueForm").addEventListener("submit", (event) => { event.preventDefault(); saveIssue(); });
 $("#vehicleForm").addEventListener("submit", (event) => { event.preventDefault(); saveVehicle(); });
