@@ -1,7 +1,7 @@
 {
-  "name": "CheckFrota Líder",
-  "short_name": "Líder Frota",
-  "start_url": "./lider.html",
+  "name": "URBAM Frota Líder",
+  "short_name": "Líder URBAM",
+  "start_url": "./lider.html?v=102",
   "display": "standalone",
   "background_color": "#eef4f7",
   "theme_color": "#0f2a43",
