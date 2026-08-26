@@ -1,9 +1,9 @@
 {
   "id": "/checkfrota/gestao",
-  "name": "CheckFrota Gestão",
-  "short_name": "Gestão Frota",
+  "name": "URBAM Frota Gestão",
+  "short_name": "Gestão URBAM",
   "description": "Painel de gestão de chamados e frota.",
-  "start_url": "/checkfrota/gestao.html?v=47",
+  "start_url": "/checkfrota/gestao.html?v=102",
   "display": "standalone",
   "background_color": "#eef4f7",
   "theme_color": "#0f2a43",
