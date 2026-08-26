@@ -1,5 +1,5 @@
-Warning: truncated output (original token count: 25185)
-Total output lines: 989
+Warning: truncated output (original token count: 25357)
+Total output lines: 1000
 
 /* URBAM Frota - MVP local-first. Dados ficam neste navegador até uma integração ser configurada. */
 const STORAGE_KEY = "checkfrota-v1";
@@ -249,16 +249,7 @@ function startReturnedIssuesPolling() {
   if (returnedIssuesTimer) return;
   returnedIssuesTimer = window.setInterval(() => void loadReturnedIssuesForCollaborator(), 60 * 1000);
 }
-async function reopenReturnedIssue(issueId) {
-  const issue = returnedIssues.find((entry) => entry.id === issueId); if (!issue) return;
-  let inspection = data.inspections.find((entry) => entry.id === issue.inspectionId);
-  if (!inspection && CLOUD?.url && issue.inspectionId) {
-    try {
-      const rows = await cloudRequest(`/rest/v1/fleet_inspections?select=data&id=eq.${encodeURIComponent(issue.inspectionId)}&limit=1`);
-      inspection = rows?.[0]?.data || null;
-      if (inspection && !data.inspections.some((entry) => entry.id === inspection.id)) { data.inspections.unshift(inspection); saveData(); }
-    } catch (error) { console.warn("Não foi possível recuperar a inspeção original", error); }
-  }
+function openReturnedChecklist(issue, inspection = null) {
   const vehicle = vehicleById(inspection?.vehicleId || issue.vehicleId) || data.vehicles.find((entry) => entry.prefix === (inspection?.vehiclePrefix || issue.vehiclePrefix) || entry.plate === (inspection?.vehiclePlate || issue.vehiclePlate));
   const savedItems = Array.isArray(inspection?.items) ? inspection.items : [];
   const states = Object.fromEntries(CHECKLIST.map((item) => {
@@ -274,10 +265,30 @@ async function reopenReturnedIssue(issueId) {
   };
   $("#driverRegistration").value = current.driverRegistration; $("#driverPhone").value = formatPhone(current.driverPhone); $("#baseSelect").value = current.baseName; $("#vehicleSelect").value = current.vehicleId; $("#odometer").value = current.odometer;
   lookupDriverRegistration(); renderBasePhone(); renderVehicleOwner();
-  if (!vehicle) return alert("Não foi possível localizar o veículo deste chamado. Selecione-o na tela inicial e tente novamente.");
+  if (!vehicle) return false;
   $("#checklistVehicle").textContent = `Prefixo ${vehicle.prefix || "—"} · ${vehicle.plate} · ${vehicle.model || vehicle.type}`;
   renderChecklist(); showScreen("checklist");
-  alert(inspection ? "Checklist original restaurado. Corrija o que for necessário e envie a nova versão." : "A ocorrência devolvida foi restaurada. Complete os demais itens do checklist e envie a nova versão.");
+  return true;
+}
+async function reopenReturnedIssue(issueId) {
+  const issue = returnedIssues.find((entry) => entry.id === issueId); if (!issue) return;
+  let inspection = data.inspections.find((entry) => entry.id === issue.inspectionId) || null;
+  // Nunca espere a rede para abrir a correção. A ocorrência fica disponível
+  // imediatamente; o formulário completo é aplicado assim que chegar.
+  if (!openReturnedChecklist(issue, inspection)) return alert("Não foi possível localizar o veículo deste chamado. Selecione-o na tela inicial e tente novamente.");
+  if (inspection) return alert("Checklist original restaurado. Corrija o que for necessário e envie a nova versão.");
+  if (!CLOUD?.url || !issue.inspectionId) return alert("A ocorrência devolvida foi restaurada. Complete os demais itens do checklist e envie a nova versão.");
+  try {
+    const rows = await cloudRequest(`/rest/v1/fleet_inspections?select=data&id=eq.${encodeURIComponent(issue.inspectionId)}&limit=1`);
+    inspection = rows?.[0]?.data || null;
+    if (!inspection) return alert("A ocorrência devolvida foi restaurada. Complete os demais itens do checklist e envie a nova versão.");
+    if (!data.inspections.some((entry) => entry.id === inspection.id)) { data.inspections.unshift(inspection); saveData(); }
+    openReturnedChecklist(issue, inspection);
+    alert("Checklist original restaurado. Corrija o que for necessário e envie a nova versão.");
+  } catch (error) {
+    console.warn("Não foi possível recuperar a inspeção original", error);
+    alert("A ocorrência devolvida foi restaurada. Complete os demais itens do checklist e envie a nova versão.");
+  }
 }
 function mergeFleetVehicles(cloudVehicles = []) {
   // O banco pode conter somente veículos criados manualmente. Ele nunca deve
@@ -418,14 +429,7 @@ function beginChecklist() {
 function renderChecklist() {
   const items = $("#checklistItems");
   items.innerHTML = CHECKLIST.map((item) => {
-    const state = current.states[item.id] || { status: "pending" };
-    const issueClass = state.status === "issue" ? "has-issue" : "";
-    const issueHint = state.status === "issue" ? `<small class="chip ${state.issue.severity.toLowerCase()}">${state.issue.severity}</small>` : "";
-    return `<article class="check-item ${issueClass}">
-      <div><span class="check-name">${esc(item.name)}</span><span class="check-category">${esc(item.category)} ${issueHint}</span></div>
-      <div class="check-controls">
-        <button class="state-button ok ${state.status === "ok" ? "active" : ""}" data-state="ok" data-item="${item.id}" aria-label="${esc(item.name)} está em ordem" title="Em ordem">✓</button>
-        <button …5185 tokens truncated…e] || `Base ${base}`}: ${formatPhone(phone)}.` : "Escolha a base para conferir o número que receberá o link.";
+    const state = current.states[i…5357 tokens truncated…e] || `Base ${base}`}: ${formatPhone(phone)}.` : "Escolha a base para conferir o número que receberá o link.";
 }
 function sendLeaderInstall() {
   const base = $("#leaderInstallBase")?.value; const phone = BASES[base];
@@ -757,7 +761,7 @@ $("#settingsForm").addEventListener("submit", (event) => { event.preventDefault(
 $("#maintenanceForm").addEventListener("submit", (event) => { event.preventDefault(); saveMaintenance(); });
 $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").forEach((button) => button.classList.toggle("active", button === tab)); $$(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab.dataset.tab}Panel`)); }));
 
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=108").catch(() => {}));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=110").catch(() => {}));
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
 window.addEventListener("appinstalled", () => { document.body.classList.add("app-installed"); $("#installBanner").hidden = true; });
 if (isInstalled()) document.body.classList.add("app-installed"); else window.addEventListener("load", showInstallBanner);
