@@ -49,6 +49,8 @@
             <p class="helper" id="driverLookupHint">Digite a matrícula para localizar o nome do motorista.</p>
             <label for="driverName">Nome do motorista</label>
             <input id="driverName" type="text" placeholder="O nome será preenchido pela matrícula" autocomplete="name" readonly />
+            <label for="driverRole">Função</label>
+            <input id="driverRole" type="text" placeholder="A função será preenchida pela matrícula" readonly />
             <div class="fixed-email-copy"><b>Cópia automática do checklist</b><span>urbamfrotabylucthi@gmail.com</span><small>O formulário será enviado automaticamente para este e-mail após a conclusão.</small></div>
             <label for="baseSelect">Base responsável pela aprovação</label>
             <select id="baseSelect"><option value="">Selecione a base</option><option value="Vertical">Base Vertical / Segurança / Elétrica — (12) 98156-7218</option><option value="Abrigo">Base Abrigo / Manutenção / Linha Verde / Lavagem — (12) 99788-4887</option><option value="Horizontal">Base Horizontal — (12) 98840-0697</option></select>
@@ -244,7 +246,7 @@
     <template id="emptyStateTemplate"><div class="empty-state"><span>⌁</span><p>Nenhum registro por aqui.</p></div></template>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="supabase-config.js?v=1"></script>
-    <script src="app.js?v=92"></script>
+    <script src="app.js?v=93"></script>
   </body>
 </html>
 
