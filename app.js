@@ -18,6 +18,7 @@ const BASES = { Vertical: "5512981567218", Abrigo: "5512997884887", Horizontal: 
 const LEADER_BASE_LABELS = { Vertical: "Base Vertical / Segurança / Elétrica", Horizontal: "Base Horizontal", Abrigo: "Base Abrigo / Manutenção / Linha Verde / Lavagem" };
 const DRIVER_NOTIFICATION_PHONE = "5512988400316";
 const EMAIL_AUTOMATION_URL = "https://script.google.com/macros/s/AKfycbyfdwx76UkQcv2fz1HXLERZrcVMfW1iaNvFALmFET1kIBBeXAQVvkH89iviTDxBCQOA/exec";
+const EMAIL_COPY_RECIPIENT = "coplacsiv@gmail.com";
 const MAINTENANCE_GROUP_PHONE = "5512996181645";
 
 const initialData = {
@@ -73,7 +74,7 @@ const BASE_BY_PREFIX = {
 function withFleetResponsible(vehicle) { return { ...vehicle, base: BASE_BY_PREFIX[vehicle.prefix] || vehicle.base || "", ownerName: RESPONSIBLES_BY_PREFIX[vehicle.prefix] || vehicle.ownerName, ownerPhone: OWNER_PHONE_BY_PREFIX[vehicle.prefix] || vehicle.ownerPhone }; }
 
 let data = loadData();
-let current = { driver: "", driverEmail: "", driverPhone: DRIVER_NOTIFICATION_PHONE, baseName: "", basePhone: "", vehicleId: "", odometer: "", states: {}, notes: "" };
+let current = { driver: "", driverEmail: EMAIL_COPY_RECIPIENT, driverPhone: DRIVER_NOTIFICATION_PHONE, baseName: "", basePhone: "", vehicleId: "", odometer: "", states: {}, notes: "" };
 let issueDraft = { itemId: null, severity: "Leve" };
 let deferredInstallPrompt = null;
 
@@ -189,10 +190,8 @@ function showScreen(name) {
 function renderStart() {
   const select = $("#vehicleSelect");
   const rememberedDriver = localStorage.getItem("checkfrota-driver") || "";
-  const rememberedDriverEmail = localStorage.getItem("checkfrota-driver-email") || "";
   const rememberedBase = localStorage.getItem("checkfrota-base") || "";
   if (!$("#driverName").value) $("#driverName").value = rememberedDriver;
-  if (!$("#driverEmail").value) $("#driverEmail").value = rememberedDriverEmail;
   if (!$("#baseSelect").value) $("#baseSelect").value = rememberedBase;
   select.innerHTML = `<option value="">Selecione o veículo</option>${data.vehicles.map((vehicle) => `<option value="${vehicle.id}">Prefixo ${esc(vehicle.prefix || "—")} · ${esc(vehicle.plate)} · ${esc(vehicle.model || vehicle.type)}${vehicle.base ? ` · ${esc(vehicle.base)}` : ""}</option>`).join("")}`;
   if (current.vehicleId && vehicleById(current.vehicleId)) select.value = current.vehicleId;
@@ -210,20 +209,18 @@ function renderVehicleOwner() {
 
 function beginChecklist() {
   const driver = $("#driverName").value.trim();
-  const driverEmail = $("#driverEmail").value.trim();
+  const driverEmail = EMAIL_COPY_RECIPIENT;
   const driverPhone = DRIVER_NOTIFICATION_PHONE;
   const baseName = $("#baseSelect").value;
   const basePhone = BASES[baseName] || "";
   const vehicleId = $("#vehicleSelect").value;
   const odometer = Number($("#odometer").value);
   if (!driver) return alert("Informe seu nome antes de iniciar.");
-  if (driverEmail && !$("#driverEmail").checkValidity()) return alert("Informe um e-mail válido ou deixe o campo em branco.");
   if (!vehicleId) return alert("Selecione o veículo que será utilizado.");
   if (!basePhone) return alert("Selecione a base responsável pela aprovação.");
   if (!Number.isFinite(odometer) || odometer < 0) return alert("Informe a quilometragem atual do veículo.");
   current = { driver, driverEmail, driverPhone, baseName, basePhone, vehicleId, odometer, states: Object.fromEntries(CHECKLIST.map((item) => [item.id, { status: "pending" }])), notes: "" };
   localStorage.setItem("checkfrota-driver", driver);
-  localStorage.setItem("checkfrota-driver-email", driverEmail);
   localStorage.setItem("checkfrota-base", baseName);
   const vehicle = vehicleById(vehicleId);
   $("#checklistVehicle").textContent = `Prefixo ${vehicle.prefix || "—"} · ${vehicle.plate} · ${vehicle.model || vehicle.type}`;
