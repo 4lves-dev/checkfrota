@@ -12,7 +12,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icons/icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=86" />
+    <link rel="stylesheet" href="styles.css?v=87" />
     <style>#installBanner[hidden] { display: none !important; }</style>
     <title>CheckFrota</title>
   </head>
@@ -133,6 +133,7 @@
             <button class="small-button whatsapp leader-install-button" id="sendLeaderInstall" type="button">↗ Enviar link de instalação</button>
           </section>
           <div class="stat-grid"><article><span id="fleetCount">0</span><small>veículos</small></article><article class="alert"><span id="seriousCount">0</span><small>graves</small></article><article><span id="weekChecks">0</span><small>checklists (7 dias)</small></article></div>
+          <section class="storage-indicator" id="storageIndicator" aria-live="polite"></section>
           <section class="daily-checklist-alert" id="dailyChecklistAlert" hidden aria-live="polite"></section>
           <section class="notification-setting" aria-labelledby="notificationTitle"><div><b id="notificationTitle">Notificação diária no computador</b><p id="notificationStatus">Ative para receber o aviso de veículos sem checklist após as 08h.</p></div><button type="button" class="small-button" id="enableDailyNotifications">🔔 Ativar notificações</button></section>
           <div class="tabs" role="tablist"><button class="tab active" data-tab="issues">Ocorrências</button><button class="tab" data-tab="reports">Relatório</button><button class="tab" data-tab="history">Histórico</button><button class="tab" data-tab="vehicles">Veículos</button></div>
@@ -213,11 +214,17 @@
         <input type="hidden" id="maintenanceIssueId" />
         <p class="dialog-copy" id="maintenanceIssueSummary"></p>
         <label for="maintenanceStatus">Situação da manutenção</label>
-        <select id="maintenanceStatus"><option>Pendente</option><option>Agendada</option><option>Em manutenção</option><option>Concluída</option></select>
+        <select id="maintenanceStatus"><option>Pendente</option><option>Aguardando aprovação</option><option>Agendada</option><option>Em manutenção</option><option>Aguardando peça</option><option>Concluída</option><option>Cancelada</option></select>
         <label for="maintenanceScheduledAt">Data e horário agendados <em>opcional</em></label>
         <input id="maintenanceScheduledAt" type="datetime-local" />
         <label for="maintenanceProvider">Oficina / responsável <em>opcional</em></label>
         <input id="maintenanceProvider" placeholder="Ex.: Oficina Central" />
+        <label for="maintenanceService">Serviço executado / previsto <em>opcional</em></label>
+        <textarea id="maintenanceService" placeholder="Ex.: troca de pneu dianteiro e alinhamento."></textarea>
+        <label for="maintenanceCost">Custo da manutenção (R$) <em>opcional</em></label>
+        <input id="maintenanceCost" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Ex.: 350,00" />
+        <label for="maintenanceReturnAt">Previsão de retorno <em>opcional</em></label>
+        <input id="maintenanceReturnAt" type="datetime-local" />
         <label for="maintenanceFeedback">Retorno para ciência do grupo de manutenção</label>
         <textarea id="maintenanceFeedback" placeholder="Ex.: manutenção confirmada para terça, às 08h."></textarea>
         <button type="button" class="secondary-button" id="sendMaintenanceUpdate">Enviar retorno de agendamento ao grupo</button>
@@ -236,7 +243,7 @@
     <template id="emptyStateTemplate"><div class="empty-state"><span>⌁</span><p>Nenhum registro por aqui.</p></div></template>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="supabase-config.js?v=1"></script>
-    <script src="app.js?v=86"></script>
+    <script src="app.js?v=87"></script>
   </body>
 </html>
 
