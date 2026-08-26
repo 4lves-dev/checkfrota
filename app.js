@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 22327)
-Total output lines: 848
-
 /* URBAM Frota - MVP local-first. Dados ficam neste navegador até uma integração ser configurada. */
 const STORAGE_KEY = "checkfrota-v1";
 const CHECKLIST = [
@@ -99,7 +96,14 @@ const EMPLOYEE_ROLE_BY_REGISTRATION = {
 };
 const DRIVER_LIST_SOURCE = ["ADENILSON SILVA PEREIRA", "ALEIXO DE OLIVEIRA CEZAR", "ANDRE DE JESUS COUTINHO", "ANDRE PEREIRA DO CARMO", "CARLOS ALEXANDRE APARECIDO RAMOS", "CARLOS ROBERTO DE MORAIS FILHO", "CLAUDINEI FERNANDES TEIXEIRA", "DANIEL DOS SANTOS DE SA", "EDSON DO AMARAL DE CARVALHO", "FRANCISCO VILAMAR FERNANDES DA SILVA", "JOAO PAULO DA ROCHA", "JOAO SILVERIO DA SILVA", "JOSE RODOLFO TELES", "LUIS ANTONIO VICHI", "MARCO ALEXANDRE DE OLIVEIRA", "RENATO TARTAGLIONE FONSECA", "RODOLFO APARECIDO DA SILVA", "ROMEU CLEMENTE DE OLIVEIRA", "SAULO DE CARVALHO SILVA", "TIAGO APARECIDO DE MORAES", "VALNEI APARECIDO LIMA"];
 const driverNameKey = (name = "") => String(name).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/\s+/g, " ").trim();
-const driverByRegistration = (registration = "") => { const driver = DRIVER_REGISTRY.find((entry) => entry.registration === String(registration).replace(/\D/g, "")); return driver ? { ...driver, role: EMPLOYEE_ROLE_BY_REGISTRATION[driver.registration] || "Funcionário" } : null; };
+let employeeDatabase = [];
+const driverByRegistration = (registration = "") => {
+  const normalized = String(registration).replace(/\D/g, "");
+  const cloudEmployee = employeeDatabase.find((entry) => String(entry.registration).replace(/\D/g, "") === normalized);
+  if (cloudEmployee) return { registration: String(cloudEmployee.registration), name: cloudEmployee.name, role: cloudEmployee.role || "Funcionário" };
+  const driver = DRIVER_REGISTRY.find((entry) => entry.registration === normalized);
+  return driver ? { ...driver, role: EMPLOYEE_ROLE_BY_REGISTRATION[driver.registration] || "Funcionário" } : null;
+};
 const driversMissingRegistration = () => DRIVER_LIST_SOURCE.filter((name) => !DRIVER_REGISTRY.some((driver) => driverNameKey(driver.name) === driverNameKey(name)));
 
 let data = loadData();
@@ -133,6 +137,19 @@ async function cloudSave(table, row) {
     throw new Error(`Banco de dados: ${response.status}${detail ? ` — ${detail}` : ""}`);
   }
   return true;
+}
+async function loadEmployeeDatabase() {
+  if (!CLOUD?.url || employeeDatabase.length) return;
+  try {
+    const rows = await cloudRequest("/rest/v1/fleet_employees?select=registration,name,role,active&active=is.true&order=name.asc");
+    if (!Array.isArray(rows) || !rows.length) return;
+    employeeDatabase = rows;
+    lookupDriverRegistration();
+    console.info(`Base de colaboradores sincronizada: ${rows.length} registro(s).`);
+  } catch (error) {
+    // A lista incorporada mantém a busca por matrícula funcionando até a tabela ser criada ou ficar disponível.
+    console.warn("Base de colaboradores indisponível; usando lista local.", error);
+  }
 }
 async function cloudUpdateIssue(issue) {
   if (!CLOUD?.url || !issue?.id) return;
@@ -219,6 +236,7 @@ function showScreen(name) {
 }
 
 function renderStart() {
+  void loadEmployeeDatabase();
   const select = $("#vehicleSelect");
   const rememberedDriverRegistration = localStorage.getItem("checkfrota-driver-registration") || "";
   const rememberedDriverPhone = localStorage.getItem("checkfrota-driver-phone") || "";
@@ -424,7 +442,92 @@ function buildWhatsAppMessage(vehicle, issues, inspection) {
 function whatsappLink(phone, message) { return `https://wa.me/${phoneOnly(phone)}?text=${encodeURIComponent(message)}`; }
 async function approvalUrl(vehicle, issues) {
   const first = issues[0] || {};
-  const problem = …2327 tokens truncated…fyDailyChecklistIfNeeded(); }
+  const problem = issues.map((issue) => `${issue.itemName || issue.item?.name}: ${issue.description}`).join(" | ");
+  const params = new URLSearchParams({
+    id: `MAN-${String(first.id || Date.now()).replaceAll("-", "").slice(-8)}`, issueId: first.id || "",
+    prefix: vehicle.prefix || "", type: vehicle.model || vehicle.type, plate: vehicle.plate,
+    driver: first.driver || current.driver || "", driverRegistration: first.driverRegistration || current.driverRegistration || "", driverPhone: first.driverPhone || current.driverPhone || "",
+    leaderPhone: first.basePhone || current.basePhone || data.settings.leaderPhone || "", maintenancePhone: data.settings.maintenancePhone || "", ownerPhone: first.ownerPhone || vehicle.ownerPhone || "", ownerName: first.ownerName || vehicle.ownerName || "",
+    km: String(first.odometer ?? vehicle.odometer ?? ""), baseName: first.baseName || current.baseName || "Não informada", priority: highestSeverity(issues), location: "", problem,
+  });
+  const photoUrl = await issuePhotoLink(first);
+  if (photoUrl) params.set("photoUrl", photoUrl);
+  if (first.photoName) params.set("photoName", first.photoName);
+  return `${location.origin}${location.pathname.replace(/[^/]*$/, "aprovacao.html")}?v=98&${params.toString()}`;
+}
+async function showCompletion(inspection, vehicle, issues, sendResult) {
+  const severe = issues.some((issue) => issue.severity === "Grave");
+  $("#successTitle").textContent = issues.length ? (severe ? "Veículo com bloqueio de deslocamento." : "Ocorrência registrada.") : "Tudo certo para seguir.";
+  $("#successText").textContent = issues.length ? `O formulário foi salvo com ${issues.length} ocorrência(s). Confira o chamado abaixo; após enviar para a liderança, você pode voltar ao início. ${sendResult.sent ? "A integração de e-mail foi acionada." : "Configure a integração para o envio automático por e-mail."}` : "Checklist concluído e registrado no controle da frota.";
+  const form = $("#submittedForm");
+  const protocol = `MAN-${String(inspection.id || Date.now()).replaceAll("-", "").slice(-8).toUpperCase()}`;
+  const occurrenceRows = issues.length ? issues.map((issue) => `<article class="submitted-issue ${esc(issue.severity.toLowerCase())}"><div><b>${esc(issue.itemName)}</b><span class="chip ${esc(issue.severity.toLowerCase())}">${esc(issue.severity)}</span></div><p>${esc(issue.description)}</p>${issue.photoPath ? `<img src="${esc(publicIssuePhotoUrl(issue))}" alt="Foto da ocorrência ${esc(issue.itemName)}" loading="lazy">` : ""}</article>`).join("") : `<p class="form-empty">Nenhuma ocorrência informada.</p>`;
+  form.innerHTML = `<div class="form-top"><span class="form-mark">✓</span><div><small>CHECKFROTA · RESPOSTA ENVIADA</small><h2>Formulário de inspeção</h2></div></div><div class="form-protocol"><span>Protocolo</span><b>${esc(protocol)}</b></div><div class="form-fields"><div><span>Colaborador</span><b>${esc(inspection.driver)}</b></div>${inspection.driverRegistration ? `<div><span>Matrícula</span><b>${esc(inspection.driverRegistration)}</b></div>` : ""}${inspection.driverRole ? `<div><span>Função</span><b>${esc(inspection.driverRole)}</b></div>` : ""}<div><span>Base</span><b>${esc(inspection.baseName)}</b></div>${inspection.driverEmail ? `<div><span>Cópia para e-mail</span><b>${esc(inspection.driverEmail)}</b></div>` : ""}<div><span>Veículo</span><b>Prefixo ${esc(vehicle.prefix)} · ${esc(vehicle.plate)}</b></div><div><span>Modelo</span><b>${esc(vehicle.model || vehicle.type)}</b></div><div><span>Quilometragem</span><b>${esc(inspection.odometer)} km</b></div><div><span>Data e hora</span><b>${esc(dateTime(inspection.createdAt))}</b></div></div><div class="form-occurrences"><h3>Ocorrências relatadas</h3>${occurrenceRows}</div>${inspection.notes ? `<div class="form-notes"><span>Observação geral</span><p>${esc(inspection.notes)}</p></div>` : ""}`;
+  const actions = $("#dispatchActions");
+  if (!issues.length) { actions.innerHTML = ""; showScreen("success"); return; }
+  const buttons = [];
+  const approvalTarget = issues[0]?.basePhone || current.basePhone || data.settings.leaderPhone;
+  if (approvalTarget) {
+    const message = buildWhatsAppMessage(vehicle, issues, inspection);
+    const approvalMessage = `*APROVAÇÃO DE MANUTENÇÃO NECESSÁRIA*\n\n${message.replace(/\*/g, "")}\n\nAbra para verificar a foto, aprovar ou recusar:\n${await approvalUrl(vehicle, issues)}`;
+    buttons.push(`<a href="${whatsappLink(approvalTarget, approvalMessage)}" target="_blank" rel="noopener">Enviar para aprovação da liderança</a>`);
+  }
+  actions.innerHTML = buttons.join("");
+  showScreen("success");
+}
+
+function renderControl() {
+  const open = data.issues.filter((issue) => issue.status === "aberta");
+  $("#fleetCount").textContent = data.vehicles.length;
+  $("#seriousCount").textContent = open.filter((issue) => issue.severity === "Grave").length;
+  const since = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  $("#weekChecks").textContent = data.inspections.filter((inspection) => new Date(inspection.createdAt).getTime() >= since).length;
+  renderIssues(); renderReports(); renderHistory(); renderVehicles(); renderDrivers(); renderAuditLog();
+  renderLeaderInstallTarget();
+  renderDailyChecklistAlert();
+  renderStorageIndicator();
+  renderNotificationSettings();
+  startDailyChecklistNotifications();
+}
+function formatBytes(bytes = 0) { if (!bytes) return "0 MB"; const mb = bytes / (1024 * 1024); return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(mb >= 10 ? 0 : 1)} MB`; }
+function renderStorageIndicator() {
+  const panel = $("#storageIndicator"); if (!panel) return;
+  const photos = data.issues.filter((issue) => issue.photoPath || issue.photoUrl);
+  const bytes = photos.reduce((total, issue) => total + Number(issue.photoSize || 0), 0);
+  const ratio = Math.min(100, (bytes / (1024 * 1024 * 1024)) * 100);
+  panel.className = `storage-indicator ${ratio >= 80 ? "warning" : ""}`;
+  panel.innerHTML = `<div><b>Armazenamento de fotos</b><p>${photos.length} foto(s) registrada(s) · uso estimado: ${formatBytes(bytes)} de 1 GB.</p></div><div class="storage-progress" aria-label="Uso estimado de armazenamento"><i style="width:${ratio}%"></i></div><small>${ratio >= 80 ? "Atenção: faça backup e remova fotos antigas após confirmar o relatório." : "Este cálculo considera as fotos enviadas pelo CheckFrota."}</small>`;
+}
+function todayStart() { const value = new Date(); value.setHours(0, 0, 0, 0); return value.getTime(); }
+function vehiclesWithoutChecklistToday() {
+  const start = todayStart();
+  const completed = new Set(data.inspections.filter((inspection) => new Date(inspection.createdAt).getTime() >= start).map((inspection) => inspection.vehicleId));
+  return data.vehicles.filter((vehicle) => vehicle?.id && !completed.has(vehicle.id));
+}
+function renderDailyChecklistAlert() {
+  const panel = $("#dailyChecklistAlert"); if (!panel) return;
+  const hour = new Date().getHours();
+  if (hour < 8) { panel.hidden = true; return; }
+  const missing = vehiclesWithoutChecklistToday();
+  panel.hidden = false;
+  if (!missing.length) { panel.className = "daily-checklist-alert clear"; panel.innerHTML = `<b>✓ Checklist diário em dia</b><p>Todos os veículos cadastrados possuem checklist registrado hoje.</p>`; return; }
+  panel.className = "daily-checklist-alert";
+  panel.innerHTML = `<div><p class="eyebrow">ALERTA DIÁRIO · APÓS 08H</p><h2>${missing.length} veículo(s) sem checklist hoje</h2><p>Verifique os carros e caminhões abaixo antes da liberação.</p></div><ul>${missing.map((vehicle) => `<li>Prefixo ${esc(vehicle.prefix || "—")} · ${esc(vehicle.plate || "sem placa")} · ${esc(vehicle.model || vehicle.type || "Veículo")}</li>`).join("")}</ul><button type="button" class="small-button whatsapp" id="sendDailyChecklistAlert">Enviar alerta à gestora</button>`;
+}
+function notificationPermission() { return "Notification" in window ? Notification.permission : "unsupported"; }
+function renderNotificationSettings() {
+  const status = $("#notificationStatus"); const button = $("#enableDailyNotifications"); if (!status || !button) return;
+  const permission = notificationPermission();
+  if (permission === "granted") { status.textContent = "Ativa: o computador será avisado após as 08h caso existam veículos sem checklist."; button.textContent = "✓ Notificações ativas"; button.disabled = true; return; }
+  if (permission === "denied") { status.textContent = "As notificações foram bloqueadas neste navegador. Libere-as nas configurações do site para receber o alerta."; button.textContent = "Notificações bloqueadas"; button.disabled = true; return; }
+  if (permission === "unsupported") { status.textContent = "Este navegador não oferece notificações do sistema."; button.hidden = true; return; }
+  status.textContent = "Ative para receber o aviso de veículos sem checklist após as 08h."; button.textContent = "🔔 Ativar notificações"; button.disabled = false;
+}
+async function enableDailyNotifications() {
+  if (!("Notification" in window)) return alert("Este navegador não oferece notificações do sistema.");
+  const permission = await Notification.requestPermission();
+  renderNotificationSettings();
+  if (permission === "granted") { alert("Notificações ativadas neste computador."); notifyDailyChecklistIfNeeded(); }
 }
 function notifyDailyChecklistIfNeeded() {
   if (notificationPermission() !== "granted" || new Date().getHours() < 8) return;
@@ -755,7 +858,7 @@ $("#settingsForm").addEventListener("submit", (event) => { event.preventDefault(
 $("#maintenanceForm").addEventListener("submit", (event) => { event.preventDefault(); saveMaintenance(); });
 $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").forEach((button) => button.classList.toggle("active", button === tab)); $$(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab.dataset.tab}Panel`)); }));
 
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=102").catch(() => {}));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=103").catch(() => {}));
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
 window.addEventListener("appinstalled", () => { document.body.classList.add("app-installed"); $("#installBanner").hidden = true; });
 if (isInstalled()) document.body.classList.add("app-installed"); else window.addEventListener("load", showInstallBanner);
