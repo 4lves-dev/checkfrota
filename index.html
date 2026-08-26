@@ -12,7 +12,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icons/icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=90" />
+    <link rel="stylesheet" href="styles.css?v=99" />
     <style>#installBanner[hidden] { display: none !important; }</style>
     <title>CheckFrota</title>
   </head>
@@ -142,8 +142,8 @@
           <section class="storage-indicator" id="storageIndicator" aria-live="polite"></section>
           <section class="daily-checklist-alert" id="dailyChecklistAlert" hidden aria-live="polite"></section>
           <section class="notification-setting" aria-labelledby="notificationTitle"><div><b id="notificationTitle">Notificação diária no computador</b><p id="notificationStatus">Ative para receber o aviso de veículos sem checklist após as 08h.</p></div><button type="button" class="small-button" id="enableDailyNotifications">🔔 Ativar notificações</button></section>
-          <div class="tabs" role="tablist"><button class="tab active" data-tab="issues">Ocorrências</button><button class="tab" data-tab="reports">Relatório</button><button class="tab" data-tab="history">Histórico</button><button class="tab" data-tab="vehicles">Veículos</button><button class="tab" data-tab="drivers">Colaboradores</button></div>
-          <div id="issuesPanel" class="tab-panel active"></div><div id="reportsPanel" class="tab-panel"></div><div id="historyPanel" class="tab-panel"></div><div id="vehiclesPanel" class="tab-panel"></div><div id="driversPanel" class="tab-panel"></div>
+          <div class="tabs" role="tablist"><button class="tab active" data-tab="issues">Ocorrências</button><button class="tab" data-tab="reports">Relatório</button><button class="tab" data-tab="history">Histórico</button><button class="tab" data-tab="vehicles">Veículos</button><button class="tab" data-tab="drivers">Colaboradores</button><button class="tab" data-tab="audit">Auditoria</button></div>
+          <div id="issuesPanel" class="tab-panel active"></div><div id="reportsPanel" class="tab-panel"></div><div id="historyPanel" class="tab-panel"></div><div id="vehiclesPanel" class="tab-panel"></div><div id="driversPanel" class="tab-panel"></div><div id="auditPanel" class="tab-panel"></div>
         </section>
 
       </main>
@@ -249,7 +249,7 @@
     <template id="emptyStateTemplate"><div class="empty-state"><span>⌁</span><p>Nenhum registro por aqui.</p></div></template>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="supabase-config.js?v=1"></script>
-    <script src="app.js?v=98"></script>
+    <script src="app.js?v=99"></script>
   </body>
 </html>
 
