@@ -12,7 +12,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icons/icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=102" />
+    <link rel="stylesheet" href="styles.css?v=105" />
     <style>#installBanner[hidden] { display: none !important; }</style>
     <title>URBAM Frota</title>
   </head>
@@ -44,6 +44,8 @@
             <span class="install-card-arrow">›</span>
           </button>
 
+          <section id="returnNotifications" class="return-notifications" hidden aria-live="polite"></section>
+
           <div class="card driver-card">
             <label for="driverRegistration">Matrícula do colaborador</label>
             <input id="driverRegistration" type="text" inputmode="numeric" placeholder="Ex.: 12345" autocomplete="off" required />
@@ -54,7 +56,8 @@
             <input id="driverRole" type="text" placeholder="A função será preenchida pela matrícula" readonly />
             <label for="driverPhone">WhatsApp do colaborador</label>
             <input id="driverPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="Ex.: (12) 98888-7777" required />
-            <p class="helper">Este número será usado somente se a liderança devolver o chamado para retificação.</p>
+            <p class="helper">Este número identifica quem abriu o chamado e será usado para devoluções da liderança.</p>
+            <button type="button" class="small-button" id="enableReturnNotifications">🔔 Ativar avisos neste celular</button>
             <div class="fixed-email-copy"><b>Cópia automática do checklist</b><span>urbamfrotabylucthi@gmail.com</span><small>O formulário será enviado automaticamente para este e-mail após a conclusão.</small></div>
             <label for="baseSelect">Base responsável pela aprovação</label>
             <select id="baseSelect"><option value="">Selecione a base</option><option value="Vertical">Base Vertical / Segurança / Elétrica — (12) 98156-7218</option><option value="Abrigo">Base Abrigo / Manutenção / Linha Verde / Lavagem — (12) 99788-4887</option><option value="Horizontal">Base Horizontal — (12) 98840-0697</option></select>
@@ -251,7 +254,7 @@
     <template id="emptyStateTemplate"><div class="empty-state"><span>⌁</span><p>Nenhum registro por aqui.</p></div></template>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="supabase-config.js?v=1"></script>
-    <script src="app.js?v=104"></script>
+    <script src="app.js?v=105"></script>
   </body>
 </html>
 
