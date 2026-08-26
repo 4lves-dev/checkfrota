@@ -114,6 +114,23 @@
             <div><p class="eyebrow">PAINEL DA BASE</p><h1>Controle da frota</h1></div>
           </div>
           <button class="base-settings-button" id="openSettings">⚙ Configurações da base</button>
+          <section class="leader-install-card" aria-labelledby="leaderInstallTitle">
+            <div>
+              <p class="eyebrow">LIDERANÇA</p>
+              <h2 id="leaderInstallTitle">Instalar aplicativo da liderança</h2>
+              <p>Envie o link somente para o WhatsApp cadastrado da base.</p>
+            </div>
+            <label for="leaderInstallBase">Base responsável
+              <select id="leaderInstallBase">
+                <option value="">Selecione a base</option>
+                <option value="Vertical">Base Vertical</option>
+                <option value="Horizontal">Base Horizontal</option>
+                <option value="Abrigo">Base Abrigo</option>
+              </select>
+            </label>
+            <p class="leader-install-hint" id="leaderInstallHint">Escolha a base para conferir o número que receberá o link.</p>
+            <button class="small-button whatsapp leader-install-button" id="sendLeaderInstall" type="button">↗ Enviar link de instalação</button>
+          </section>
           <div class="stat-grid"><article><span id="fleetCount">0</span><small>veículos</small></article><article class="alert"><span id="seriousCount">0</span><small>graves</small></article><article><span id="weekChecks">0</span><small>checklists (7 dias)</small></article></div>
           <div class="tabs" role="tablist"><button class="tab active" data-tab="issues">Ocorrências</button><button class="tab" data-tab="reports">Relatório</button><button class="tab" data-tab="history">Histórico</button><button class="tab" data-tab="vehicles">Veículos</button></div>
           <div id="issuesPanel" class="tab-panel active"></div><div id="reportsPanel" class="tab-panel"></div><div id="historyPanel" class="tab-panel"></div><div id="vehiclesPanel" class="tab-panel"></div>
