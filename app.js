@@ -245,7 +245,7 @@ function lookupDriverRegistration() {
   if (!registration) {
     nameInput.value = "";
     if (roleInput) roleInput.value = "";
-    hint.textContent = "Digite a matrícula para localizar o nome do motorista.";
+    hint.textContent = "Digite a matrícula para localizar o nome do colaborador.";
     hint.className = "helper";
     return null;
   }
@@ -341,7 +341,7 @@ function reviewChecklist() {
   if (pending.length) return alert(`Faltam ${pending.length} item(ns) para verificar. Marque ✓ ou ! em todos eles.`);
   const issues = getCurrentIssues();
   $("#reviewSummary").innerHTML = `<section class="review-box card">
-    <div class="review-row"><span>Motorista</span><b>${esc(current.driver)}</b></div>
+    <div class="review-row"><span>Colaborador</span><b>${esc(current.driver)}</b></div>
     ${current.driverRegistration ? `<div class="review-row"><span>Matrícula</span><b>${esc(current.driverRegistration)}</b></div>` : ""}
     ${current.driverRole ? `<div class="review-row"><span>Função</span><b>${esc(current.driverRole)}</b></div>` : ""}
     ${current.driverEmail ? `<div class="review-row"><span>Cópia do formulário</span><b>${esc(current.driverEmail)}</b></div>` : ""}
@@ -434,7 +434,7 @@ async function showCompletion(inspection, vehicle, issues, sendResult) {
   const form = $("#submittedForm");
   const protocol = `MAN-${String(inspection.id || Date.now()).replaceAll("-", "").slice(-8).toUpperCase()}`;
   const occurrenceRows = issues.length ? issues.map((issue) => `<article class="submitted-issue ${esc(issue.severity.toLowerCase())}"><div><b>${esc(issue.itemName)}</b><span class="chip ${esc(issue.severity.toLowerCase())}">${esc(issue.severity)}</span></div><p>${esc(issue.description)}</p>${issue.photoPath ? `<img src="${esc(publicIssuePhotoUrl(issue))}" alt="Foto da ocorrência ${esc(issue.itemName)}" loading="lazy">` : ""}</article>`).join("") : `<p class="form-empty">Nenhuma ocorrência informada.</p>`;
-  form.innerHTML = `<div class="form-top"><span class="form-mark">✓</span><div><small>CHECKFROTA · RESPOSTA ENVIADA</small><h2>Formulário de inspeção</h2></div></div><div class="form-protocol"><span>Protocolo</span><b>${esc(protocol)}</b></div><div class="form-fields"><div><span>Motorista</span><b>${esc(inspection.driver)}</b></div>${inspection.driverRegistration ? `<div><span>Matrícula</span><b>${esc(inspection.driverRegistration)}</b></div>` : ""}${inspection.driverRole ? `<div><span>Função</span><b>${esc(inspection.driverRole)}</b></div>` : ""}<div><span>Base</span><b>${esc(inspection.baseName)}</b></div>${inspection.driverEmail ? `<div><span>Cópia para e-mail</span><b>${esc(inspection.driverEmail)}</b></div>` : ""}<div><span>Veículo</span><b>Prefixo ${esc(vehicle.prefix)} · ${esc(vehicle.plate)}</b></div><div><span>Modelo</span><b>${esc(vehicle.model || vehicle.type)}</b></div><div><span>Quilometragem</span><b>${esc(inspection.odometer)} km</b></div><div><span>Data e hora</span><b>${esc(dateTime(inspection.createdAt))}</b></div></div><div class="form-occurrences"><h3>Ocorrências relatadas</h3>${occurrenceRows}</div>${inspection.notes ? `<div class="form-notes"><span>Observação geral</span><p>${esc(inspection.notes)}</p></div>` : ""}`;
+  form.innerHTML = `<div class="form-top"><span class="form-mark">✓</span><div><small>CHECKFROTA · RESPOSTA ENVIADA</small><h2>Formulário de inspeção</h2></div></div><div class="form-protocol"><span>Protocolo</span><b>${esc(protocol)}</b></div><div class="form-fields"><div><span>Colaborador</span><b>${esc(inspection.driver)}</b></div>${inspection.driverRegistration ? `<div><span>Matrícula</span><b>${esc(inspection.driverRegistration)}</b></div>` : ""}${inspection.driverRole ? `<div><span>Função</span><b>${esc(inspection.driverRole)}</b></div>` : ""}<div><span>Base</span><b>${esc(inspection.baseName)}</b></div>${inspection.driverEmail ? `<div><span>Cópia para e-mail</span><b>${esc(inspection.driverEmail)}</b></div>` : ""}<div><span>Veículo</span><b>Prefixo ${esc(vehicle.prefix)} · ${esc(vehicle.plate)}</b></div><div><span>Modelo</span><b>${esc(vehicle.model || vehicle.type)}</b></div><div><span>Quilometragem</span><b>${esc(inspection.odometer)} km</b></div><div><span>Data e hora</span><b>${esc(dateTime(inspection.createdAt))}</b></div></div><div class="form-occurrences"><h3>Ocorrências relatadas</h3>${occurrenceRows}</div>${inspection.notes ? `<div class="form-notes"><span>Observação geral</span><p>${esc(inspection.notes)}</p></div>` : ""}`;
   const actions = $("#dispatchActions");
   if (!issues.length) { actions.innerHTML = ""; showScreen("success"); return; }
   const buttons = [];
@@ -625,7 +625,7 @@ function renderDrivers() {
   if (!panel) return;
   const registered = [...DRIVER_REGISTRY].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
   const missing = driversMissingRegistration().sort((a, b) => a.localeCompare(b, "pt-BR"));
-  panel.innerHTML = `<section class="driver-registry"><div class="section-action"><div><h3>Banco de motoristas</h3><p>Digite a matrícula no aplicativo para preencher o nome automaticamente.</p></div><span class="chip ok">${registered.length} cadastrados</span></div><div class="driver-grid">${registered.map((driver) => `<article class="driver-row"><b>${esc(driver.name)}</b><span>Matrícula ${esc(driver.registration)}</span></article>`).join("")}</div></section><section class="missing-drivers"><div class="section-action"><div><h3>Motoristas sem matrícula</h3><p>Relação identificada na primeira tabela e ainda sem vínculo na segunda.</p></div><span class="chip grave">${missing.length} pendentes</span></div>${missing.length ? `<ul>${missing.map((name) => `<li>${esc(name)}</li>`).join("")}</ul>` : "<p>Todos os motoristas possuem matrícula cadastrada.</p>"}</section>`;
+  panel.innerHTML = `<section class="driver-registry"><div class="section-action"><div><h3>Banco de colaboradores</h3><p>Digite a matrícula no aplicativo para preencher o nome automaticamente.</p></div><span class="chip ok">${registered.length} cadastrados</span></div><div class="driver-grid">${registered.map((driver) => `<article class="driver-row"><b>${esc(driver.name)}</b><span>Matrícula ${esc(driver.registration)}</span></article>`).join("")}</div></section><section class="missing-drivers"><div class="section-action"><div><h3>Colaboradores sem matrícula</h3><p>Relação identificada na primeira tabela e ainda sem vínculo na segunda.</p></div><span class="chip grave">${missing.length} pendentes</span></div>${missing.length ? `<ul>${missing.map((name) => `<li>${esc(name)}</li>`).join("")}</ul>` : "<p>Todos os colaboradores possuem matrícula cadastrada.</p>"}</section>`;
 }
 function openVehicleDialog(id = "") {
   const vehicle = vehicleById(id);
@@ -824,7 +824,7 @@ $("#settingsForm").addEventListener("submit", (event) => { event.preventDefault(
 $("#maintenanceForm").addEventListener("submit", (event) => { event.preventDefault(); saveMaintenance(); });
 $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").forEach((button) => button.classList.toggle("active", button === tab)); $$(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab.dataset.tab}Panel`)); }));
 
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=94").catch(() => {}));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=95").catch(() => {}));
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
 window.addEventListener("appinstalled", () => { document.body.classList.add("app-installed"); $("#installBanner").hidden = true; });
 if (isInstalled()) document.body.classList.add("app-installed"); else window.addEventListener("load", showInstallBanner);
