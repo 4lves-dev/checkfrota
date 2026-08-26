@@ -21,6 +21,7 @@ const EMAIL_AUTOMATION_URL = "https://script.google.com/macros/s/AKfycbyfdwx76Uk
 const EMAIL_COPY_RECIPIENT = "urbamfrotabylucthi@gmail.com";
 const MAINTENANCE_GROUP_PHONE = "5512996181645";
 const DAILY_CHECKLIST_ALERT_PHONE = "5512981111336";
+let dailyChecklistNotificationTimer = null;
 
 const initialData = {
   settings: { maintenancePhone: "5512988400316", maintenanceGroupPhone: MAINTENANCE_GROUP_PHONE, leaderPhone: "", fleetManagerPhone: "", webhookUrl: EMAIL_AUTOMATION_URL },
@@ -400,6 +401,8 @@ function renderControl() {
   renderIssues(); renderReports(); renderHistory(); renderVehicles();
   renderLeaderInstallTarget();
   renderDailyChecklistAlert();
+  renderNotificationSettings();
+  startDailyChecklistNotifications();
 }
 function todayStart() { const value = new Date(); value.setHours(0, 0, 0, 0); return value.getTime(); }
 function vehiclesWithoutChecklistToday() {
@@ -416,6 +419,35 @@ function renderDailyChecklistAlert() {
   if (!missing.length) { panel.className = "daily-checklist-alert clear"; panel.innerHTML = `<b>✓ Checklist diário em dia</b><p>Todos os veículos cadastrados possuem checklist registrado hoje.</p>`; return; }
   panel.className = "daily-checklist-alert";
   panel.innerHTML = `<div><p class="eyebrow">ALERTA DIÁRIO · APÓS 08H</p><h2>${missing.length} veículo(s) sem checklist hoje</h2><p>Verifique os carros e caminhões abaixo antes da liberação.</p></div><ul>${missing.map((vehicle) => `<li>Prefixo ${esc(vehicle.prefix || "—")} · ${esc(vehicle.plate || "sem placa")} · ${esc(vehicle.model || vehicle.type || "Veículo")}</li>`).join("")}</ul><button type="button" class="small-button whatsapp" id="sendDailyChecklistAlert">Enviar alerta à gestora</button>`;
+}
+function notificationPermission() { return "Notification" in window ? Notification.permission : "unsupported"; }
+function renderNotificationSettings() {
+  const status = $("#notificationStatus"); const button = $("#enableDailyNotifications"); if (!status || !button) return;
+  const permission = notificationPermission();
+  if (permission === "granted") { status.textContent = "Ativa: o computador será avisado após as 08h caso existam veículos sem checklist."; button.textContent = "✓ Notificações ativas"; button.disabled = true; return; }
+  if (permission === "denied") { status.textContent = "As notificações foram bloqueadas neste navegador. Libere-as nas configurações do site para receber o alerta."; button.textContent = "Notificações bloqueadas"; button.disabled = true; return; }
+  if (permission === "unsupported") { status.textContent = "Este navegador não oferece notificações do sistema."; button.hidden = true; return; }
+  status.textContent = "Ative para receber o aviso de veículos sem checklist após as 08h."; button.textContent = "🔔 Ativar notificações"; button.disabled = false;
+}
+async function enableDailyNotifications() {
+  if (!("Notification" in window)) return alert("Este navegador não oferece notificações do sistema.");
+  const permission = await Notification.requestPermission();
+  renderNotificationSettings();
+  if (permission === "granted") { alert("Notificações ativadas neste computador."); notifyDailyChecklistIfNeeded(); }
+}
+function notifyDailyChecklistIfNeeded() {
+  if (notificationPermission() !== "granted" || new Date().getHours() < 8) return;
+  const missing = vehiclesWithoutChecklistToday(); if (!missing.length) return;
+  const dayKey = new Date().toISOString().slice(0, 10); const notificationKey = `checkfrota-daily-checklist-notification-${dayKey}`;
+  if (localStorage.getItem(notificationKey)) return;
+  const notification = new Notification("CheckFrota: checklist pendente", { body: `${missing.length} veículo(s) sem checklist hoje. Abra o painel de Gestão para verificar.`, tag: "checkfrota-checklist-diario", renotify: true });
+  notification.onclick = () => { window.focus(); notification.close(); };
+  localStorage.setItem(notificationKey, new Date().toISOString());
+}
+function startDailyChecklistNotifications() {
+  notifyDailyChecklistIfNeeded();
+  if (dailyChecklistNotificationTimer) return;
+  dailyChecklistNotificationTimer = window.setInterval(() => { renderDailyChecklistAlert(); notifyDailyChecklistIfNeeded(); }, 60 * 1000);
 }
 function sendDailyChecklistAlert() {
   const missing = vehiclesWithoutChecklistToday();
@@ -668,6 +700,7 @@ document.addEventListener("click", (event) => {
   if (target.id === "restoreFleet") void restoreFleet();
   if (target.id === "sendLeaderInstall") sendLeaderInstall();
   if (target.id === "sendDailyChecklistAlert") sendDailyChecklistAlert();
+  if (target.id === "enableDailyNotifications") void enableDailyNotifications();
   if (target.dataset.viewPhoto) void openIssuePhoto(target.dataset.viewPhoto);
   if (target.dataset.managerDispatch) void dispatchManagerMaintenance(target.dataset.managerDispatch);
   if (target.dataset.copyManagerMessage) void copyManagerMaintenanceMessage(target.dataset.copyManagerMessage);
@@ -688,7 +721,7 @@ $("#settingsForm").addEventListener("submit", (event) => { event.preventDefault(
 $("#maintenanceForm").addEventListener("submit", (event) => { event.preventDefault(); saveMaintenance(); });
 $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").forEach((button) => button.classList.toggle("active", button === tab)); $$(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab.dataset.tab}Panel`)); }));
 
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=85").catch(() => {}));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=86").catch(() => {}));
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
 window.addEventListener("appinstalled", () => { document.body.classList.add("app-installed"); $("#installBanner").hidden = true; });
 if (isInstalled()) document.body.classList.add("app-installed"); else window.addEventListener("load", showInstallBanner);
