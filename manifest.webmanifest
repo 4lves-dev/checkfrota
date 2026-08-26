@@ -1,31 +1,14 @@
 {
-  "name": "CheckFrota",
-  "short_name": "CheckFrota",
-  "description": "Checklist e ocorrências da frota.",
-  "id": "./",
-  "start_url": "./",
-  "scope": "./",
+  "id": "/checkfrota/",
+  "name": "URBAM Frota",
+  "short_name": "URBAM Frota",
+  "description": "Checklist e gestão de ocorrências da frota URBAM.",
+  "start_url": "/checkfrota/?v=102",
   "display": "standalone",
-  "display_override": ["window-controls-overlay", "standalone"],
-  "orientation": "portrait",
-  "background_color": "#f5f7f9",
+  "background_color": "#eef4f7",
   "theme_color": "#0f2a43",
-  "lang": "pt-BR",
-  "categories": ["business", "productivity"],
   "icons": [
-    {
-      "src": "icons/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
-    }
-  ],
-  "shortcuts": [
-    {
-      "name": "Novo checklist",
-      "short_name": "Checklist",
-      "url": "./#inicio",
-      "icons": [{ "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
-    }
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
   ]
 }
+
