@@ -19,6 +19,7 @@ const LEADER_BASE_LABELS = { Vertical: "Base Vertical / Segurança / Elétrica",
 const DRIVER_NOTIFICATION_PHONE = "";
 const EMAIL_AUTOMATION_URL = "https://script.google.com/macros/s/AKfycbyfdwx76UkQcv2fz1HXLERZrcVMfW1iaNvFALmFET1kIBBeXAQVvkH89iviTDxBCQOA/exec";
 const EMAIL_COPY_RECIPIENT = "urbamfrotabylucthi@gmail.com";
+const MASTER_ADMIN_EMAIL = "luciano.silva@urbam.com.br";
 const MAINTENANCE_GROUP_PHONE = "5512996181645";
 const DAILY_CHECKLIST_ALERT_PHONE = "5512981111336";
 let dailyChecklistNotificationTimer = null;
@@ -114,6 +115,7 @@ let issueDraft = { itemId: null, severity: "Leve" };
 let deferredInstallPrompt = null;
 let managerIssueFilters = { base: "", vehicle: "", date: "", owner: "" };
 let selectedVehicleHistoryId = "";
+let masterAdmin = false;
 
 const $ = (selector, scope = document) => scope.querySelector(selector);
 const $$ = (selector, scope = document) => [...scope.querySelectorAll(selector)];
@@ -127,6 +129,18 @@ const CLOUD = window.CHECKFROTA_SUPABASE;
 function cloudToken() { return sessionStorage.getItem("checkfrota-supabase-token") || ""; }
 function cloudHeaders(json = true) { const token = cloudToken(); return { apikey: CLOUD?.publishableKey || "", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(json ? { "Content-Type": "application/json" } : {}) }; }
 async function cloudRequest(path, options = {}) { if (!CLOUD?.url) return null; const response = await fetch(`${CLOUD.url}${path}`, { ...options, headers: { ...cloudHeaders(options.json !== false), ...(options.headers || {}) } }); if (!response.ok) throw new Error(`Supabase: ${response.status}`); return response.status === 204 ? null : response.json(); }
+function requireMasterAccess() { if (masterAdmin) return true; alert("Esta ação é exclusiva do Administrador Master."); return false; }
+async function loadMasterAccess() {
+  masterAdmin = false;
+  if (!CLOUD?.url || !cloudToken()) return renderControl();
+  try {
+    const response = await fetch(`${CLOUD.url}/auth/v1/user`, { headers: cloudHeaders(false) });
+    if (!response.ok) throw new Error();
+    const profile = await response.json();
+    masterAdmin = String(profile.email || "").trim().toLowerCase() === MASTER_ADMIN_EMAIL;
+  } catch (error) { console.warn("Não foi possível validar o perfil de Gestão", error); }
+  renderControl();
+}
 async function cloudSave(table, row) {
   if (!CLOUD?.url) throw new Error("A conexão com o banco de dados não está configurada.");
   const response = await fetch(`${CLOUD.url}/rest/v1/${table}`, {
@@ -276,7 +290,7 @@ function checkById(id) { return CHECKLIST.find((item) => item.id === id); }
 function showScreen(name) {
   $$(".screen").forEach((screen) => screen.classList.toggle("active", screen.dataset.screen === name));
   window.scrollTo({ top: 0, behavior: "smooth" });
-  if (name === "controle") { renderControl(); void loadCloudManager(); }
+  if (name === "controle") { renderControl(); void loadCloudManager(); void loadMasterAccess(); }
   if (name === "inicio") renderStart();
 }
 
@@ -534,6 +548,7 @@ function renderControl() {
   renderDailyChecklistAlert();
   renderStorageIndicator();
   renderNotificationSettings();
+  $$("[data-master-only]").forEach((element) => { element.hidden = !masterAdmin; });
   startDailyChecklistNotifications();
 }
 function formatBytes(bytes = 0) { if (!bytes) return "0 MB"; const mb = bytes / (1024 * 1024); return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(mb >= 10 ? 0 : 1)} MB`; }
@@ -693,14 +708,16 @@ function vehicleHistoryMarkup(vehicle) {
 function renderVehicles() {
   const panel = $("#vehiclesPanel");
   const cards = data.vehicles.map((vehicle) => `<article class="vehicle-card"><div><h3>Prefixo ${esc(vehicle.prefix || "—")} · ${esc(vehicle.plate)} <span class="vehicle-label">· ${esc(vehicle.model || vehicle.type)}</span></h3><p>${esc(vehicle.ownerName)}${vehicle.manager ? ` · Gestor: ${esc(vehicle.manager)}` : ""}${vehicle.base ? ` · Base: ${esc(vehicle.base)}` : ""}${vehicle.ownerPhone ? ` · Tel.: ${esc(formatPhone(vehicle.ownerPhone))}` : ""}${vehicle.contract ? ` · Contrato: ${esc(vehicle.contract)}` : ""}${vehicle.odometer !== "" ? ` · ${esc(vehicle.odometer)} km` : ""}</p></div><div class="issue-actions"><button class="small-button" data-vehicle-history="${vehicle.id}">${selectedVehicleHistoryId === vehicle.id ? "Fechar ficha" : "Ver ficha"}</button><button class="small-button" data-edit-vehicle="${vehicle.id}">Editar</button><button class="small-button danger-button" data-delete-vehicle="${vehicle.id}">Excluir</button></div>${selectedVehicleHistoryId === vehicle.id ? vehicleHistoryMarkup(vehicle) : ""}</article>`).join("");
-  panel.innerHTML = `<div class="section-action"><h3>Veículos e caminhões cadastrados</h3><div class="vehicle-actions"><button class="restore-button" id="restoreFleet">↺ Restaurar frota</button><button class="add-button" id="newVehicle">+ Cadastrar veículo/caminhão</button></div></div>${cards}`;
+  const actions = masterAdmin ? `<div class="vehicle-actions"><button class="restore-button" id="restoreFleet">↺ Restaurar frota</button><button class="add-button" id="newVehicle">+ Cadastrar veículo/caminhão</button></div>` : "";
+  panel.innerHTML = `<div class="section-action"><h3>Veículos e caminhões cadastrados</h3>${actions}</div>${cards}`;
 }
 function renderDrivers() {
   const panel = $("#driversPanel");
   if (!panel) return;
   const registered = [...(employeeDatabase.length ? employeeDatabase : DRIVER_REGISTRY)].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
   const missing = driversMissingRegistration().sort((a, b) => a.localeCompare(b, "pt-BR"));
-  panel.innerHTML = `<section class="driver-registry"><div class="section-action"><div><h3>Banco de colaboradores</h3><p>Digite a matrícula no aplicativo para preencher o nome automaticamente.</p></div><div class="vehicle-actions"><span class="chip ok">${registered.length} cadastrados</span><button class="add-button" id="newEmployee">+ Cadastrar colaborador</button></div></div><div class="driver-grid">${registered.map((driver) => `<article class="driver-row"><b>${esc(driver.name)}</b><span>Matrícula ${esc(driver.registration)}${driver.role ? ` · ${esc(driver.role)}` : ""}</span></article>`).join("")}</div></section><section class="missing-drivers"><div class="section-action"><div><h3>Colaboradores sem matrícula</h3><p>Relação identificada na primeira tabela e ainda sem vínculo na segunda.</p></div><span class="chip grave">${missing.length} pendentes</span></div>${missing.length ? `<ul>${missing.map((name) => `<li>${esc(name)}</li>`).join("")}</ul>` : "<p>Todos os colaboradores possuem matrícula cadastrada.</p>"}</section>`;
+  const employeeAction = masterAdmin ? `<button class="add-button" id="newEmployee">+ Cadastrar colaborador</button>` : "";
+  panel.innerHTML = `<section class="driver-registry"><div class="section-action"><div><h3>Banco de colaboradores</h3><p>Digite a matrícula no aplicativo para preencher o nome automaticamente.</p></div><div class="vehicle-actions"><span class="chip ok">${registered.length} cadastrados</span>${employeeAction}</div></div><div class="driver-grid">${registered.map((driver) => `<article class="driver-row"><b>${esc(driver.name)}</b><span>Matrícula ${esc(driver.registration)}${driver.role ? ` · ${esc(driver.role)}` : ""}</span></article>`).join("")}</div></section><section class="missing-drivers"><div class="section-action"><div><h3>Colaboradores sem matrícula</h3><p>Relação identificada na primeira tabela e ainda sem vínculo na segunda.</p></div><span class="chip grave">${missing.length} pendentes</span></div>${missing.length ? `<ul>${missing.map((name) => `<li>${esc(name)}</li>`).join("")}</ul>` : "<p>Todos os colaboradores possuem matrícula cadastrada.</p>"}</section>`;
 }
 function renderAuditLog() {
   const panel = $("#auditPanel");
@@ -709,6 +726,7 @@ function renderAuditLog() {
   panel.innerHTML = `<section class="audit-log"><div class="section-action"><div><h3>Log de solicitações</h3><p>Registro para auditoria das decisões tomadas pela liderança.</p></div><span class="chip ok">${logs.length} registro(s)</span></div>${logs.length ? logs.map((issue) => { const approval = issue.leaderApproval || {}; const status = approval.status || "Sem decisão"; const statusClass = status === "Aprovada" ? "ok" : status === "Recusada" ? "grave" : "media"; return `<article class="audit-entry"><div class="card-heading"><div><h3>${esc(status)}</h3><p class="vehicle-label">Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate || "—")} · ${esc(issue.itemName || "Ocorrência")}</p></div><span class="chip ${statusClass}">${esc(status)}</span></div><p><b>Colaborador:</b> ${esc(issue.driver || "—")}${issue.driverRegistration ? ` · matrícula ${esc(issue.driverRegistration)}` : ""}</p><p><b>Decisão:</b> ${esc(approval.approvedBy || "Liderança")} · ${dateTime(approval.approvedAt || issue.createdAt)}</p>${approval.note ? `<p><b>Observação:</b> ${esc(approval.note)}</p>` : ""}<p class="audit-status"><b>Fluxo:</b> ${esc(approval.dispatchStatus || "Registrado")}</p></article>`; }).join("") : `<div class="empty-state"><span>⌁</span><p>Nenhuma decisão da liderança registrada ainda.</p></div>`}</section>`;
 }
 function openVehicleDialog(id = "") {
+  if (!requireMasterAccess()) return;
   const vehicle = vehicleById(id);
   $("#vehicleDialogTitle").textContent = vehicle ? "Editar veículo" : "Novo veículo";
   $("#editVehicleId").value = vehicle?.id || "";
@@ -717,12 +735,12 @@ function openVehicleDialog(id = "") {
   $("#vehicleDialog").showModal();
 }
 function openEmployeeDialog() {
-  if (!cloudToken()) return alert("Entre no painel de Gestão para cadastrar colaboradores.");
+  if (!requireMasterAccess()) return;
   $("#employeeRegistration").value = ""; $("#employeeName").value = ""; $("#employeeRole").value = "";
   $("#employeeDialog").showModal();
 }
 async function saveEmployee() {
-  if (!cloudToken()) return alert("Entre no painel de Gestão para cadastrar colaboradores.");
+  if (!requireMasterAccess()) return;
   const registration = $("#employeeRegistration").value.replace(/\D/g, "");
   const name = $("#employeeName").value.trim().toUpperCase();
   const role = $("#employeeRole").value.trim();
@@ -735,6 +753,7 @@ async function saveEmployee() {
   } catch (error) { alert("Não foi possível salvar o colaborador no banco. Verifique se a tabela e as permissões do Supabase foram configuradas."); console.warn(error); }
 }
 function saveVehicle() {
+  if (!requireMasterAccess()) return;
   const id = $("#editVehicleId").value;
   const detail = { prefix: $("#vehiclePrefix").value.trim(), plate: $("#vehiclePlate").value.trim().toUpperCase(), type: $("#vehicleType").value, model: $("#vehicleModel").value.trim(), contract: $("#vehicleContract").value.trim(), urbamContract: $("#vehicleUrbamContract").value.trim(), odometer: $("#vehicleOdometer").value === "" ? "" : Number($("#vehicleOdometer").value), ownerName: $("#vehicleOwnerName").value.trim(), ownerPhone: phoneOnly($("#vehicleOwnerPhone").value), email: $("#vehicleEmail").value.trim() };
   if (!detail.prefix || !detail.plate || !detail.ownerName) { $("#vehicleForm").reportValidity(); return; }
@@ -742,6 +761,7 @@ function saveVehicle() {
   saveData(); void cloudSave("fleet_vehicles", { id: vehicleById(id || data.vehicles[data.vehicles.length - 1].id)?.id || id, prefix: detail.prefix, plate: detail.plate, data: vehicleById(id || data.vehicles[data.vehicles.length - 1].id) }); $("#vehicleDialog").close(); renderControl(); renderStart();
 }
 function deleteVehicle(id) {
+  if (!requireMasterAccess()) return;
   const vehicle = vehicleById(id); if (!vehicle) return;
   if (!confirm(`Excluir o veículo Prefixo ${vehicle.prefix || "—"} · ${vehicle.plate} da lista de uso? O histórico de chamados será preservado.`)) return;
   data.vehicles = data.vehicles.filter((entry) => entry.id !== id);
@@ -749,6 +769,7 @@ function deleteVehicle(id) {
   saveData(); renderControl(); renderStart();
 }
 async function restoreFleet() {
+  if (!requireMasterAccess()) return;
   if (!confirm("Restaurar todos os veículos da frota cadastrada, incluindo caminhões que tenham sido excluídos?")) return;
   const currentVehicles = data.vehicles;
   const standardVehicles = initialData.vehicles.map((seed) => {
@@ -849,7 +870,7 @@ function saveMaintenance() {
   if (issue.maintenance.status === "Agendada") { sendDriverMaintenanceWhatsApp(issue); sendSchedulingReturn(issue, issue.maintenance); }
 }
 function closeIssue(issueId) { const issue = data.issues.find((entry) => entry.id === issueId); if (issue) { issue.maintenance = { ...maintenanceOf(issue), status: "Concluída", updatedAt: new Date().toISOString() }; issue.status = "resolvida"; issue.resolvedAt = new Date().toISOString(); saveData(); if (data.settings.webhookUrl) void sendToIntegration({ type: "maintenance-update", issue, maintenance: issue.maintenance }); renderControl(); } }
-function saveSettings() { data.settings.webhookUrl = $("#webhookUrl").value.trim(); data.settings.maintenancePhone = phoneOnly($("#maintenancePhone").value); data.settings.maintenanceGroupPhone = phoneOnly($("#maintenanceGroupPhone").value); data.settings.leaderPhone = phoneOnly($("#leaderPhone").value); data.settings.fleetManagerPhone = phoneOnly($("#fleetManagerPhone").value); saveData(); $("#settingsDialog").close(); }
+function saveSettings() { if (!requireMasterAccess()) return; data.settings.webhookUrl = $("#webhookUrl").value.trim(); data.settings.maintenancePhone = phoneOnly($("#maintenancePhone").value); data.settings.maintenanceGroupPhone = phoneOnly($("#maintenanceGroupPhone").value); data.settings.leaderPhone = phoneOnly($("#leaderPhone").value); data.settings.fleetManagerPhone = phoneOnly($("#fleetManagerPhone").value); saveData(); $("#settingsDialog").close(); }
 function dismissInstallBanner() { sessionStorage.setItem("checkfrota-install-dismissed", "1"); $("#installBanner").hidden = true; }
 
 function isInstalled() {
@@ -889,7 +910,7 @@ document.addEventListener("click", (event) => {
   if (target.id === "submitChecklist") submitChecklist();
   if (target.dataset.severity) { issueDraft.severity = target.dataset.severity; $$(".severity").forEach((button) => button.classList.toggle("active", button === target)); }
   if (target.id === "saveIssue") { event.preventDefault(); saveIssue(); }
-  if (target.id === "openSettings") { $("#webhookUrl").value = data.settings.webhookUrl; $("#maintenancePhone").value = data.settings.maintenancePhone; $("#maintenanceGroupPhone").value = data.settings.maintenanceGroupPhone || ""; $("#leaderPhone").value = data.settings.leaderPhone || ""; $("#fleetManagerPhone").value = data.settings.fleetManagerPhone || ""; $("#settingsDialog").showModal(); }
+  if (target.id === "openSettings") { if (!requireMasterAccess()) return; $("#webhookUrl").value = data.settings.webhookUrl; $("#maintenancePhone").value = data.settings.maintenancePhone; $("#maintenanceGroupPhone").value = data.settings.maintenanceGroupPhone || ""; $("#leaderPhone").value = data.settings.leaderPhone || ""; $("#fleetManagerPhone").value = data.settings.fleetManagerPhone || ""; $("#settingsDialog").showModal(); }
   if (target.id === "installApp" || target.id === "installBannerButton" || target.id === "installFromDialog" || target.dataset.install === "app") requestInstall();
   if (target.id === "dismissInstallBanner") dismissInstallBanner();
   if (target.id === "closeInstallDialog") $("#installDialog").close();
@@ -928,12 +949,12 @@ $("#settingsForm").addEventListener("submit", (event) => { event.preventDefault(
 $("#maintenanceForm").addEventListener("submit", (event) => { event.preventDefault(); saveMaintenance(); });
 $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").forEach((button) => button.classList.toggle("active", button === tab)); $$(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab.dataset.tab}Panel`)); }));
 
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=107").catch(() => {}));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=108").catch(() => {}));
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
 window.addEventListener("appinstalled", () => { document.body.classList.add("app-installed"); $("#installBanner").hidden = true; });
 if (isInstalled()) document.body.classList.add("app-installed"); else window.addEventListener("load", showInstallBanner);
 if (new URLSearchParams(location.search).get("gestao") === "1") {
   if (cloudToken()) showScreen("controle");
-  else location.replace("gestao.html?v=36");
+  else location.replace("gestao.html?v=108");
 } else { renderStart(); void syncLocalBacklog(); }
 
