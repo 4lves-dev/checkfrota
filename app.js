@@ -22,6 +22,8 @@ const EMAIL_COPY_RECIPIENT = "urbamfrotabylucthi@gmail.com";
 const MAINTENANCE_GROUP_PHONE = "5512996181645";
 const DAILY_CHECKLIST_ALERT_PHONE = "5512981111336";
 let dailyChecklistNotificationTimer = null;
+let returnedIssues = [];
+let returnedIssuesTimer = null;
 
 const initialData = {
   settings: { maintenancePhone: "5512988400316", maintenanceGroupPhone: MAINTENANCE_GROUP_PHONE, leaderPhone: "", fleetManagerPhone: "", webhookUrl: EMAIL_AUTOMATION_URL },
@@ -188,6 +190,49 @@ async function syncLocalBacklog() {
     await Promise.all(data.issues.map((issue) => cloudSave("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: null, status: issue.status || "aberta", data: issue })));
   } catch (error) { console.warn("Não foi possível migrar os chamados deste aparelho", error); }
 }
+function returnNotificationPermission() { return "Notification" in window ? Notification.permission : "unsupported"; }
+async function enableReturnNotifications() {
+  if (!("Notification" in window)) return alert("Este navegador não oferece notificações do sistema.");
+  const permission = await Notification.requestPermission();
+  if (permission === "granted") { alert("Avisos ativados neste celular enquanto o URBAM Frota estiver aberto."); await loadReturnedIssuesForCollaborator(); }
+  else if (permission === "denied") alert("As notificações foram bloqueadas. Libere-as nas configurações do site para receber os avisos.");
+}
+function notifyReturnedIssue(issue) {
+  const key = `checkfrota-return-notification-${issue.id}-${issue.leaderApproval?.approvedAt || ""}`;
+  if (returnNotificationPermission() !== "granted" || localStorage.getItem(key)) return;
+  const approval = issue.leaderApproval || {};
+  const title = approval.status === "Recusada" ? "URBAM Frota: chamado rejeitado" : "URBAM Frota: retificação solicitada";
+  const notification = new Notification(title, { body: `Prefixo ${issue.vehiclePrefix || "—"}: ${approval.note || "Abra o aplicativo para verificar."}`, tag: `checkfrota-return-${issue.id}`, renotify: true });
+  notification.onclick = () => { window.focus(); notification.close(); };
+  localStorage.setItem(key, new Date().toISOString());
+}
+function renderReturnedIssues() {
+  const panel = $("#returnNotifications"); if (!panel) return;
+  if (!returnedIssues.length) { panel.hidden = true; panel.innerHTML = ""; return; }
+  panel.hidden = false;
+  panel.innerHTML = returnedIssues.map((issue) => { const approval = issue.leaderApproval || {}; const review = approval.status === "Retificação solicitada"; return `<article class="return-notice ${review ? "review" : ""}"><h2>${review ? "↩ Retificação solicitada" : "✕ Chamado rejeitado"}</h2><p><b>Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate || "—")}</b></p><p>${esc(approval.note || "A liderança devolveu este chamado. Verifique os dados.")}</p><p><small>Decisão em ${dateTime(approval.approvedAt || issue.createdAt)}</small></p><button type="button" class="small-button" data-reopen-return="${esc(issue.id)}">${review ? "Corrigir e refazer checklist" : "Abrir dados do chamado"}</button></article>`; }).join("");
+}
+async function loadReturnedIssuesForCollaborator() {
+  const registration = $("#driverRegistration")?.value.replace(/\D/g, "") || localStorage.getItem("checkfrota-driver-registration") || "";
+  const phone = phoneOnly($("#driverPhone")?.value || localStorage.getItem("checkfrota-driver-phone") || "");
+  if (!CLOUD?.url || !registration) return;
+  try {
+    const rows = await cloudRequest(`/rest/v1/fleet_issues?select=data,status&data->>driverRegistration=eq.${encodeURIComponent(registration)}&status=in.(retificacao,recusada)&order=created_at.desc`);
+    returnedIssues = (rows || []).map((row) => row.data).filter((issue) => issue && (!phone || phoneOnly(issue.driverPhone || "") === phone) && ["Retificação solicitada", "Recusada"].includes(issue.leaderApproval?.status));
+    returnedIssues.forEach(notifyReturnedIssue); renderReturnedIssues();
+  } catch (error) { console.warn("Não foi possível buscar devoluções do colaborador", error); }
+}
+function startReturnedIssuesPolling() {
+  if (returnedIssuesTimer) return;
+  returnedIssuesTimer = window.setInterval(() => void loadReturnedIssuesForCollaborator(), 60 * 1000);
+}
+function reopenReturnedIssue(issueId) {
+  const issue = returnedIssues.find((entry) => entry.id === issueId); if (!issue) return;
+  $("#driverRegistration").value = issue.driverRegistration || ""; $("#driverPhone").value = formatPhone(issue.driverPhone || ""); $("#baseSelect").value = issue.baseName || ""; $("#vehicleSelect").value = issue.vehicleId || ""; $("#odometer").value = issue.odometer ?? "";
+  lookupDriverRegistration(); renderBasePhone(); renderVehicleOwner();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+  alert("Dados do chamado carregados. Revise o checklist e envie uma nova versão.");
+}
 function mergeFleetVehicles(cloudVehicles = []) {
   // O banco pode conter somente veículos criados manualmente. Ele nunca deve
   // substituir a frota de referência e fazer caminhões sumirem do aplicativo.
@@ -251,6 +296,8 @@ function renderStart() {
   if (current.vehicleId && vehicleById(current.vehicleId)) select.value = current.vehicleId;
   renderVehicleOwner();
   renderBasePhone();
+  void loadReturnedIssuesForCollaborator();
+  startReturnedIssuesPolling();
   const correctionId = new URLSearchParams(location.search).get("retificar");
   if (correctionId && !sessionStorage.getItem(`checkfrota-retificacao-${correctionId}`)) {
     sessionStorage.setItem(`checkfrota-retificacao-${correctionId}`, "1");
@@ -836,6 +883,8 @@ document.addEventListener("click", (event) => {
   if (target.id === "sendLeaderInstall") sendLeaderInstall();
   if (target.id === "sendDailyChecklistAlert") sendDailyChecklistAlert();
   if (target.id === "enableDailyNotifications") void enableDailyNotifications();
+  if (target.id === "enableReturnNotifications") void enableReturnNotifications();
+  if (target.dataset.reopenReturn) reopenReturnedIssue(target.dataset.reopenReturn);
   if (target.id === "clearIssueFilters") { managerIssueFilters = { base: "", vehicle: "", date: "", owner: "" }; renderIssues(); }
   if (target.dataset.viewPhoto) void openIssuePhoto(target.dataset.viewPhoto);
   if (target.dataset.managerDispatch) void dispatchManagerMaintenance(target.dataset.managerDispatch);
