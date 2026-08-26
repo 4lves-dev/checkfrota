@@ -4,24 +4,24 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#0f2a43" />
-    <meta name="description" content="CheckFrota: checklist e ocorrências de veículos." />
+    <meta name="description" content="URBAM Frota: checklist e ocorrências de veículos." />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="CheckFrota" />
+    <meta name="apple-mobile-web-app-title" content="URBAM Frota" />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icons/icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=101" />
+    <link rel="stylesheet" href="styles.css?v=102" />
     <style>#installBanner[hidden] { display: none !important; }</style>
-    <title>CheckFrota</title>
+    <title>URBAM Frota</title>
   </head>
   <body>
     <div class="app-shell">
       <header class="topbar">
-        <a class="brand" href="#inicio" aria-label="CheckFrota - início">
+        <a class="brand" href="#inicio" aria-label="URBAM Frota - início">
           <span class="brand-mark">✓</span>
-          <span>Check<span>Frota</span></span>
+          <span>URBAM <span>Frota</span></span>
           <small class="brand-credit">por Luchti ME</small>
         </a>
         <div class="header-actions">
@@ -38,9 +38,9 @@
             <p>Faça a inspeção antes de sair. Se algo estiver errado, a manutenção será avisada na hora.</p>
           </div>
 
-          <button class="install-card" data-install="app" aria-label="Instalar o aplicativo CheckFrota neste celular">
+          <button class="install-card" data-install="app" aria-label="Instalar o aplicativo URBAM Frota neste celular">
             <span class="install-card-icon">⇩</span>
-            <span class="install-card-copy"><small>APLICATIVO PARA COLABORADOR</small><b>Instalar CheckFrota no celular</b><em>Abra com um toque, direto pela tela inicial.</em></span>
+            <span class="install-card-copy"><small>APLICATIVO PARA COLABORADOR</small><b>Instalar URBAM Frota no celular</b><em>Abra com um toque, direto pela tela inicial.</em></span>
             <span class="install-card-arrow">›</span>
           </button>
 
@@ -153,7 +153,7 @@
 
     <div class="install-banner" id="installBanner" hidden>
       <div class="install-banner-icon">✓</div>
-      <div><strong>Instale o CheckFrota</strong><p>Tenha acesso rápido na tela inicial, como um aplicativo.</p></div>
+      <div><strong>Instale o URBAM Frota</strong><p>Tenha acesso rápido na tela inicial, como um aplicativo.</p></div>
       <button class="small-button" id="installBannerButton">Instalar</button>
       <button class="dismiss-install" id="dismissInstallBanner" type="button" aria-label="Fechar aviso">×</button>
     </div>
@@ -242,7 +242,7 @@
 
     <dialog id="installDialog" class="issue-dialog install-dialog">
       <div class="dialog-head">
-        <div><p class="eyebrow">APLICATIVO NO CELULAR</p><h2>Instalar CheckFrota</h2></div>
+        <div><p class="eyebrow">APLICATIVO NO CELULAR</p><h2>Instalar URBAM Frota</h2></div>
         <button class="icon-button" id="closeInstallDialog" aria-label="Fechar">×</button>
       </div>
       <div id="installDialogContent"></div>
@@ -251,7 +251,7 @@
     <template id="emptyStateTemplate"><div class="empty-state"><span>⌁</span><p>Nenhum registro por aqui.</p></div></template>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="supabase-config.js?v=1"></script>
-    <script src="app.js?v=101"></script>
+    <script src="app.js?v=102"></script>
   </body>
 </html>
 
