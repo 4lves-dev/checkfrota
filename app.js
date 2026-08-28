@@ -212,6 +212,25 @@ async function cloudSyncSubmission(inspection, issues) {
   await cloudSave("fleet_inspections", { id: inspection.id, data: inspection });
   await Promise.all(issues.map((issue) => cloudSave("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: null, status: issue.status, data: issue })));
 }
+async function finishCorrectionRequest(issueId, inspection, hasNewIssues) {
+  if (!issueId) return;
+  const original = data.issues.find((issue) => issue.id === issueId);
+  if (!original) return;
+  const resolvedWithoutIssues = !hasNewIssues;
+  original.status = resolvedWithoutIssues ? "resolvida" : "reenviada";
+  original.resolvedAt = resolvedWithoutIssues ? new Date().toISOString() : "";
+  original.correctedBy = inspection.id;
+  original.leaderApproval = {
+    ...(original.leaderApproval || {}),
+    status: resolvedWithoutIssues ? "Concluído sem observação" : "Retificação reenviada",
+    correctedAt: new Date().toISOString(),
+    correctionInspectionId: inspection.id,
+  };
+  returnedIssues = returnedIssues.filter((issue) => issue.id !== issueId);
+  renderReturnedIssues(); saveData();
+  try { await cloudUpdateIssue(original); }
+  catch (error) { console.warn("Não foi possível encerrar a solicitação de retificação no banco", error); }
+}
 async function syncLocalBacklog() {
   if (!CLOUD?.url || !data.issues?.length) return;
   try {
@@ -523,6 +542,8 @@ async function submitChecklist() {
     items: CHECKLIST.map((item) => ({ ...item, ...current.states[item.id] })),
   };
   const currentIssues = [...getCurrentIssues(), ...(current.washRequested ? [{ item: { name: "Solicitação de lavagem", category: "Lavagem" }, severity: "Leve", description: current.washDetails || "Solicitação de lavagem do veículo." }] : [])];
+  inspection.status = currentIssues.length ? "Com ocorrência" : "Concluído sem observação";
+  inspection.completedAt = currentIssues.length ? "" : new Date().toISOString();
   const newIssues = currentIssues.map((issue) => ({
     id: crypto.randomUUID(), inspectionId: inspection.id, status: "aberta", createdAt: inspection.createdAt,
     driver: current.driver, driverRegistration: current.driverRegistration, driverRole: current.driverRole, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, approvalRoute: current.directToManagement ? "gestao" : "lideranca", vehicleId: vehicle.id, vehiclePrefix: vehicle.prefix || "", vehiclePlate: vehicle.plate, vehicleType: vehicle.type, vehicleModel: vehicle.model || "", vehicleBase: BASE_BY_PREFIX[vehicle.prefix] || vehicle.base || "", odometer: current.odometer,
@@ -537,6 +558,7 @@ async function submitChecklist() {
   saveData();
   try { await cloudSyncSubmission(inspection, newIssues); }
   catch (error) { console.warn("Não foi possível gravar o chamado no banco", error); alert(`O chamado foi salvo neste aparelho, mas o banco recusou o envio.\n\nDetalhe: ${error.message || "erro não informado"}`); }
+  await finishCorrectionRequest(current.correctionOf, inspection, newIssues.length > 0);
   const sendResult = await sendToIntegration({ inspection, vehicle, issues: newIssues });
   await showCompletion(inspection, vehicle, newIssues, sendResult);
   current = { driver: current.driver, driverRegistration: current.driverRegistration, driverRole: current.driverRole, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, vehicleId: vehicle.id, odometer: "", states: {}, notes: "" };
@@ -589,7 +611,7 @@ async function approvalUrl(vehicle, issues) {
 async function showCompletion(inspection, vehicle, issues, sendResult) {
   const severe = issues.some((issue) => issue.severity === "Grave");
   $("#successTitle").textContent = issues.length ? (severe ? "Veículo com bloqueio de deslocamento." : "Ocorrência registrada.") : "Tudo certo para seguir.";
-  $("#successText").textContent = issues.length ? `O formulário foi salvo com ${issues.length} ocorrência(s). Confira o chamado abaixo; após enviar para a liderança, você pode voltar ao início. ${sendResult.sent ? "A integração de e-mail foi acionada." : "Configure a integração para o envio automático por e-mail."}` : "Checklist concluído e registrado no controle da frota.";
+  $("#successText").textContent = issues.length ? `O formulário foi salvo com ${issues.length} ocorrência(s). Confira o chamado abaixo; após enviar para a liderança, você pode voltar ao início. ${sendResult.sent ? "A integração de e-mail foi acionada." : "Configure a integração para o envio automático por e-mail."}` : "Checklist concluído sem observações. Não é necessária aprovação da liderança.";
   const form = $("#submittedForm");
   const protocol = `MAN-${String(inspection.id || Date.now()).replaceAll("-", "").slice(-8).toUpperCase()}`;
   const occurrenceRows = issues.length ? issues.map((issue) => `<article class="submitted-issue ${esc(issue.severity.toLowerCase())}"><div><b>${esc(issue.itemName)}</b><span class="chip ${esc(issue.severity.toLowerCase())}">${esc(issue.severity)}</span></div><p>${esc(issue.description)}</p>${issue.photoPath ? `<img src="${esc(publicIssuePhotoUrl(issue))}" alt="Foto da ocorrência ${esc(issue.itemName)}" loading="lazy">` : ""}</article>`).join("") : `<p class="form-empty">Nenhuma ocorrência informada.</p>`;
@@ -1029,7 +1051,7 @@ $("#settingsForm").addEventListener("submit", (event) => { event.preventDefault(
 $("#maintenanceForm").addEventListener("submit", (event) => { event.preventDefault(); saveMaintenance(); });
 $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").forEach((button) => button.classList.toggle("active", button === tab)); $$(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab.dataset.tab}Panel`)); }));
 
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=119").catch(() => {}));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=120").catch(() => {}));
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
 window.addEventListener("appinstalled", () => { document.body.classList.add("app-installed"); $("#installBanner").hidden = true; });
 if (isInstalled()) document.body.classList.add("app-installed"); else window.addEventListener("load", showInstallBanner);
