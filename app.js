@@ -102,10 +102,11 @@ const EMPLOYEE_ROLE_BY_REGISTRATION = {
 const DRIVER_LIST_SOURCE = ["ADENILSON SILVA PEREIRA", "ALEIXO DE OLIVEIRA CEZAR", "ANDRE DE JESUS COUTINHO", "ANDRE PEREIRA DO CARMO", "CARLOS ALEXANDRE APARECIDO RAMOS", "CARLOS ROBERTO DE MORAIS FILHO", "CLAUDINEI FERNANDES TEIXEIRA", "DANIEL DOS SANTOS DE SA", "EDSON DO AMARAL DE CARVALHO", "FRANCISCO VILAMAR FERNANDES DA SILVA", "JOAO PAULO DA ROCHA", "JOAO SILVERIO DA SILVA", "JOSE RODOLFO TELES", "LUIS ANTONIO VICHI", "MARCO ALEXANDRE DE OLIVEIRA", "RENATO TARTAGLIONE FONSECA", "RODOLFO APARECIDO DA SILVA", "ROMEU CLEMENTE DE OLIVEIRA", "SAULO DE CARVALHO SILVA", "TIAGO APARECIDO DE MORAES", "VALNEI APARECIDO LIMA"];
 const driverNameKey = (name = "") => String(name).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/\s+/g, " ").trim();
 let employeeDatabase = [];
+let editingEmployeeRegistration = "";
 const driverByRegistration = (registration = "") => {
   const normalized = String(registration).replace(/\D/g, "");
   const cloudEmployee = employeeDatabase.find((entry) => String(entry.registration).replace(/\D/g, "") === normalized);
-  if (cloudEmployee) return { registration: String(cloudEmployee.registration), name: cloudEmployee.name, role: cloudEmployee.role || "Funcionário" };
+  if (cloudEmployee) return { ...cloudEmployee, registration: String(cloudEmployee.registration), name: cloudEmployee.name, role: cloudEmployee.role || "Funcionário" };
   const driver = DRIVER_REGISTRY.find((entry) => entry.registration === normalized);
   return driver ? { ...driver, role: EMPLOYEE_ROLE_BY_REGISTRATION[driver.registration] || "Funcionário" } : null;
 };
@@ -159,7 +160,7 @@ async function cloudSave(table, row) {
 async function loadEmployeeDatabase() {
   if (!CLOUD?.url || employeeDatabase.length) return;
   try {
-    const rows = await cloudRequest("/rest/v1/fleet_employees?select=registration,name,role,active&active=is.true&order=name.asc");
+    const rows = await cloudRequest("/rest/v1/fleet_employees?select=*&active=is.true&order=name.asc");
     if (!Array.isArray(rows) || !rows.length) return;
     employeeDatabase = rows;
     lookupDriverRegistration();
@@ -591,7 +592,7 @@ function buildWhatsAppMessage(vehicle, issues, inspection) {
 function whatsappLink(phone, message) { return `https://wa.me/${phoneOnly(phone)}?text=${encodeURIComponent(message)}`; }
 function leadershipPanelUrl(baseName) {
   const base = baseName || current.baseName || "Vertical";
-  return `${location.origin}${location.pathname.replace(/[^/]*$/, "lider.html")}?v=115&base=${encodeURIComponent(base)}`;
+  return `${location.origin}${location.pathname.replace(/[^/]*$/, "lider.html")}?v=121&base=${encodeURIComponent(base)}`;
 }
 async function approvalUrl(vehicle, issues) {
   const first = issues[0] || {};
@@ -722,7 +723,7 @@ function sendLeaderInstall() {
   const base = $("#leaderInstallBase")?.value; const phone = BASES[base];
   if (!phone) return alert("Selecione Base Vertical, Base Horizontal ou Base Abrigo.");
   const label = LEADER_BASE_LABELS[base] || `Base ${base}`;
-  const link = `https://4lves-dev.github.io/checkfrota/instalar-lider.html?v=115&base=${encodeURIComponent(base)}`;
+  const link = `https://4lves-dev.github.io/checkfrota/instalar-lider.html?v=121&base=${encodeURIComponent(base)}`;
   const message = `*CHECKFROTA — APLICATIVO DA LIDERANÇA*\n\nOlá, ${label}.\n\nEste é o link de instalação do painel da liderança desta base:\n${link}\n\nApós instalar, utilize o aplicativo para consultar as ocorrências e registrar a aprovação ou recusa.`;
   window.open(whatsappLink(phone, message), "_blank", "noopener");
 }
@@ -819,7 +820,12 @@ function renderDrivers() {
   const registered = [...(employeeDatabase.length ? employeeDatabase : DRIVER_REGISTRY)].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
   const missing = driversMissingRegistration().sort((a, b) => a.localeCompare(b, "pt-BR"));
   const employeeAction = masterAdmin ? `<button class="add-button" id="newEmployee">+ Cadastrar colaborador</button>` : "";
-  panel.innerHTML = `<section class="driver-registry"><div class="section-action"><div><h3>Banco de colaboradores</h3><p>Digite a matrícula no aplicativo para preencher o nome automaticamente.</p></div><div class="vehicle-actions"><span class="chip ok">${registered.length} cadastrados</span>${employeeAction}</div></div><div class="driver-grid">${registered.map((driver) => `<article class="driver-row"><b>${esc(driver.name)}</b><span>Matrícula ${esc(driver.registration)}${driver.role ? ` · ${esc(driver.role)}` : ""}</span></article>`).join("")}</div></section><section class="missing-drivers"><div class="section-action"><div><h3>Colaboradores sem matrícula</h3><p>Relação identificada na primeira tabela e ainda sem vínculo na segunda.</p></div><span class="chip grave">${missing.length} pendentes</span></div>${missing.length ? `<ul>${missing.map((name) => `<li>${esc(name)}</li>`).join("")}</ul>` : "<p>Todos os colaboradores possuem matrícula cadastrada.</p>"}</section>`;
+  const card = (driver) => {
+    const leader = Boolean(driver.leader); const base = driver.leader_base || "";
+    const manage = masterAdmin ? `<button class="small-button" data-edit-employee="${esc(driver.registration)}">${leader ? "Configurar líder" : "Definir líder"}</button>` : "";
+    return `<article class="driver-row"><div><b>${esc(driver.name)}</b><span>Matrícula ${esc(driver.registration)}${driver.role ? ` · ${esc(driver.role)}` : ""}${leader ? ` · <strong>Líder${base ? ` — ${esc(base)}` : ""}</strong>` : ""}</span></div>${manage}</article>`;
+  };
+  panel.innerHTML = `<section class="driver-registry"><div class="section-action"><div><h3>Banco de colaboradores</h3><p>Marque o líder e a base. O acesso inicial usa matrícula como usuário e senha.</p></div><div class="vehicle-actions"><span class="chip ok">${registered.length} cadastrados</span>${employeeAction}</div></div><div class="driver-grid">${registered.map(card).join("")}</div></section><section class="missing-drivers"><div class="section-action"><div><h3>Colaboradores sem matrícula</h3><p>Relação identificada na primeira tabela e ainda sem vínculo na segunda.</p></div><span class="chip grave">${missing.length} pendentes</span></div>${missing.length ? `<ul>${missing.map((name) => `<li>${esc(name)}</li>`).join("")}</ul>` : "<p>Todos os colaboradores possuem matrícula cadastrada.</p>"}</section>`;
 }
 function renderAuditLog() {
   const panel = $("#auditPanel");
@@ -836,9 +842,19 @@ function openVehicleDialog(id = "") {
   $("#vehicleOwnerName").value = vehicle?.ownerName || ""; $("#vehicleOwnerPhone").value = vehicle?.ownerPhone || ""; $("#vehicleEmail").value = vehicle?.email || "";
   $("#vehicleDialog").showModal();
 }
-function openEmployeeDialog() {
+function toggleEmployeeLeaderFields() {
+  const enabled = Boolean($("#employeeLeader")?.checked);
+  $("#employeeLeaderBaseField").hidden = !enabled;
+  $("#employeeLeaderBase").hidden = !enabled;
+  $("#employeeLeaderBase").required = enabled;
+}
+function openEmployeeDialog(employee = null) {
   if (!requireMasterAccess()) return;
-  $("#employeeRegistration").value = ""; $("#employeeName").value = ""; $("#employeeRole").value = "";
+  editingEmployeeRegistration = employee?.registration || "";
+  $("#employeeDialogTitle").textContent = employee ? "Configurar colaborador" : "Novo colaborador";
+  $("#employeeRegistration").value = employee?.registration || ""; $("#employeeRegistration").readOnly = Boolean(employee);
+  $("#employeeName").value = employee?.name || ""; $("#employeeRole").value = employee?.role || "";
+  $("#employeeLeader").checked = Boolean(employee?.leader); $("#employeeLeaderBase").value = employee?.leader_base || ""; toggleEmployeeLeaderFields();
   $("#employeeDialog").showModal();
 }
 async function saveEmployee() {
@@ -846,12 +862,15 @@ async function saveEmployee() {
   const registration = $("#employeeRegistration").value.replace(/\D/g, "");
   const name = $("#employeeName").value.trim().toUpperCase();
   const role = $("#employeeRole").value.trim();
+  const leader = $("#employeeLeader").checked;
+  const leader_base = leader ? $("#employeeLeaderBase").value : null;
   if (!registration || !name || !role) { $("#employeeForm").reportValidity(); return; }
+  if (leader && !leader_base) { $("#employeeForm").reportValidity(); return; }
   try {
-    const rows = await cloudRequest("/rest/v1/fleet_employees?on_conflict=registration", { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=representation" }, body: JSON.stringify({ registration, name, role, active: true }) });
-    const saved = rows?.[0] || { registration, name, role, active: true };
+    const rows = await cloudRequest("/rest/v1/fleet_employees?on_conflict=registration", { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=representation" }, body: JSON.stringify({ registration, name, role, active: true, leader, leader_base }) });
+    const saved = rows?.[0] || { registration, name, role, active: true, leader, leader_base };
     employeeDatabase = [...employeeDatabase.filter((entry) => String(entry.registration) !== registration), saved];
-    $("#employeeDialog").close(); renderDrivers(); alert("Colaborador salvo no banco de dados.");
+    $("#employeeDialog").close(); renderDrivers(); alert(leader ? "Líder salvo. O acesso inicial é matrícula como usuário e senha." : "Colaborador salvo no banco de dados.");
   } catch (error) { alert("Não foi possível salvar o colaborador no banco. Verifique se a tabela e as permissões do Supabase foram configuradas."); console.warn(error); }
 }
 function saveVehicle() {
@@ -1019,6 +1038,7 @@ document.addEventListener("click", (event) => {
   if (target.id === "newVehicle" || target.id === "quickNewVehicle") openVehicleDialog();
   if (target.id === "newEmployee") openEmployeeDialog();
   if (target.id === "quickNewEmployee") openEmployeeDialog();
+  if (target.dataset.editEmployee) openEmployeeDialog(employeeDatabase.find((employee) => String(employee.registration) === String(target.dataset.editEmployee)) || DRIVER_REGISTRY.find((employee) => String(employee.registration) === String(target.dataset.editEmployee)));
   if (target.dataset.vehicleHistory) { selectedVehicleHistoryId = selectedVehicleHistoryId === target.dataset.vehicleHistory ? "" : target.dataset.vehicleHistory; renderVehicles(); }
   if (target.dataset.editVehicle) openVehicleDialog(target.dataset.editVehicle);
   if (target.dataset.deleteVehicle) deleteVehicle(target.dataset.deleteVehicle);
@@ -1042,6 +1062,7 @@ document.addEventListener("click", (event) => {
 $("#vehicleSelect").addEventListener("change", renderVehicleOwner);
 $("#baseSelect").addEventListener("change", () => { renderBasePhone(); renderVehicleOptions(); });
 $("#driverRegistration")?.addEventListener("input", lookupDriverRegistration);
+$("#employeeLeader")?.addEventListener("change", toggleEmployeeLeaderFields);
 $("#leaderInstallBase")?.addEventListener("change", renderLeaderInstallTarget);
 $("#dismissInstallBanner").addEventListener("click", dismissInstallBanner);
 $("#issueForm").addEventListener("submit", (event) => { event.preventDefault(); saveIssue(); });
@@ -1051,7 +1072,7 @@ $("#settingsForm").addEventListener("submit", (event) => { event.preventDefault(
 $("#maintenanceForm").addEventListener("submit", (event) => { event.preventDefault(); saveMaintenance(); });
 $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").forEach((button) => button.classList.toggle("active", button === tab)); $$(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab.dataset.tab}Panel`)); }));
 
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=120").catch(() => {}));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=121").catch(() => {}));
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
 window.addEventListener("appinstalled", () => { document.body.classList.add("app-installed"); $("#installBanner").hidden = true; });
 if (isInstalled()) document.body.classList.add("app-installed"); else window.addEventListener("load", showInstallBanner);
