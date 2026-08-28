@@ -649,13 +649,43 @@ async function showCompletion(inspection, vehicle, issues, sendResult) {
   showScreen("success");
 }
 
+function renderManagementCommandCenter() {
+  const panel = $("#managementCommandCenter"); if (!panel) return;
+  const open = data.issues.filter((issue) => issue.status !== "resolvida");
+  const todayValue = today();
+  const count = (predicate) => open.filter(predicate).length;
+  const cards = [
+    ["Aguardando líder", count((issue) => !issue.leaderApproval && issue.approvalRoute !== "gestao"), "approval"],
+    ["Agendados hoje", count((issue) => maintenanceOf(issue).scheduledAt?.slice(0, 10) === todayValue), "scheduled"],
+    ["Em manutenção", count((issue) => ["Em execução", "Em manutenção", "Aguardando peça"].includes(maintenanceOf(issue).status)), "progress"],
+    ["Prontos para retirada", count((issue) => maintenanceOf(issue).status === "Veículo pronto para retirada"), "ready"],
+    ["Atrasados", count((issue) => maintenanceOf(issue).returnAt && maintenanceOf(issue).returnAt.slice(0, 10) < todayValue && !["Concluída", "Veículo pronto para retirada"].includes(maintenanceOf(issue).status)), "late"],
+  ];
+  panel.innerHTML = `<div class="section-action"><div><p class="eyebrow">PRIORIDADES DO DIA</p><h3>Central de pendências</h3><p>Veja o que precisa de ação imediata.</p></div><span class="chip grave">${open.length} em aberto</span></div><div class="command-center-grid">${cards.map(([label, value, type]) => `<button type="button" class="command-card ${type}" data-command-filter="${type}"><b>${value}</b><span>${label}</span></button>`).join("")}</div>`;
+}
+function renderVehicleTimelines() {
+  const cards = $$("#vehiclesPanel .vehicle-card");
+  cards.forEach((card, index) => {
+    const vehicle = data.vehicles[index]; if (!vehicle) return;
+    const events = data.issues.filter((issue) => issue.vehicleId === vehicle.id || String(issue.vehiclePrefix) === String(vehicle.prefix)).flatMap((issue) => {
+      const maintenance = maintenanceOf(issue), entries = [{ at: issue.createdAt, label: `Chamado aberto: ${issue.itemName || "manutenção"}` }];
+      if (issue.leaderApproval?.approvedAt) entries.push({ at: issue.leaderApproval.approvedAt, label: `Liderança: ${issue.leaderApproval.status}` });
+      if (maintenance.scheduledAt) entries.push({ at: maintenance.scheduledAt, label: `Agendado${maintenance.provider ? ` — ${maintenance.provider}` : ""}` });
+      if (maintenance.readyAt) entries.push({ at: maintenance.readyAt, label: "Veículo pronto para retirada" });
+      if (issue.resolvedAt) entries.push({ at: issue.resolvedAt, label: "Chamado concluído" });
+      return entries;
+    }).filter((event) => event.at).sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 5);
+    if (!events.length) return;
+    card.insertAdjacentHTML("beforeend", `<section class="vehicle-timeline"><b>Linha do tempo recente</b>${events.map((event) => `<p><span>●</span> ${esc(dateTime(event.at))} · ${esc(event.label)}</p>`).join("")}</section>`);
+  });
+}
 function renderControl() {
   const open = data.issues.filter((issue) => issue.status === "aberta");
   $("#fleetCount").textContent = data.vehicles.length;
   $("#seriousCount").textContent = open.filter((issue) => issue.severity === "Grave").length;
   const since = Date.now() - 7 * 24 * 60 * 60 * 1000;
   $("#weekChecks").textContent = data.inspections.filter((inspection) => new Date(inspection.createdAt).getTime() >= since).length;
-  renderIssues(); renderReports(); renderHistory(); renderVehicles(); renderDrivers(); renderAuditLog();
+  renderManagementCommandCenter(); renderIssues(); renderReports(); renderHistory(); renderVehicles(); renderVehicleTimelines(); renderDrivers(); renderAuditLog();
   renderLeaderInstallTarget();
   renderDailyChecklistAlert();
   renderStorageIndicator();
@@ -1108,7 +1138,7 @@ $("#settingsForm").addEventListener("submit", (event) => { event.preventDefault(
 $("#maintenanceForm").addEventListener("submit", (event) => { event.preventDefault(); saveMaintenance(); });
 $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").forEach((button) => button.classList.toggle("active", button === tab)); $$(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab.dataset.tab}Panel`)); }));
 
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=132").catch(() => {}));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=133").catch(() => {}));
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
 window.addEventListener("appinstalled", () => { document.body.classList.add("app-installed"); $("#installBanner").hidden = true; });
 if (isInstalled()) document.body.classList.add("app-installed"); else window.addEventListener("load", showInstallBanner);
