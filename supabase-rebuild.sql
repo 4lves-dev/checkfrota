@@ -37,6 +37,11 @@ alter table public.fleet_issues add column if not exists vehicle_id text;
 alter table public.fleet_issues add column if not exists status text not null default 'aberta';
 alter table public.fleet_issues add column if not exists data jsonb not null default '{}'::jsonb;
 
+-- A tabela antiga usa UUID em id, mas a frota do aplicativo usa códigos como
+-- v1446. A conversão preserva o veículo já salvo e permite sincronizar a frota.
+alter table public.fleet_vehicles alter column id drop default;
+alter table public.fleet_vehicles alter column id type text using id::text;
+
 alter table public.fleet_vehicles enable row level security;
 alter table public.fleet_inspections enable row level security;
 alter table public.fleet_issues enable row level security;
@@ -62,8 +67,8 @@ on public.fleet_vehicles for all to authenticated
 using (lower(coalesce(auth.jwt() ->> 'email', '')) = 'luciano.silva@urbam.com.br')
 with check (lower(coalesce(auth.jwt() ->> 'email', '')) = 'luciano.silva@urbam.com.br');
 
--- Frota padrão. ON CONFLICT preserva o veículo que já estiver cadastrado na nuvem.
-insert into public.fleet_vehicles (id, prefix, plate, data) values
+-- Frota padrão. Veículos já encontrados pela placa ou prefixo são preservados.
+with fleet_seed (id, prefix, plate, data) as (values
 ('v1446','1446','SHR7161','{"id":"v1446","prefix":"1446","plate":"SHR7161","type":"Carro","model":"Onix","ownerName":"Responsável a cadastrar","ownerPhone":"","email":"","contract":"50/23","urbamContract":"620/24","odometer":""}'::jsonb),
 ('v1447','1447','SHL7J59','{"id":"v1447","prefix":"1447","plate":"SHL7J59","type":"Carro","model":"Onix","ownerName":"Responsável a cadastrar","ownerPhone":"","email":"","contract":"50/23","urbamContract":"482/22","odometer":""}'::jsonb),
 ('v1456','1456','SHR7128','{"id":"v1456","prefix":"1456","plate":"SHR7128","type":"Utilitário","model":"Furgão Peugeot","ownerName":"Responsável a cadastrar","ownerPhone":"","email":"","contract":"58/23","urbamContract":"44/23","odometer":""}'::jsonb),
@@ -83,5 +88,12 @@ insert into public.fleet_vehicles (id, prefix, plate, data) values
 ('v1967','1967','UET6G08','{"id":"v1967","prefix":"1967","plate":"UET6G08","type":"Carro","model":"Strada","base":"Base Horizontal","ownerName":"Responsável a cadastrar","ownerPhone":"","email":"","contract":"059/26","urbamContract":"620/24","odometer":""}'::jsonb),
 ('v1968','1968','UED5G69','{"id":"v1968","prefix":"1968","plate":"UED5G69","type":"Carro","model":"Strada","manager":"Julio — Gestor de Contratos","ownerName":"Responsável a cadastrar","ownerPhone":"","email":"","contract":"059/26","urbamContract":"620/24","odometer":""}'::jsonb),
 ('v157','157','SVP0D79','{"id":"v157","prefix":"157","plate":"SVP0D79","type":"Caminhão","model":"Iveco/Tector 17-280","ownerName":"URBAM","ownerPhone":"","email":"","contract":"","urbamContract":"","odometer":""}'::jsonb)
-on conflict (id) do nothing;
+)
+insert into public.fleet_vehicles (id, prefix, plate, data)
+select seed.id, seed.prefix, seed.plate, seed.data
+from fleet_seed seed
+where not exists (
+  select 1 from public.fleet_vehicles current
+  where current.id = seed.id or current.prefix = seed.prefix or current.plate = seed.plate
+);
 
