@@ -1,5 +1,5 @@
-const CACHE = "checkfrota-v120";
-const ASSETS = ["./", "./index.html", "./gestao.html?v=108", "./lider.html?v=115", "./instalar-gestao.html", "./instalar-lider.html", "./aprovacao.html?v=104", "./styles.css?v=108", "./supabase-config.js?v=1", "./app.js?v=120", "./manifest.webmanifest", "./gestao-manifest.webmanifest", "./lider-manifest.webmanifest", "./icons/icon.svg"];
+const CACHE = "checkfrota-v121";
+const ASSETS = ["./", "./index.html", "./gestao.html?v=108", "./lider.html?v=121", "./instalar-gestao.html", "./instalar-lider.html", "./aprovacao.html?v=104", "./styles.css?v=108", "./supabase-config.js?v=1", "./app.js?v=121", "./manifest.webmanifest", "./gestao-manifest.webmanifest", "./lider-manifest.webmanifest", "./icons/icon.svg"];
 
 self.addEventListener("install", (event) => event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting())));
 self.addEventListener("activate", (event) => event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)))).then(() => self.clients.claim())));
@@ -30,6 +30,6 @@ self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   event.waitUntil(clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
     const open = windows.find((client) => client.url.includes("lider.html"));
-    return open ? open.focus() : clients.openWindow("./lider.html?v=115");
+    return open ? open.focus() : clients.openWindow("./lider.html?v=121");
   }));
 });
