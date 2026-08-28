@@ -635,10 +635,8 @@ async function showCompletion(inspection, vehicle, issues, sendResult) {
   const directToManagement = issues.some((issue) => issue.approvalRoute === "gestao");
   const approvalTarget = issues[0]?.basePhone || current.basePhone || data.settings.leaderPhone;
   if (directToManagement) {
-    const target = data.settings.maintenancePhone;
     const managementLink = `${location.origin}${location.pathname.replace(/[^/]*$/, "gestao.html")}?v=108`;
-    const message = `*NOVO CHAMADO DIRETO PARA GESTÃO E MANUTENÇÃO*\n\n${buildWhatsAppMessage(vehicle, issues, inspection).replace(/\*/g, "")}\n\nEste veículo possui encaminhamento direto. Abra o painel de Gestão:\n${managementLink}`;
-    if (target) buttons.push(`<a href="${whatsappLink(target, message)}" target="_blank" rel="noopener">Enviar direto para Gestão e Manutenção</a>`);
+    buttons.push(`<a href="${managementLink}" target="_blank" rel="noopener">Enviar</a>`);
   } else if (approvalTarget) {
     const message = buildWhatsAppMessage(vehicle, issues, inspection);
     const leaderLink = leadershipPanelUrl(inspection.baseName || issues[0]?.baseName);
@@ -1142,7 +1140,7 @@ $("#settingsForm").addEventListener("submit", (event) => { event.preventDefault(
 $("#maintenanceForm").addEventListener("submit", (event) => { event.preventDefault(); saveMaintenance(); });
 $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").forEach((button) => button.classList.toggle("active", button === tab)); $$(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab.dataset.tab}Panel`)); }));
 
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=135").catch(() => {}));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=136").catch(() => {}));
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
 window.addEventListener("appinstalled", () => { document.body.classList.add("app-installed"); $("#installBanner").hidden = true; });
 if (isInstalled()) document.body.classList.add("app-installed"); else window.addEventListener("load", showInstallBanner);
