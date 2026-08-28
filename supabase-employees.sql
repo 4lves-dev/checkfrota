@@ -6,9 +6,14 @@ create table if not exists public.fleet_employees (
   name text not null,
   role text not null,
   active boolean not null default true,
+  leader boolean not null default false,
+  leader_base text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.fleet_employees add column if not exists leader boolean not null default false;
+alter table public.fleet_employees add column if not exists leader_base text;
 
 alter table public.fleet_employees enable row level security;
 
@@ -111,4 +116,3 @@ on conflict (registration) do update set
   role = excluded.role,
   active = excluded.active,
   updated_at = now();
-
