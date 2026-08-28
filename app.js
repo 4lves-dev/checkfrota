@@ -434,7 +434,7 @@ function isDirectManagementVehicle(vehicle) { return DIRECT_MANAGEMENT_PREFIXES.
 function renderVehicleOptions() {
   const select = $("#vehicleSelect"); const selectedBase = $("#baseSelect").value; const oldValue = select.value || current.vehicleId;
   const vehicles = selectedBase ? data.vehicles.filter((vehicle) => vehicleBaseKey(vehicle) === selectedBase) : [];
-  select.innerHTML = `<option value="">${selectedBase ? "Selecione o veículo" : "Selecione primeiro a base"}</option>${vehicles.map((vehicle) => `<option value="${vehicle.id}">Prefixo ${esc(vehicle.prefix || "—")} · ${esc(vehicle.plate)} · ${esc(vehicle.model || vehicle.type)}${isDirectManagementVehicle(vehicle) ? " · Gestão direta" : ""}</option>`).join("")}`;
+  select.innerHTML = `<option value="">${selectedBase ? "Selecione o veículo" : "Selecione primeiro a base"}</option>${vehicles.map((vehicle) => `<option value="${vehicle.id}">Prefixo ${esc(vehicle.prefix || "—")} · ${esc(vehicle.plate)} · ${esc(vehicle.model || vehicle.type)}</option>`).join("")}`;
   if (vehicles.some((vehicle) => vehicle.id === oldValue)) select.value = oldValue; else current.vehicleId = "";
   renderVehicleOwner();
 }
