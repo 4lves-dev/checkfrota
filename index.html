@@ -248,6 +248,9 @@
         <input id="maintenanceScheduledAt" type="datetime-local" />
         <label for="maintenanceProvider">Oficina / responsável <em>opcional</em></label>
         <input id="maintenanceProvider" placeholder="Ex.: Oficina Central" />
+        <label for="maintenanceAddress">Endereço da oficina <em>opcional</em></label>
+        <input id="maintenanceAddress" placeholder="Rua, número, bairro, cidade" />
+        <button type="button" class="secondary-button" id="openMaintenanceMap">📍 Buscar oficina no mapa</button>
         <label for="maintenanceService">Serviço executado / previsto <em>obrigatório ao liberar veículo</em></label>
         <textarea id="maintenanceService" placeholder="Ex.: troca de pneu dianteiro e alinhamento."></textarea>
         <label for="maintenanceCost">Custo da manutenção (R$) <em>opcional</em></label>
@@ -272,6 +275,6 @@
     <template id="emptyStateTemplate"><div class="empty-state"><span>⌁</span><p>Nenhum registro por aqui.</p></div></template>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="supabase-config.js?v=1"></script>
-    <script src="app.js?v=130"></script>
+    <script src="app.js?v=131"></script>
   </body>
 </html>
