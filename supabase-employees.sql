@@ -8,12 +8,21 @@ create table if not exists public.fleet_employees (
   active boolean not null default true,
   leader boolean not null default false,
   leader_base text,
+  access_level text not null default 'colaborador',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 alter table public.fleet_employees add column if not exists leader boolean not null default false;
 alter table public.fleet_employees add column if not exists leader_base text;
+alter table public.fleet_employees add column if not exists access_level text not null default 'colaborador';
+
+alter table public.fleet_employees drop constraint if exists fleet_employees_access_level_check;
+alter table public.fleet_employees add constraint fleet_employees_access_level_check
+  check (access_level in ('colaborador', 'lider', 'coordenador', 'gestor'));
+
+update public.fleet_employees set access_level = 'lider'
+where leader = true and access_level = 'colaborador';
 
 alter table public.fleet_employees enable row level security;
 
