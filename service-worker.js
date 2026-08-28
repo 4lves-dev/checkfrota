@@ -15,3 +15,22 @@ self.addEventListener("fetch", (event) => {
   }
   event.respondWith(caches.match(event.request).then((cached) => cached || fetch(event.request)));
 });
+
+self.addEventListener("push", (event) => {
+  let payload = { title: "URBAM Frota Líder", body: "Há um novo chamado para aprovação." };
+  try { payload = { ...payload, ...event.data.json() }; } catch (_) {}
+  event.waitUntil(self.registration.showNotification(payload.title, {
+    body: payload.body,
+    icon: "icons/icon.svg",
+    tag: payload.tag || "urbam-frota-lider"
+  }));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  event.waitUntil(clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
+    const open = windows.find((client) => client.url.includes("lider.html"));
+    return open ? open.focus() : clients.openWindow("./lider.html?v=115");
+  }));
+});
+
