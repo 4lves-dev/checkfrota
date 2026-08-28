@@ -604,7 +604,7 @@ function buildWhatsAppMessage(vehicle, issues, inspection) {
 function whatsappLink(phone, message) { return `https://wa.me/${phoneOnly(phone)}?text=${encodeURIComponent(message)}`; }
 function leadershipPanelUrl(baseName) {
   const base = baseName || current.baseName || "Vertical";
-  return `${location.origin}${location.pathname.replace(/[^/]*$/, "lider.html")}?v=128&base=${encodeURIComponent(base)}`;
+  return `${location.origin}${location.pathname.replace(/[^/]*$/, "lider.html")}?v=129&base=${encodeURIComponent(base)}`;
 }
 async function approvalUrl(vehicle, issues) {
   const first = issues[0] || {};
@@ -638,10 +638,7 @@ async function showCompletion(inspection, vehicle, issues, sendResult) {
     const managementLink = `${location.origin}${location.pathname.replace(/[^/]*$/, "gestao.html")}?v=108`;
     buttons.push(`<a href="${managementLink}" target="_blank" rel="noopener">Enviar</a>`);
   } else if (approvalTarget) {
-    const message = buildWhatsAppMessage(vehicle, issues, inspection);
-    const leaderLink = leadershipPanelUrl(inspection.baseName || issues[0]?.baseName);
-    const approvalMessage = `*NOVO CHAMADO PARA APROVAÇÃO*\n\n${message.replace(/\*/g, "")}\n\nAbra o aplicativo da liderança para conferir a foto e decidir:\n${leaderLink}\n\nO chamado também ficará destacado no painel da base.`;
-    buttons.push(`<a href="${whatsappLink(approvalTarget, approvalMessage)}" target="_blank" rel="noopener">Enviar para aprovação da liderança</a>`);
+    buttons.push(`<button type="button" class="primary-button" data-go="inicio">Enviar</button>`);
   }
   actions.innerHTML = buttons.join("");
   showScreen("success");
@@ -1140,7 +1137,7 @@ $("#settingsForm").addEventListener("submit", (event) => { event.preventDefault(
 $("#maintenanceForm").addEventListener("submit", (event) => { event.preventDefault(); saveMaintenance(); });
 $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").forEach((button) => button.classList.toggle("active", button === tab)); $$(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab.dataset.tab}Panel`)); }));
 
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=136").catch(() => {}));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=137").catch(() => {}));
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
 window.addEventListener("appinstalled", () => { document.body.classList.add("app-installed"); $("#installBanner").hidden = true; });
 if (isInstalled()) document.body.classList.add("app-installed"); else window.addEventListener("load", showInstallBanner);
