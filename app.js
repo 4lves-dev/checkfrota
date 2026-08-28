@@ -260,7 +260,7 @@ function openReturnedChecklist(issue, inspection = null) {
   current = {
     driver: inspection?.driver || issue.driver || "", driverRegistration: inspection?.driverRegistration || issue.driverRegistration || "", driverRole: inspection?.driverRole || issue.driverRole || "", driverEmail: inspection?.driverEmail || issue.driverEmail || EMAIL_COPY_RECIPIENT,
     driverPhone: inspection?.driverPhone || issue.driverPhone || "", baseName: inspection?.baseName || issue.baseName || "", basePhone: inspection?.basePhone || issue.basePhone || BASES[inspection?.baseName || issue.baseName] || "",
-    vehicleId: vehicle?.id || inspection?.vehicleId || issue.vehicleId || "", odometer: inspection?.odometer ?? issue.odometer ?? "", states, notes: inspection?.notes || "", correctionOf: issue.id,
+    vehicleId: vehicle?.id || inspection?.vehicleId || issue.vehicleId || "", odometer: inspection?.odometer ?? issue.odometer ?? "", states, notes: inspection?.notes || "", washRequested: Boolean(inspection?.washRequested), washDetails: inspection?.washDetails || "", correctionOf: issue.id,
   };
   $("#driverRegistration").value = current.driverRegistration; $("#driverPhone").value = formatPhone(current.driverPhone); $("#baseSelect").value = current.baseName; $("#vehicleSelect").value = current.vehicleId; $("#odometer").value = current.odometer;
   lookupDriverRegistration(); renderBasePhone(); renderVehicleOwner();
@@ -415,7 +415,7 @@ function beginChecklist() {
   if (!vehicleId) return alert("Selecione o veículo que será utilizado.");
   if (!basePhone) return alert("Selecione a base responsável pela aprovação.");
   if (!Number.isFinite(odometer) || odometer < 0) return alert("Informe a quilometragem atual do veículo.");
-  current = { driver, driverRegistration, driverRole, driverEmail, driverPhone, baseName, basePhone, vehicleId, odometer, states: Object.fromEntries(CHECKLIST.map((item) => [item.id, { status: "pending" }])), notes: "" };
+  current = { driver, driverRegistration, driverRole, driverEmail, driverPhone, baseName, basePhone, vehicleId, odometer, states: Object.fromEntries(CHECKLIST.map((item) => [item.id, { status: "pending" }])), notes: "", washRequested: false, washDetails: "" };
   localStorage.setItem("checkfrota-driver", driver);
   localStorage.setItem("checkfrota-driver-registration", driverRegistration);
   localStorage.setItem("checkfrota-driver-phone", driverPhone);
@@ -482,6 +482,8 @@ function reviewChecklist() {
     <div class="review-row"><span>Ocorrências</span>${issues.length ? `<span class="chip ${highestSeverity(issues).toLowerCase()}">${issues.length} encontrada(s)</span>` : `<span class="chip ok">Nenhuma</span>`}</div>
   </section>${issues.length ? `<section class="review-box card">${issues.map((issue) => `<div class="review-row"><span>${esc(issue.item.name)}</span><span class="chip ${issue.severity.toLowerCase()}">${esc(issue.severity)}</span></div>`).join("")}</section>` : ""}`;
   $("#generalNotes").value = current.notes;
+  $("#requestWash").checked = Boolean(current.washRequested);
+  $("#washDetails").value = current.washDetails || "";
   showScreen("review");
 }
 function getCurrentIssues() {
@@ -492,13 +494,15 @@ function highestSeverity(issues) { return issues.reduce((highest, issue) => seve
 
 async function submitChecklist() {
   current.notes = $("#generalNotes").value.trim();
+  current.washRequested = $("#requestWash").checked;
+  current.washDetails = $("#washDetails").value.trim();
   const vehicle = vehicleById(current.vehicleId);
   const inspection = {
     id: crypto.randomUUID(), createdAt: new Date().toISOString(), driver: current.driver, driverRegistration: current.driverRegistration, driverRole: current.driverRole, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone,
-    vehicleId: vehicle.id, vehiclePrefix: vehicle.prefix || "", vehiclePlate: vehicle.plate, vehicleType: vehicle.type, vehicleModel: vehicle.model || "", vehicleBase: vehicle.base || "", odometer: current.odometer, notes: current.notes, correctionOf: current.correctionOf || "",
+    vehicleId: vehicle.id, vehiclePrefix: vehicle.prefix || "", vehiclePlate: vehicle.plate, vehicleType: vehicle.type, vehicleModel: vehicle.model || "", vehicleBase: vehicle.base || "", odometer: current.odometer, notes: current.notes, washRequested: current.washRequested, washDetails: current.washDetails, correctionOf: current.correctionOf || "",
     items: CHECKLIST.map((item) => ({ ...item, ...current.states[item.id] })),
   };
-  const currentIssues = getCurrentIssues();
+  const currentIssues = [...getCurrentIssues(), ...(current.washRequested ? [{ item: { name: "Solicitação de lavagem", category: "Lavagem" }, severity: "Leve", description: current.washDetails || "Solicitação de lavagem do veículo." }] : [])];
   const newIssues = currentIssues.map((issue) => ({
     id: crypto.randomUUID(), inspectionId: inspection.id, status: "aberta", createdAt: inspection.createdAt,
     driver: current.driver, driverRegistration: current.driverRegistration, driverRole: current.driverRole, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, vehicleId: vehicle.id, vehiclePrefix: vehicle.prefix || "", vehiclePlate: vehicle.plate, vehicleType: vehicle.type, vehicleModel: vehicle.model || "", vehicleBase: vehicle.base || "", odometer: current.odometer,
@@ -991,7 +995,7 @@ $("#settingsForm").addEventListener("submit", (event) => { event.preventDefault(
 $("#maintenanceForm").addEventListener("submit", (event) => { event.preventDefault(); saveMaintenance(); });
 $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").forEach((button) => button.classList.toggle("active", button === tab)); $$(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab.dataset.tab}Panel`)); }));
 
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=112").catch(() => {}));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=113").catch(() => {}));
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
 window.addEventListener("appinstalled", () => { document.body.classList.add("app-installed"); $("#installBanner").hidden = true; });
 if (isInstalled()) document.body.classList.add("app-installed"); else window.addEventListener("load", showInstallBanner);
