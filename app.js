@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 25365)
-Total output lines: 1002
-
 /* URBAM Frota - MVP local-first. Dados ficam neste navegador até uma integração ser configurada. */
 const STORAGE_KEY = "checkfrota-v1";
 const CHECKLIST = [
@@ -431,7 +428,238 @@ function beginChecklist() {
 function renderChecklist() {
   const items = $("#checklistItems");
   items.innerHTML = CHECKLIST.map((item) => {
-  …5365 tokens truncated…e] || `Base ${base}`}: ${formatPhone(phone)}.` : "Escolha a base para conferir o número que receberá o link.";
+    const state = current.states[item.id] || { status: "pending" };
+    const issueClass = state.status === "issue" ? "has-issue" : "";
+    const issueHint = state.status === "issue" ? `<small class="chip ${state.issue.severity.toLowerCase()}">${state.issue.severity}</small>` : "";
+    return `<article class="check-item ${issueClass}">
+      <div><span class="check-name">${esc(item.name)}</span><span class="check-category">${esc(item.category)} ${issueHint}</span></div>
+      <div class="check-controls">
+        <button class="state-button ok ${state.status === "ok" ? "active" : ""}" data-state="ok" data-item="${item.id}" aria-label="${esc(item.name)} está em ordem" title="Em ordem">✓</button>
+        <button class="state-button issue ${state.status === "issue" ? "active" : ""}" data-state="issue" data-item="${item.id}" aria-label="${esc(item.name)} tem problema" title="Registrar problema">!</button>
+      </div>
+    </article>`;
+  }).join("");
+  updateProgress();
+}
+function updateProgress() {
+  const completed = Object.values(current.states).filter((state) => state.status !== "pending").length;
+  $("#progressText").textContent = `${completed} de ${CHECKLIST.length} itens verificados`;
+  $("#progressBar").style.width = `${(completed / CHECKLIST.length) * 100}%`;
+}
+
+function openIssue(itemId) {
+  issueDraft = { itemId, severity: current.states[itemId]?.issue?.severity || "Leve" };
+  const item = checkById(itemId);
+  $("#issueItemName").textContent = item.name;
+  $("#issueDescription").value = current.states[itemId]?.issue?.description || "";
+  $("#issuePhoto").value = "";
+  $$(".severity").forEach((button) => button.classList.toggle("active", button.dataset.severity === issueDraft.severity));
+  $("#issueDialog").showModal();
+}
+function saveIssue() {
+  const description = $("#issueDescription").value.trim();
+  if (!description) { $("#issueDescription").reportValidity(); return; }
+  const photo = $("#issuePhoto").files[0];
+  current.states[issueDraft.itemId] = {
+    status: "issue",
+    issue: { severity: issueDraft.severity, description, photoName: photo?.name || "", photoFile: photo || null },
+  };
+  $("#issueDialog").close();
+  renderChecklist();
+}
+function reviewChecklist() {
+  const pending = CHECKLIST.filter((item) => current.states[item.id]?.status === "pending");
+  if (pending.length) return alert(`Faltam ${pending.length} item(ns) para verificar. Marque ✓ ou ! em todos eles.`);
+  const issues = getCurrentIssues();
+  $("#reviewSummary").innerHTML = `<section class="review-box card">
+    <div class="review-row"><span>Colaborador</span><b>${esc(current.driver)}</b></div>
+    ${current.driverRegistration ? `<div class="review-row"><span>Matrícula</span><b>${esc(current.driverRegistration)}</b></div>` : ""}
+    ${current.driverRole ? `<div class="review-row"><span>Função</span><b>${esc(current.driverRole)}</b></div>` : ""}
+    ${current.driverEmail ? `<div class="review-row"><span>Cópia do formulário</span><b>${esc(current.driverEmail)}</b></div>` : ""}
+    <div class="review-row"><span>Veículo</span><b>Prefixo ${esc(vehicleById(current.vehicleId).prefix || "—")} · ${esc(vehicleById(current.vehicleId).plate)}</b></div>
+    <div class="review-row"><span>Quilometragem</span><b>${esc(current.odometer)} km</b></div>
+    <div class="review-row"><span>Itens em ordem</span><span class="chip ok">${CHECKLIST.length - issues.length} OK</span></div>
+    <div class="review-row"><span>Ocorrências</span>${issues.length ? `<span class="chip ${highestSeverity(issues).toLowerCase()}">${issues.length} encontrada(s)</span>` : `<span class="chip ok">Nenhuma</span>`}</div>
+  </section>${issues.length ? `<section class="review-box card">${issues.map((issue) => `<div class="review-row"><span>${esc(issue.item.name)}</span><span class="chip ${issue.severity.toLowerCase()}">${esc(issue.severity)}</span></div>`).join("")}</section>` : ""}`;
+  $("#generalNotes").value = current.notes;
+  showScreen("review");
+}
+function getCurrentIssues() {
+  return CHECKLIST.filter((item) => current.states[item.id]?.status === "issue").map((item) => ({ item, ...current.states[item.id].issue }));
+}
+function severityRank(severity) { return ({ Leve: 1, "Média": 2, Grave: 3 }[severity] || 0); }
+function highestSeverity(issues) { return issues.reduce((highest, issue) => severityRank(issue.severity) > severityRank(highest) ? issue.severity : highest, "Leve"); }
+
+async function submitChecklist() {
+  current.notes = $("#generalNotes").value.trim();
+  const vehicle = vehicleById(current.vehicleId);
+  const inspection = {
+    id: crypto.randomUUID(), createdAt: new Date().toISOString(), driver: current.driver, driverRegistration: current.driverRegistration, driverRole: current.driverRole, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone,
+    vehicleId: vehicle.id, vehiclePrefix: vehicle.prefix || "", vehiclePlate: vehicle.plate, vehicleType: vehicle.type, vehicleModel: vehicle.model || "", vehicleBase: vehicle.base || "", odometer: current.odometer, notes: current.notes, correctionOf: current.correctionOf || "",
+    items: CHECKLIST.map((item) => ({ ...item, ...current.states[item.id] })),
+  };
+  const currentIssues = getCurrentIssues();
+  const newIssues = currentIssues.map((issue) => ({
+    id: crypto.randomUUID(), inspectionId: inspection.id, status: "aberta", createdAt: inspection.createdAt,
+    driver: current.driver, driverRegistration: current.driverRegistration, driverRole: current.driverRole, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, vehicleId: vehicle.id, vehiclePrefix: vehicle.prefix || "", vehiclePlate: vehicle.plate, vehicleType: vehicle.type, vehicleModel: vehicle.model || "", vehicleBase: vehicle.base || "", odometer: current.odometer,
+    ownerName: vehicle.ownerName, ownerPhone: vehicle.ownerPhone, email: vehicle.email,
+    itemName: issue.item.name, severity: issue.severity, description: issue.description, photoName: issue.photoName, _photoFile: issue.photoFile || null,
+    correctionOf: current.correctionOf || "", maintenance: { status: "Pendente", scheduledAt: "", provider: "", feedback: "", updatedAt: "" },
+  }));
+  await Promise.all(newIssues.map(async (issue) => { const compressedPhoto = await compressPhoto(issue._photoFile); issue.photoSize = compressedPhoto?.size || 0; issue.photoPath = await uploadIssuePhoto(issue, compressedPhoto); delete issue._photoFile; }));
+  vehicle.odometer = current.odometer;
+  data.inspections.unshift(inspection);
+  data.issues.unshift(...newIssues);
+  saveData();
+  try { await cloudSyncSubmission(inspection, newIssues); }
+  catch (error) { console.warn("Não foi possível gravar o chamado no banco", error); alert(`O chamado foi salvo neste aparelho, mas o banco recusou o envio.\n\nDetalhe: ${error.message || "erro não informado"}`); }
+  const sendResult = await sendToIntegration({ inspection, vehicle, issues: newIssues });
+  await showCompletion(inspection, vehicle, newIssues, sendResult);
+  current = { driver: current.driver, driverRegistration: current.driverRegistration, driverRole: current.driverRole, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, vehicleId: vehicle.id, odometer: "", states: {}, notes: "" };
+  saveData();
+}
+
+async function sendToIntegration(payload) {
+  if (!data.settings.webhookUrl) return { sent: false, reason: "sem integração" };
+  try {
+    const isGoogleAppsScript = data.settings.webhookUrl.includes("script.google.com/macros/s/");
+    const response = await fetch(data.settings.webhookUrl, isGoogleAppsScript
+      ? { method: "POST", mode: "no-cors", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(payload) }
+      : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    if (isGoogleAppsScript) return { sent: true, reason: "enviado ao Apps Script" };
+    return { sent: response.ok, reason: response.ok ? "enviado" : "falhou" };
+  } catch { return { sent: false, reason: "falhou" }; }
+}
+function buildWhatsAppMessage(vehicle, issues, inspection) {
+  const severity = highestSeverity(issues);
+  const createdAt = inspection?.createdAt || issues[0]?.createdAt || new Date();
+  const checklist = (inspection?.items || CHECKLIST.map((item) => ({ ...item, ...current.states[item.id] }))).map((item) => {
+    if (item.status === "issue") {
+      const issue = item.issue || {};
+      return `⚠️ ${item.name} — OCORRÊNCIA (${issue.severity || "Não informada"})${issue.description ? `: ${issue.description}` : ""}`;
+    }
+    return `✅ ${item.name} — EM ORDEM`;
+  }).join("\n");
+  return `*CHECKFROTA — FORMULÁRIO DE INSPEÇÃO*\n*Solicitação de manutenção para avaliação da liderança*\n\n*Identificação do veículo*\nVeículo: Prefixo ${vehicle.prefix || "—"} · ${vehicle.plate} (${vehicle.model || vehicle.type})\nQuilometragem: ${inspection?.odometer ?? issues[0]?.odometer ?? vehicle.odometer ?? "Não informada"} km\nMotorista: ${inspection?.driver || issues[0]?.driver || current.driver || "Não informado"}\nBase: ${inspection?.baseName || issues[0]?.baseName || current.baseName || "Não informada"}\nData: ${dateTime(createdAt)}\n\n*Checklist completo*\n${checklist}\n\n*Resumo para decisão*\nOcorrências encontradas: ${issues.length}\nMaior gravidade: ${severity}\n\nSolicitamos avaliação e manutenção do veículo.`;
+}
+function whatsappLink(phone, message) { return `https://wa.me/${phoneOnly(phone)}?text=${encodeURIComponent(message)}`; }
+async function approvalUrl(vehicle, issues) {
+  const first = issues[0] || {};
+  const problem = issues.map((issue) => `${issue.itemName || issue.item?.name}: ${issue.description}`).join(" | ");
+  const params = new URLSearchParams({
+    id: `MAN-${String(first.id || Date.now()).replaceAll("-", "").slice(-8)}`, issueId: first.id || "",
+    prefix: vehicle.prefix || "", type: vehicle.model || vehicle.type, plate: vehicle.plate,
+    driver: first.driver || current.driver || "", driverRegistration: first.driverRegistration || current.driverRegistration || "", driverPhone: first.driverPhone || current.driverPhone || "",
+    leaderPhone: first.basePhone || current.basePhone || data.settings.leaderPhone || "", maintenancePhone: data.settings.maintenancePhone || "", ownerPhone: first.ownerPhone || vehicle.ownerPhone || "", ownerName: first.ownerName || vehicle.ownerName || "",
+    km: String(first.odometer ?? vehicle.odometer ?? ""), baseName: first.baseName || current.baseName || "Não informada", priority: highestSeverity(issues), location: "", problem,
+  });
+  const photoUrl = await issuePhotoLink(first);
+  if (photoUrl) params.set("photoUrl", photoUrl);
+  if (first.photoName) params.set("photoName", first.photoName);
+  return `${location.origin}${location.pathname.replace(/[^/]*$/, "aprovacao.html")}?v=98&${params.toString()}`;
+}
+async function showCompletion(inspection, vehicle, issues, sendResult) {
+  const severe = issues.some((issue) => issue.severity === "Grave");
+  $("#successTitle").textContent = issues.length ? (severe ? "Veículo com bloqueio de deslocamento." : "Ocorrência registrada.") : "Tudo certo para seguir.";
+  $("#successText").textContent = issues.length ? `O formulário foi salvo com ${issues.length} ocorrência(s). Confira o chamado abaixo; após enviar para a liderança, você pode voltar ao início. ${sendResult.sent ? "A integração de e-mail foi acionada." : "Configure a integração para o envio automático por e-mail."}` : "Checklist concluído e registrado no controle da frota.";
+  const form = $("#submittedForm");
+  const protocol = `MAN-${String(inspection.id || Date.now()).replaceAll("-", "").slice(-8).toUpperCase()}`;
+  const occurrenceRows = issues.length ? issues.map((issue) => `<article class="submitted-issue ${esc(issue.severity.toLowerCase())}"><div><b>${esc(issue.itemName)}</b><span class="chip ${esc(issue.severity.toLowerCase())}">${esc(issue.severity)}</span></div><p>${esc(issue.description)}</p>${issue.photoPath ? `<img src="${esc(publicIssuePhotoUrl(issue))}" alt="Foto da ocorrência ${esc(issue.itemName)}" loading="lazy">` : ""}</article>`).join("") : `<p class="form-empty">Nenhuma ocorrência informada.</p>`;
+  form.innerHTML = `<div class="form-top"><span class="form-mark">✓</span><div><small>CHECKFROTA · RESPOSTA ENVIADA</small><h2>Formulário de inspeção</h2></div></div><div class="form-protocol"><span>Protocolo</span><b>${esc(protocol)}</b></div><div class="form-fields"><div><span>Colaborador</span><b>${esc(inspection.driver)}</b></div>${inspection.driverRegistration ? `<div><span>Matrícula</span><b>${esc(inspection.driverRegistration)}</b></div>` : ""}${inspection.driverRole ? `<div><span>Função</span><b>${esc(inspection.driverRole)}</b></div>` : ""}<div><span>Base</span><b>${esc(inspection.baseName)}</b></div>${inspection.driverEmail ? `<div><span>Cópia para e-mail</span><b>${esc(inspection.driverEmail)}</b></div>` : ""}<div><span>Veículo</span><b>Prefixo ${esc(vehicle.prefix)} · ${esc(vehicle.plate)}</b></div><div><span>Modelo</span><b>${esc(vehicle.model || vehicle.type)}</b></div><div><span>Quilometragem</span><b>${esc(inspection.odometer)} km</b></div><div><span>Data e hora</span><b>${esc(dateTime(inspection.createdAt))}</b></div></div><div class="form-occurrences"><h3>Ocorrências relatadas</h3>${occurrenceRows}</div>${inspection.notes ? `<div class="form-notes"><span>Observação geral</span><p>${esc(inspection.notes)}</p></div>` : ""}`;
+  const actions = $("#dispatchActions");
+  if (!issues.length) { actions.innerHTML = ""; showScreen("success"); return; }
+  const buttons = [];
+  const approvalTarget = issues[0]?.basePhone || current.basePhone || data.settings.leaderPhone;
+  if (approvalTarget) {
+    const message = buildWhatsAppMessage(vehicle, issues, inspection);
+    const approvalMessage = `*APROVAÇÃO DE MANUTENÇÃO NECESSÁRIA*\n\n${message.replace(/\*/g, "")}\n\nAbra para verificar a foto, aprovar ou recusar:\n${await approvalUrl(vehicle, issues)}`;
+    buttons.push(`<a href="${whatsappLink(approvalTarget, approvalMessage)}" target="_blank" rel="noopener">Enviar para aprovação da liderança</a>`);
+  }
+  actions.innerHTML = buttons.join("");
+  showScreen("success");
+}
+
+function renderControl() {
+  const open = data.issues.filter((issue) => issue.status === "aberta");
+  $("#fleetCount").textContent = data.vehicles.length;
+  $("#seriousCount").textContent = open.filter((issue) => issue.severity === "Grave").length;
+  const since = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  $("#weekChecks").textContent = data.inspections.filter((inspection) => new Date(inspection.createdAt).getTime() >= since).length;
+  renderIssues(); renderReports(); renderHistory(); renderVehicles(); renderDrivers(); renderAuditLog();
+  renderLeaderInstallTarget();
+  renderDailyChecklistAlert();
+  renderStorageIndicator();
+  renderNotificationSettings();
+  $$("[data-master-only]").forEach((element) => { element.hidden = !masterAdmin; });
+  startDailyChecklistNotifications();
+}
+function formatBytes(bytes = 0) { if (!bytes) return "0 MB"; const mb = bytes / (1024 * 1024); return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(mb >= 10 ? 0 : 1)} MB`; }
+function renderStorageIndicator() {
+  const panel = $("#storageIndicator"); if (!panel) return;
+  const photos = data.issues.filter((issue) => issue.photoPath || issue.photoUrl);
+  const bytes = photos.reduce((total, issue) => total + Number(issue.photoSize || 0), 0);
+  const ratio = Math.min(100, (bytes / (1024 * 1024 * 1024)) * 100);
+  panel.className = `storage-indicator ${ratio >= 80 ? "warning" : ""}`;
+  panel.innerHTML = `<div><b>Armazenamento de fotos</b><p>${photos.length} foto(s) registrada(s) · uso estimado: ${formatBytes(bytes)} de 1 GB.</p></div><div class="storage-progress" aria-label="Uso estimado de armazenamento"><i style="width:${ratio}%"></i></div><small>${ratio >= 80 ? "Atenção: faça backup e remova fotos antigas após confirmar o relatório." : "Este cálculo considera as fotos enviadas pelo URBAM Frota."}</small>`;
+}
+function todayStart() { const value = new Date(); value.setHours(0, 0, 0, 0); return value.getTime(); }
+function vehiclesWithoutChecklistToday() {
+  const start = todayStart();
+  const completed = new Set(data.inspections.filter((inspection) => new Date(inspection.createdAt).getTime() >= start).map((inspection) => inspection.vehicleId));
+  return data.vehicles.filter((vehicle) => vehicle?.id && !completed.has(vehicle.id));
+}
+function renderDailyChecklistAlert() {
+  const panel = $("#dailyChecklistAlert"); if (!panel) return;
+  const hour = new Date().getHours();
+  if (hour < 8) { panel.hidden = true; return; }
+  const missing = vehiclesWithoutChecklistToday();
+  panel.hidden = false;
+  if (!missing.length) { panel.className = "daily-checklist-alert clear"; panel.innerHTML = `<b>✓ Checklist diário em dia</b><p>Todos os veículos cadastrados possuem checklist registrado hoje.</p>`; return; }
+  panel.className = "daily-checklist-alert";
+  panel.innerHTML = `<div><p class="eyebrow">ALERTA DIÁRIO · APÓS 08H</p><h2>${missing.length} veículo(s) sem checklist hoje</h2><p>Verifique os carros e caminhões abaixo antes da liberação.</p></div><ul>${missing.map((vehicle) => `<li>Prefixo ${esc(vehicle.prefix || "—")} · ${esc(vehicle.plate || "sem placa")} · ${esc(vehicle.model || vehicle.type || "Veículo")}</li>`).join("")}</ul><button type="button" class="small-button whatsapp" id="sendDailyChecklistAlert">Enviar alerta à gestora</button>`;
+}
+function notificationPermission() { return "Notification" in window ? Notification.permission : "unsupported"; }
+function renderNotificationSettings() {
+  const status = $("#notificationStatus"); const button = $("#enableDailyNotifications"); if (!status || !button) return;
+  const permission = notificationPermission();
+  if (permission === "granted") { status.textContent = "Ativa: o computador será avisado após as 08h caso existam veículos sem checklist."; button.textContent = "✓ Notificações ativas"; button.disabled = true; return; }
+  if (permission === "denied") { status.textContent = "As notificações foram bloqueadas neste navegador. Libere-as nas configurações do site para receber o alerta."; button.textContent = "Notificações bloqueadas"; button.disabled = true; return; }
+  if (permission === "unsupported") { status.textContent = "Este navegador não oferece notificações do sistema."; button.hidden = true; return; }
+  status.textContent = "Ative para receber o aviso de veículos sem checklist após as 08h."; button.textContent = "🔔 Ativar notificações"; button.disabled = false;
+}
+async function enableDailyNotifications() {
+  if (!("Notification" in window)) return alert("Este navegador não oferece notificações do sistema.");
+  const permission = await Notification.requestPermission();
+  renderNotificationSettings();
+  if (permission === "granted") { alert("Notificações ativadas neste computador."); notifyDailyChecklistIfNeeded(); }
+}
+function notifyDailyChecklistIfNeeded() {
+  if (notificationPermission() !== "granted" || new Date().getHours() < 8) return;
+  const missing = vehiclesWithoutChecklistToday(); if (!missing.length) return;
+  const dayKey = new Date().toISOString().slice(0, 10); const notificationKey = `checkfrota-daily-checklist-notification-${dayKey}`;
+  if (localStorage.getItem(notificationKey)) return;
+  const notification = new Notification("URBAM Frota: checklist pendente", { body: `${missing.length} veículo(s) sem checklist hoje. Abra o painel de Gestão para verificar.`, tag: "checkfrota-checklist-diario", renotify: true });
+  notification.onclick = () => { window.focus(); notification.close(); };
+  localStorage.setItem(notificationKey, new Date().toISOString());
+}
+function startDailyChecklistNotifications() {
+  notifyDailyChecklistIfNeeded();
+  if (dailyChecklistNotificationTimer) return;
+  dailyChecklistNotificationTimer = window.setInterval(() => { renderDailyChecklistAlert(); notifyDailyChecklistIfNeeded(); }, 60 * 1000);
+}
+function sendDailyChecklistAlert() {
+  const missing = vehiclesWithoutChecklistToday();
+  if (!missing.length) return alert("Todos os veículos cadastrados possuem checklist hoje.");
+  const date = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" }).format(new Date());
+  const list = missing.map((vehicle, index) => `${index + 1}. Prefixo ${vehicle.prefix || "—"} · ${vehicle.plate || "sem placa"} · ${vehicle.model || vehicle.type || "Veículo"}`).join("\n");
+  const message = `*CHECKFROTA — ALERTA DIÁRIO DE CHECKLIST*\n\nData: ${date}\nHorário da conferência: ${new Intl.DateTimeFormat("pt-BR", { timeStyle: "short" }).format(new Date())}\n\nHá ${missing.length} carro(s) ou caminhão(ões) sem checklist registrado hoje:\n\n${list}\n\nSolicitamos verificar a situação e providenciar o preenchimento antes da operação.`;
+  window.open(whatsappLink(DAILY_CHECKLIST_ALERT_PHONE, message), "_blank", "noopener");
+}
+function renderLeaderInstallTarget() {
+  const select = $("#leaderInstallBase"); const hint = $("#leaderInstallHint");
+  if (!select || !hint) return;
+  const base = select.value; const phone = BASES[base];
+  hint.textContent = phone ? `O link será enviado para ${LEADER_BASE_LABELS[base] || `Base ${base}`}: ${formatPhone(phone)}.` : "Escolha a base para conferir o número que receberá o link.";
 }
 function sendLeaderInstall() {
   const base = $("#leaderInstallBase")?.value; const phone = BASES[base];
@@ -771,4 +999,3 @@ if (new URLSearchParams(location.search).get("gestao") === "1") {
   if (cloudToken()) showScreen("controle");
   else location.replace("gestao.html?v=108");
 } else { renderStart(); void syncLocalBacklog(); }
-
