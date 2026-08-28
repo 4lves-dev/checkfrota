@@ -76,8 +76,10 @@ const BASE_BY_PREFIX = {
   "1486": "Base Abrigo", "1799": "Base Abrigo", "1126": "Base Abrigo", "1082": "Base Abrigo",
   "1967": "Base Horizontal",
   "1894": "SASC / Gestão",
+  "1968": "Gestão de Contratos",
 };
 const MANAGER_BY_PREFIX = { "1968": "Julio — Gestor de Contratos" };
+const DIRECT_MANAGEMENT_PREFIXES = new Set(["1446", "1447", "1894", "1968"]);
 function withFleetResponsible(vehicle) { return { ...vehicle, base: BASE_BY_PREFIX[vehicle.prefix] || vehicle.base || "", manager: MANAGER_BY_PREFIX[vehicle.prefix] || vehicle.manager || "", ownerName: RESPONSIBLES_BY_PREFIX[vehicle.prefix] || vehicle.ownerName, ownerPhone: OWNER_PHONE_BY_PREFIX[vehicle.prefix] || vehicle.ownerPhone }; }
 const DRIVER_REGISTRY = [
   ["18593", "JULIO CESAR VIEIRA DA SILVA"], ["17672", "SILVIA CRISTINA TELES DE TOLEDO"], ["18920", "LUIS CARLOS ROMERO"], ["17208", "CRISTINA NASTI TAVARES"], ["23761", "BRUNA CRISTINA DE ABREU MACHADO"], ["23764", "FLAVIA MACHADO RIGOTTI"], ["25310", "LUIS ROBERTO COSTA"], ["18919", "ALEX MACHADO DA SILVA"], ["24846", "EDMILSON EVANGELISTA DA CRUZ"],
@@ -262,7 +264,7 @@ function openReturnedChecklist(issue, inspection = null) {
     driverPhone: inspection?.driverPhone || issue.driverPhone || "", baseName: inspection?.baseName || issue.baseName || "", basePhone: inspection?.basePhone || issue.basePhone || BASES[inspection?.baseName || issue.baseName] || "",
     vehicleId: vehicle?.id || inspection?.vehicleId || issue.vehicleId || "", odometer: inspection?.odometer ?? issue.odometer ?? "", states, notes: inspection?.notes || "", washRequested: Boolean(inspection?.washRequested), washDetails: inspection?.washDetails || "", correctionOf: issue.id,
   };
-  $("#driverRegistration").value = current.driverRegistration; $("#driverPhone").value = formatPhone(current.driverPhone); $("#baseSelect").value = current.baseName; $("#vehicleSelect").value = current.vehicleId; $("#odometer").value = current.odometer;
+  $("#driverRegistration").value = current.driverRegistration; $("#driverPhone").value = formatPhone(current.driverPhone); $("#baseSelect").value = current.baseName; renderVehicleOptions(); $("#vehicleSelect").value = current.vehicleId; $("#odometer").value = current.odometer;
   lookupDriverRegistration(); renderBasePhone(); renderVehicleOwner();
   if (!vehicle) return false;
   $("#checklistVehicle").textContent = `Prefixo ${vehicle.prefix || "—"} · ${vehicle.plate} · ${vehicle.model || vehicle.type}`;
@@ -338,7 +340,6 @@ function showScreen(name) {
 
 function renderStart() {
   void loadEmployeeDatabase();
-  const select = $("#vehicleSelect");
   const rememberedDriverRegistration = localStorage.getItem("checkfrota-driver-registration") || "";
   const rememberedDriverPhone = localStorage.getItem("checkfrota-driver-phone") || "";
   const rememberedBase = localStorage.getItem("checkfrota-base") || "";
@@ -348,8 +349,7 @@ function renderStart() {
   if (correctionRegistration) $("#driverRegistration").value = correctionRegistration;
   lookupDriverRegistration();
   if (!$("#baseSelect").value) $("#baseSelect").value = rememberedBase;
-  select.innerHTML = `<option value="">Selecione o veículo</option>${data.vehicles.map((vehicle) => `<option value="${vehicle.id}">Prefixo ${esc(vehicle.prefix || "—")} · ${esc(vehicle.plate)} · ${esc(vehicle.model || vehicle.type)}${vehicle.base ? ` · ${esc(vehicle.base)}` : ""}</option>`).join("")}`;
-  if (current.vehicleId && vehicleById(current.vehicleId)) select.value = current.vehicleId;
+  renderVehicleOptions();
   renderVehicleOwner();
   renderBasePhone();
   void loadReturnedIssuesForCollaborator();
@@ -392,7 +392,17 @@ function lookupDriverRegistration() {
   hint.className = "helper ok";
   return driver;
 }
-function renderBasePhone() { const base = $("#baseSelect").value; const phone = BASES[base] || ""; const formatted = phone.replace(/^55(\d{2})(\d{5})(\d{4})$/, "($1) $2-$3"); $("#basePhone").textContent = base ? `Telefone da Base ${base}: ${formatted}` : "Selecione a base para assumir o telefone de envio."; }
+function baseKey(value) { const text = String(value || "").toLowerCase(); if (text.includes("vertical")) return "Vertical"; if (text.includes("horizontal")) return "Horizontal"; if (text.includes("abrigo")) return "Abrigo"; if (text.includes("sasc")) return "SASC"; if (text.includes("gestão") || text.includes("gestao")) return "Gestão"; return ""; }
+function vehicleBaseKey(vehicle) { return baseKey(BASE_BY_PREFIX[vehicle?.prefix] || vehicle?.base); }
+function isDirectManagementVehicle(vehicle) { return DIRECT_MANAGEMENT_PREFIXES.has(String(vehicle?.prefix || "")); }
+function renderVehicleOptions() {
+  const select = $("#vehicleSelect"); const selectedBase = $("#baseSelect").value; const oldValue = select.value || current.vehicleId;
+  const vehicles = selectedBase ? data.vehicles.filter((vehicle) => vehicleBaseKey(vehicle) === selectedBase) : [];
+  select.innerHTML = `<option value="">${selectedBase ? "Selecione o veículo" : "Selecione primeiro a base"}</option>${vehicles.map((vehicle) => `<option value="${vehicle.id}">Prefixo ${esc(vehicle.prefix || "—")} · ${esc(vehicle.plate)} · ${esc(vehicle.model || vehicle.type)}${isDirectManagementVehicle(vehicle) ? " · Gestão direta" : ""}</option>`).join("")}`;
+  if (vehicles.some((vehicle) => vehicle.id === oldValue)) select.value = oldValue; else current.vehicleId = "";
+  renderVehicleOwner();
+}
+function renderBasePhone() { const base = $("#baseSelect").value; const phone = BASES[base] || ""; const formatted = phone.replace(/^55(\d{2})(\d{5})(\d{4})$/, "($1) $2-$3"); $("#basePhone").textContent = phone ? `Telefone da Base ${base}: ${formatted}` : base ? "Este destino segue diretamente para Gestão e Manutenção." : "Selecione a base para assumir o telefone de envio."; }
 function renderVehicleOwner() {
   const vehicle = vehicleById($("#vehicleSelect").value);
   $("#vehicleOwner").textContent = vehicle ? `Responsável: ${vehicle.ownerName}${vehicle.email ? ` · ${vehicle.email}` : ""}` : "";
@@ -407,18 +417,20 @@ function beginChecklist() {
   const phoneDigits = phoneOnly($("#driverPhone").value);
   const driverPhone = phoneDigits.length === 10 || phoneDigits.length === 11 ? `55${phoneDigits}` : phoneDigits;
   const baseName = $("#baseSelect").value;
-  const basePhone = BASES[baseName] || "";
   const vehicleId = $("#vehicleSelect").value;
   const odometer = Number($("#odometer").value);
   const vehicle = vehicleById(vehicleId);
+  const directToManagement = isDirectManagementVehicle(vehicle);
+  const basePhone = directToManagement ? "" : (BASES[baseName] || "");
   if (!driverRegistration) return alert("Digite uma matrícula cadastrada antes de iniciar.");
   if (!/^55\d{10,11}$/.test(driverPhone)) return alert("Informe um WhatsApp válido do colaborador, com DDD.");
   if (!vehicleId) return alert("Selecione o veículo que será utilizado.");
-  if (!basePhone) return alert("Selecione a base responsável pela aprovação.");
+  if (!baseName) return alert("Selecione a base responsável.");
+  if (!basePhone && !directToManagement) return alert("Selecione a base responsável pela aprovação.");
   if (!Number.isFinite(odometer) || odometer < 0) return alert("Informe a quilometragem atual do veículo.");
   if (odometer > 999999) return alert("A quilometragem informada é muito alta. Confira o número antes de continuar.");
   if (Number(vehicle?.odometer) && odometer < Number(vehicle.odometer)) return alert(`A quilometragem não pode ser menor que o último registro (${vehicle.odometer} km).`);
-  current = { driver, driverRegistration, driverRole, driverEmail, driverPhone, baseName, basePhone, vehicleId, odometer, states: Object.fromEntries(CHECKLIST.map((item) => [item.id, { status: "pending" }])), notes: "", washRequested: false, washDetails: "" };
+  current = { driver, driverRegistration, driverRole, driverEmail, driverPhone, baseName, basePhone, vehicleId, odometer, directToManagement, states: Object.fromEntries(CHECKLIST.map((item) => [item.id, { status: "pending" }])), notes: "", washRequested: false, washDetails: "" };
   localStorage.setItem("checkfrota-driver", driver);
   localStorage.setItem("checkfrota-driver-registration", driverRegistration);
   localStorage.setItem("checkfrota-driver-phone", driverPhone);
@@ -500,14 +512,14 @@ async function submitChecklist() {
   current.washDetails = $("#washDetails").value.trim();
   const vehicle = vehicleById(current.vehicleId);
   const inspection = {
-    id: crypto.randomUUID(), createdAt: new Date().toISOString(), driver: current.driver, driverRegistration: current.driverRegistration, driverRole: current.driverRole, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone,
+    id: crypto.randomUUID(), createdAt: new Date().toISOString(), driver: current.driver, driverRegistration: current.driverRegistration, driverRole: current.driverRole, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, approvalRoute: current.directToManagement ? "gestao" : "lideranca",
     vehicleId: vehicle.id, vehiclePrefix: vehicle.prefix || "", vehiclePlate: vehicle.plate, vehicleType: vehicle.type, vehicleModel: vehicle.model || "", vehicleBase: vehicle.base || "", odometer: current.odometer, notes: current.notes, washRequested: current.washRequested, washDetails: current.washDetails, correctionOf: current.correctionOf || "",
     items: CHECKLIST.map((item) => ({ ...item, ...current.states[item.id] })),
   };
   const currentIssues = [...getCurrentIssues(), ...(current.washRequested ? [{ item: { name: "Solicitação de lavagem", category: "Lavagem" }, severity: "Leve", description: current.washDetails || "Solicitação de lavagem do veículo." }] : [])];
   const newIssues = currentIssues.map((issue) => ({
     id: crypto.randomUUID(), inspectionId: inspection.id, status: "aberta", createdAt: inspection.createdAt,
-    driver: current.driver, driverRegistration: current.driverRegistration, driverRole: current.driverRole, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, vehicleId: vehicle.id, vehiclePrefix: vehicle.prefix || "", vehiclePlate: vehicle.plate, vehicleType: vehicle.type, vehicleModel: vehicle.model || "", vehicleBase: vehicle.base || "", odometer: current.odometer,
+    driver: current.driver, driverRegistration: current.driverRegistration, driverRole: current.driverRole, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, approvalRoute: current.directToManagement ? "gestao" : "lideranca", vehicleId: vehicle.id, vehiclePrefix: vehicle.prefix || "", vehiclePlate: vehicle.plate, vehicleType: vehicle.type, vehicleModel: vehicle.model || "", vehicleBase: BASE_BY_PREFIX[vehicle.prefix] || vehicle.base || "", odometer: current.odometer,
     ownerName: vehicle.ownerName, ownerPhone: vehicle.ownerPhone, email: vehicle.email,
     itemName: issue.item.name, severity: issue.severity, description: issue.description, photoName: issue.photoName, _photoFile: issue.photoFile || null,
     correctionOf: current.correctionOf || "", maintenance: { status: issue.item.name === "Solicitação de lavagem" ? "Solicitada" : "Pendente", scheduledAt: "", provider: "", feedback: "", updatedAt: "" },
@@ -579,8 +591,14 @@ async function showCompletion(inspection, vehicle, issues, sendResult) {
   const actions = $("#dispatchActions");
   if (!issues.length) { actions.innerHTML = ""; showScreen("success"); return; }
   const buttons = [];
+  const directToManagement = issues.some((issue) => issue.approvalRoute === "gestao");
   const approvalTarget = issues[0]?.basePhone || current.basePhone || data.settings.leaderPhone;
-  if (approvalTarget) {
+  if (directToManagement) {
+    const target = data.settings.maintenancePhone;
+    const managementLink = `${location.origin}${location.pathname.replace(/[^/]*$/, "gestao.html")}?v=108`;
+    const message = `*NOVO CHAMADO DIRETO PARA GESTÃO E MANUTENÇÃO*\n\n${buildWhatsAppMessage(vehicle, issues, inspection).replace(/\*/g, "")}\n\nEste veículo possui encaminhamento direto. Abra o painel de Gestão:\n${managementLink}`;
+    if (target) buttons.push(`<a href="${whatsappLink(target, message)}" target="_blank" rel="noopener">Enviar direto para Gestão e Manutenção</a>`);
+  } else if (approvalTarget) {
     const message = buildWhatsAppMessage(vehicle, issues, inspection);
     const leaderLink = leadershipPanelUrl(inspection.baseName || issues[0]?.baseName);
     const approvalMessage = `*NOVO CHAMADO PARA APROVAÇÃO*\n\n${message.replace(/\*/g, "")}\n\nAbra o aplicativo da liderança para conferir a foto e decidir:\n${leaderLink}\n\nO chamado também ficará destacado no painel da base.`;
@@ -994,7 +1012,7 @@ document.addEventListener("click", (event) => {
   if (target.id === "downloadReport") downloadReport();
 });
 $("#vehicleSelect").addEventListener("change", renderVehicleOwner);
-$("#baseSelect").addEventListener("change", renderBasePhone);
+$("#baseSelect").addEventListener("change", () => { renderBasePhone(); renderVehicleOptions(); });
 $("#driverRegistration")?.addEventListener("input", lookupDriverRegistration);
 $("#leaderInstallBase")?.addEventListener("change", renderLeaderInstallTarget);
 $("#dismissInstallBanner").addEventListener("click", dismissInstallBanner);
@@ -1005,7 +1023,7 @@ $("#settingsForm").addEventListener("submit", (event) => { event.preventDefault(
 $("#maintenanceForm").addEventListener("submit", (event) => { event.preventDefault(); saveMaintenance(); });
 $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").forEach((button) => button.classList.toggle("active", button === tab)); $$(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab.dataset.tab}Panel`)); }));
 
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=117").catch(() => {}));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=118").catch(() => {}));
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
 window.addEventListener("appinstalled", () => { document.body.classList.add("app-installed"); $("#installBanner").hidden = true; });
 if (isInstalled()) document.body.classList.add("app-installed"); else window.addEventListener("load", showInstallBanner);
