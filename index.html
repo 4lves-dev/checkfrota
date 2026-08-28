@@ -102,6 +102,8 @@
             </div>
           </div>
           <div id="reviewSummary"></div>
+          <label class="field-label" for="requestWash"><input type="checkbox" id="requestWash"> Solicitar lavagem do veículo</label>
+          <textarea id="washDetails" placeholder="Informe, se necessário, o tipo de lavagem ou alguma observação."></textarea>
           <label class="field-label" for="generalNotes">Observação geral <em>opcional</em></label>
           <textarea id="generalNotes" placeholder="Alguma informação importante para a base?"></textarea>
           <button class="primary-button" id="submitChecklist">Concluir e gerar formulário <span>✓</span></button>
@@ -266,7 +268,7 @@
     <template id="emptyStateTemplate"><div class="empty-state"><span>⌁</span><p>Nenhum registro por aqui.</p></div></template>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="supabase-config.js?v=1"></script>
-    <script src="app.js?v=112"></script>
+    <script src="app.js?v=113"></script>
   </body>
 </html>
 
