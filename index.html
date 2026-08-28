@@ -181,8 +181,8 @@
         <label for="issueDescription">O que foi encontrado?</label>
         <textarea id="issueDescription" required placeholder="Ex.: pneu dianteiro direito com corte lateral"></textarea>
         <label for="issuePhoto">Foto <em>opcional</em></label>
-        <input id="issuePhoto" type="file" accept="image/*" capture="environment" />
-        <p class="helper">A foto é reduzida automaticamente antes do envio, para economizar espaço no banco de dados.</p>
+        <input id="issuePhoto" type="file" accept="image/jpeg,image/png,image/webp,image/heic" capture="environment" />
+        <p class="helper">Somente fotos de até 20 MB. Vídeos não são aceitos; fotos grandes são reduzidas automaticamente antes do envio.</p>
         <button class="primary-button" id="saveIssue" value="default">Salvar ocorrência</button>
       </form>
     </dialog>
@@ -272,6 +272,6 @@
     <template id="emptyStateTemplate"><div class="empty-state"><span>⌁</span><p>Nenhum registro por aqui.</p></div></template>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="supabase-config.js?v=1"></script>
-    <script src="app.js?v=123"></script>
+    <script src="app.js?v=124"></script>
   </body>
 </html>
