@@ -549,6 +549,10 @@ function buildWhatsAppMessage(vehicle, issues, inspection) {
   return `*CHECKFROTA — FORMULÁRIO DE INSPEÇÃO*\nSolicitação para avaliação da liderança\n\n*Identificação do veículo*\nVeículo: Prefixo ${vehicle.prefix || "—"} · ${vehicle.plate} (${vehicle.model || vehicle.type})\nQuilometragem: ${inspection?.odometer ?? issues[0]?.odometer ?? vehicle.odometer ?? "Não informada"} km\nBase: ${inspection?.baseName || issues[0]?.baseName || current.baseName || "Não informada"}\nData: ${dateTime(createdAt)}\n\n*Checklist completo*\n${checklist}${wash ? `\n\n*Solicitação adicional*\nLavagem do veículo${wash.description && wash.description !== "Solicitação de lavagem do veículo." ? ` — ${wash.description}` : ""}` : ""}\n\nSolicitamos avaliação e providências para o veículo.`;
 }
 function whatsappLink(phone, message) { return `https://wa.me/${phoneOnly(phone)}?text=${encodeURIComponent(message)}`; }
+function leadershipPanelUrl(baseName) {
+  const base = baseName || current.baseName || "Vertical";
+  return `${location.origin}${location.pathname.replace(/[^/]*$/, "lider.html")}?v=115&base=${encodeURIComponent(base)}`;
+}
 async function approvalUrl(vehicle, issues) {
   const first = issues[0] || {};
   const problem = issues.map((issue) => `${issue.itemName || issue.item?.name}: ${issue.description}`).join(" | ");
@@ -578,7 +582,8 @@ async function showCompletion(inspection, vehicle, issues, sendResult) {
   const approvalTarget = issues[0]?.basePhone || current.basePhone || data.settings.leaderPhone;
   if (approvalTarget) {
     const message = buildWhatsAppMessage(vehicle, issues, inspection);
-    const approvalMessage = `*APROVAÇÃO DE MANUTENÇÃO NECESSÁRIA*\n\n${message.replace(/\*/g, "")}\n\nAbra para verificar a foto, aprovar ou recusar:\n${await approvalUrl(vehicle, issues)}`;
+    const leaderLink = leadershipPanelUrl(inspection.baseName || issues[0]?.baseName);
+    const approvalMessage = `*NOVO CHAMADO PARA APROVAÇÃO*\n\n${message.replace(/\*/g, "")}\n\nAbra o aplicativo da liderança para conferir a foto e decidir:\n${leaderLink}\n\nO chamado também ficará destacado no painel da base.`;
     buttons.push(`<a href="${whatsappLink(approvalTarget, approvalMessage)}" target="_blank" rel="noopener">Enviar para aprovação da liderança</a>`);
   }
   actions.innerHTML = buttons.join("");
@@ -671,7 +676,7 @@ function sendLeaderInstall() {
   const base = $("#leaderInstallBase")?.value; const phone = BASES[base];
   if (!phone) return alert("Selecione Base Vertical, Base Horizontal ou Base Abrigo.");
   const label = LEADER_BASE_LABELS[base] || `Base ${base}`;
-  const link = `https://4lves-dev.github.io/checkfrota/instalar-lider.html?v=102&base=${encodeURIComponent(base)}`;
+  const link = `https://4lves-dev.github.io/checkfrota/instalar-lider.html?v=115&base=${encodeURIComponent(base)}`;
   const message = `*CHECKFROTA — APLICATIVO DA LIDERANÇA*\n\nOlá, ${label}.\n\nEste é o link de instalação do painel da liderança desta base:\n${link}\n\nApós instalar, utilize o aplicativo para consultar as ocorrências e registrar a aprovação ou recusa.`;
   window.open(whatsappLink(phone, message), "_blank", "noopener");
 }
@@ -1000,7 +1005,7 @@ $("#settingsForm").addEventListener("submit", (event) => { event.preventDefault(
 $("#maintenanceForm").addEventListener("submit", (event) => { event.preventDefault(); saveMaintenance(); });
 $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").forEach((button) => button.classList.toggle("active", button === tab)); $$(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab.dataset.tab}Panel`)); }));
 
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=114").catch(() => {}));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=117").catch(() => {}));
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
 window.addEventListener("appinstalled", () => { document.body.classList.add("app-installed"); $("#installBanner").hidden = true; });
 if (isInstalled()) document.body.classList.add("app-installed"); else window.addEventListener("load", showInstallBanner);
