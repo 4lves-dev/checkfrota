@@ -213,7 +213,7 @@
         <label for="employeeRegistration">Matrícula</label><input id="employeeRegistration" required inputmode="numeric" placeholder="Ex.: 12345" />
         <label for="employeeName">Nome completo</label><input id="employeeName" required placeholder="Nome do colaborador" />
         <label for="employeeRole">Função</label><input id="employeeRole" required placeholder="Ex.: Motorista, Monitor, Pintor" />
-        <label class="field-check"><input id="employeeLeader" type="checkbox" /> Definir como líder</label>
+        <label for="employeeAccessLevel">Perfil de acesso no aplicativo</label><select id="employeeAccessLevel"><option value="colaborador">Colaborador — apenas checklist</option><option value="lider">Líder — aprova a própria base</option><option value="coordenador">Coordenador — acompanha e aprova todas as bases</option><option value="gestor">Gestor — acompanha toda a frota, inclusive encaminhamentos diretos</option></select>
         <label id="employeeLeaderBaseField" hidden for="employeeLeaderBase">Base que o líder poderá aprovar</label><select id="employeeLeaderBase" hidden><option value="">Selecione a base</option><option value="Vertical">Base Vertical</option><option value="Horizontal">Base Horizontal</option><option value="Abrigo">Base Abrigo</option><option value="SASC">SASC</option></select>
         <button class="primary-button" value="default">Salvar colaborador no banco</button>
       </form>
@@ -272,6 +272,6 @@
     <template id="emptyStateTemplate"><div class="empty-state"><span>⌁</span><p>Nenhum registro por aqui.</p></div></template>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="supabase-config.js?v=1"></script>
-    <script src="app.js?v=124"></script>
+    <script src="app.js?v=125"></script>
   </body>
 </html>
