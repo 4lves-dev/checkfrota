@@ -119,6 +119,16 @@ let deferredInstallPrompt = null;
 let managerIssueFilters = { base: "", vehicle: "", date: "", owner: "", type: "" };
 let selectedVehicleHistoryId = "";
 let masterAdmin = false;
+const ACCESS_LEVEL_LABELS = { colaborador: "Colaborador", lider: "Líder", coordenador: "Coordenador", gestor: "Gestor" };
+const employeeAccessLevel = (employee = {}) => employee.access_level || (employee.leader ? "lider" : "colaborador");
+function employeeRoster() {
+  const combined = new Map(DRIVER_REGISTRY.map((employee) => [String(employee.registration), { ...employee, role: EMPLOYEE_ROLE_BY_REGISTRATION[employee.registration] || "Funcionário", active: true, access_level: "colaborador" }]));
+  employeeDatabase.filter((employee) => employee?.active !== false).forEach((employee) => {
+    const registration = String(employee.registration || "");
+    if (registration) combined.set(registration, { ...(combined.get(registration) || {}), ...employee, registration });
+  });
+  return [...combined.values()];
+}
 
 const $ = (selector, scope = document) => scope.querySelector(selector);
 const $$ = (selector, scope = document) => [...scope.querySelectorAll(selector)];
@@ -819,15 +829,15 @@ function renderVehicles() {
 function renderDrivers() {
   const panel = $("#driversPanel");
   if (!panel) return;
-  const registered = [...(employeeDatabase.length ? employeeDatabase : DRIVER_REGISTRY)].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  const registered = employeeRoster().sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
   const missing = driversMissingRegistration().sort((a, b) => a.localeCompare(b, "pt-BR"));
   const employeeAction = masterAdmin ? `<button class="add-button" id="newEmployee">+ Cadastrar colaborador</button>` : "";
   const card = (driver) => {
-    const leader = Boolean(driver.leader); const base = driver.leader_base || "";
+    const accessLevel = employeeAccessLevel(driver); const base = driver.leader_base || "";
     const manage = masterAdmin ? `<div class="issue-actions"><button class="small-button" data-edit-employee="${esc(driver.registration)}">Editar</button><button class="small-button danger-button" data-delete-employee="${esc(driver.registration)}">Excluir</button></div>` : "";
-    return `<article class="driver-row"><div><b>${esc(driver.name)}</b><span>Matrícula ${esc(driver.registration)}${driver.role ? ` · ${esc(driver.role)}` : ""}${leader ? ` · <strong>Líder${base ? ` — ${esc(base)}` : ""}</strong>` : ""}</span></div>${manage}</article>`;
+    return `<article class="driver-row"><div><b>${esc(driver.name)}</b><span>Matrícula ${esc(driver.registration)}${driver.role ? ` · ${esc(driver.role)}` : ""}${accessLevel !== "colaborador" ? ` · <strong>${esc(ACCESS_LEVEL_LABELS[accessLevel] || accessLevel)}${accessLevel === "lider" && base ? ` — ${esc(base)}` : ""}</strong>` : ""}</span></div>${manage}</article>`;
   };
-  panel.innerHTML = `<section class="driver-registry"><div class="section-action"><div><h3>Banco de colaboradores</h3><p>Marque o líder e a base. O acesso inicial usa matrícula como usuário e senha.</p></div><div class="vehicle-actions"><span class="chip ok">${registered.length} cadastrados</span>${employeeAction}</div></div><div class="driver-grid">${registered.map(card).join("")}</div></section><section class="missing-drivers"><div class="section-action"><div><h3>Colaboradores sem matrícula</h3><p>Relação identificada na primeira tabela e ainda sem vínculo na segunda.</p></div><span class="chip grave">${missing.length} pendentes</span></div>${missing.length ? `<ul>${missing.map((name) => `<li>${esc(name)}</li>`).join("")}</ul>` : "<p>Todos os colaboradores possuem matrícula cadastrada.</p>"}</section>`;
+  panel.innerHTML = `<section class="driver-registry"><div class="section-action"><div><h3>Banco de colaboradores</h3><p>Defina o perfil: Líder aprova a base; Coordenador aprova as bases; Gestor acompanha toda a frota. O acesso inicial usa matrícula como usuário e senha.</p></div><div class="vehicle-actions"><span class="chip ok">${registered.length} cadastrados</span>${employeeAction}</div></div><div class="driver-grid">${registered.map(card).join("")}</div></section><section class="missing-drivers"><div class="section-action"><div><h3>Colaboradores sem matrícula</h3><p>Relação identificada na primeira tabela e ainda sem vínculo na segunda.</p></div><span class="chip grave">${missing.length} pendentes</span></div>${missing.length ? `<ul>${missing.map((name) => `<li>${esc(name)}</li>`).join("")}</ul>` : "<p>Todos os colaboradores possuem matrícula cadastrada.</p>"}</section>`;
 }
 function renderAuditLog() {
   const panel = $("#auditPanel");
@@ -845,7 +855,7 @@ function openVehicleDialog(id = "") {
   $("#vehicleDialog").showModal();
 }
 function toggleEmployeeLeaderFields() {
-  const enabled = Boolean($("#employeeLeader")?.checked);
+  const enabled = $("#employeeAccessLevel")?.value === "lider";
   $("#employeeLeaderBaseField").hidden = !enabled;
   $("#employeeLeaderBase").hidden = !enabled;
   $("#employeeLeaderBase").required = enabled;
@@ -856,7 +866,7 @@ function openEmployeeDialog(employee = null) {
   $("#employeeDialogTitle").textContent = employee ? "Configurar colaborador" : "Novo colaborador";
   $("#employeeRegistration").value = employee?.registration || ""; $("#employeeRegistration").readOnly = Boolean(employee);
   $("#employeeName").value = employee?.name || ""; $("#employeeRole").value = employee?.role || "";
-  $("#employeeLeader").checked = Boolean(employee?.leader); $("#employeeLeaderBase").value = employee?.leader_base || ""; toggleEmployeeLeaderFields();
+  $("#employeeAccessLevel").value = employeeAccessLevel(employee); $("#employeeLeaderBase").value = employee?.leader_base || ""; toggleEmployeeLeaderFields();
   $("#employeeDialog").showModal();
 }
 async function saveEmployee() {
@@ -864,15 +874,16 @@ async function saveEmployee() {
   const registration = $("#employeeRegistration").value.replace(/\D/g, "");
   const name = $("#employeeName").value.trim().toUpperCase();
   const role = $("#employeeRole").value.trim();
-  const leader = $("#employeeLeader").checked;
+  const access_level = $("#employeeAccessLevel").value;
+  const leader = access_level === "lider";
   const leader_base = leader ? $("#employeeLeaderBase").value : null;
   if (!registration || !name || !role) { $("#employeeForm").reportValidity(); return; }
   if (leader && !leader_base) { $("#employeeForm").reportValidity(); return; }
   try {
-    const rows = await cloudRequest("/rest/v1/fleet_employees?on_conflict=registration", { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=representation" }, body: JSON.stringify({ registration, name, role, active: true, leader, leader_base }) });
-    const saved = rows?.[0] || { registration, name, role, active: true, leader, leader_base };
+    const rows = await cloudRequest("/rest/v1/fleet_employees?on_conflict=registration", { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=representation" }, body: JSON.stringify({ registration, name, role, active: true, leader, leader_base, access_level }) });
+    const saved = rows?.[0] || { registration, name, role, active: true, leader, leader_base, access_level };
     employeeDatabase = [...employeeDatabase.filter((entry) => String(entry.registration) !== registration), saved];
-    $("#employeeDialog").close(); renderDrivers(); alert(leader ? "Líder salvo. O acesso inicial é matrícula como usuário e senha." : "Colaborador salvo no banco de dados.");
+    $("#employeeDialog").close(); renderDrivers(); alert(access_level === "colaborador" ? "Colaborador salvo no banco de dados." : `${ACCESS_LEVEL_LABELS[access_level]} salvo. O acesso inicial é matrícula como usuário e senha.`);
   } catch (error) { alert("Não foi possível salvar o colaborador no banco. Verifique se a tabela e as permissões do Supabase foram configuradas."); console.warn(error); }
 }
 async function deactivateEmployee(registration) {
@@ -1074,7 +1085,7 @@ document.addEventListener("click", (event) => {
 $("#vehicleSelect").addEventListener("change", renderVehicleOwner);
 $("#baseSelect").addEventListener("change", () => { renderBasePhone(); renderVehicleOptions(); });
 $("#driverRegistration")?.addEventListener("input", lookupDriverRegistration);
-$("#employeeLeader")?.addEventListener("change", toggleEmployeeLeaderFields);
+$("#employeeAccessLevel")?.addEventListener("change", toggleEmployeeLeaderFields);
 $("#leaderInstallBase")?.addEventListener("change", renderLeaderInstallTarget);
 $("#dismissInstallBanner").addEventListener("click", dismissInstallBanner);
 $("#issueForm").addEventListener("submit", (event) => { event.preventDefault(); saveIssue(); });
@@ -1084,7 +1095,7 @@ $("#settingsForm").addEventListener("submit", (event) => { event.preventDefault(
 $("#maintenanceForm").addEventListener("submit", (event) => { event.preventDefault(); saveMaintenance(); });
 $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").forEach((button) => button.classList.toggle("active", button === tab)); $$(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab.dataset.tab}Panel`)); }));
 
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=124").catch(() => {}));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=125").catch(() => {}));
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
 window.addEventListener("appinstalled", () => { document.body.classList.add("app-installed"); $("#installBanner").hidden = true; });
 if (isInstalled()) document.body.classList.add("app-installed"); else window.addEventListener("load", showInstallBanner);
