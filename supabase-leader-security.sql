@@ -11,7 +11,7 @@ alter table public.fleet_employees add column if not exists pin_updated_at times
 
 -- Define somente a senha provisória de quem possui acesso à Liderança.
 update public.fleet_employees
-set access_pin_hash = crypt(registration, gen_salt('bf')),
+set access_pin_hash = extensions.crypt(registration, extensions.gen_salt('bf')),
     must_change_pin = true,
     pin_updated_at = now()
 where active = true
@@ -47,7 +47,7 @@ begin
   limit 1;
   if not found or employee.access_level not in ('lider','coordenador','gestor')
      or employee.access_pin_hash is null
-     or crypt(p_pin, employee.access_pin_hash) <> employee.access_pin_hash then
+     or extensions.crypt(p_pin, employee.access_pin_hash) <> employee.access_pin_hash then
     raise exception 'Matrícula ou senha inválida.';
   end if;
   return query select employee.registration, employee.name, employee.leader_base,
@@ -67,11 +67,11 @@ begin
   end if;
   select * into employee from public.fleet_employees where registration = p_registration and active = true;
   if not found or employee.access_pin_hash is null
-     or crypt(p_current_pin, employee.access_pin_hash) <> employee.access_pin_hash then
+     or extensions.crypt(p_current_pin, employee.access_pin_hash) <> employee.access_pin_hash then
     raise exception 'Senha atual inválida.';
   end if;
   update public.fleet_employees
-  set access_pin_hash = crypt(p_new_pin, gen_salt('bf')), must_change_pin = false, pin_updated_at = now()
+  set access_pin_hash = extensions.crypt(p_new_pin, extensions.gen_salt('bf')), must_change_pin = false, pin_updated_at = now()
   where registration = p_registration;
 end;
 $$;
