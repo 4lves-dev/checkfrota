@@ -117,6 +117,7 @@ let current = { driver: "", driverRegistration: "", driverRole: "", driverEmail:
 let issueDraft = { itemId: null, severity: "Leve" };
 let deferredInstallPrompt = null;
 let managerIssueFilters = { base: "", vehicle: "", date: "", owner: "", type: "" };
+let managerCommandFilter = "";
 let selectedVehicleHistoryId = "";
 let masterAdmin = false;
 const ACCESS_LEVEL_LABELS = { colaborador: "Colaborador", lider: "Líder", coordenador: "Coordenador", gestor: "Gestor" };
@@ -656,7 +657,7 @@ function renderManagementCommandCenter() {
     ["Prontos para retirada", count((issue) => maintenanceOf(issue).status === "Veículo pronto para retirada"), "ready"],
     ["Atrasados", count((issue) => maintenanceOf(issue).returnAt && maintenanceOf(issue).returnAt.slice(0, 10) < todayValue && !["Concluída", "Veículo pronto para retirada"].includes(maintenanceOf(issue).status)), "late"],
   ];
-  panel.innerHTML = `<div class="section-action"><div><p class="eyebrow">PRIORIDADES DO DIA</p><h3>Central de pendências</h3><p>Veja o que precisa de ação imediata.</p></div><span class="chip grave">${open.length} em aberto</span></div><div class="command-center-grid">${cards.map(([label, value, type]) => `<button type="button" class="command-card ${type}" data-command-filter="${type}"><b>${value}</b><span>${label}</span></button>`).join("")}</div>`;
+  panel.innerHTML = `<div class="section-action"><div><p class="eyebrow">PRIORIDADES DO DIA</p><h3>Central de pendências</h3><p>Toque em uma opção para abrir os chamados correspondentes.</p></div><span class="chip grave">${open.length} em aberto</span></div><div class="command-center-grid">${cards.map(([label, value, type]) => `<button type="button" class="command-card ${type} ${managerCommandFilter === type ? "active" : ""}" data-command-filter="${type}" aria-pressed="${managerCommandFilter === type}"><b>${value}</b><span>${label}</span><small>Ver chamados</small></button>`).join("")}</div>`;
 }
 function renderVehicleTimelines() {
   const cards = $$("#vehiclesPanel .vehicle-card");
@@ -769,14 +770,17 @@ function isWashIssue(issue) { return issue?.itemName === "Solicitação de lavag
 function issueType(issue) { if (isWashIssue(issue)) return "Lavagem"; if (/pneus|estepe/i.test(issue?.itemName || "")) return "Pneus"; if (/documentos/i.test(issue?.itemName || "")) return "Documentação"; return "Manutenção mecânica"; }
 function issueMatchesManagerFilters(issue) {
   const filter = managerIssueFilters;
-  return (!filter.base || issue.baseName === filter.base) && (!filter.vehicle || issue.vehicleId === filter.vehicle) && (!filter.date || localDateValue(issue.createdAt) === filter.date) && (!filter.owner || (issue.ownerName || "") === filter.owner) && (!filter.type || issueType(issue) === filter.type);
+  const maintenance = maintenanceOf(issue), todayValue = today();
+  const commandMatch = !managerCommandFilter || (managerCommandFilter === "approval" && !issue.leaderApproval && issue.approvalRoute !== "gestao") || (managerCommandFilter === "scheduled" && maintenance.scheduledAt?.slice(0, 10) === todayValue) || (managerCommandFilter === "progress" && ["Em execução", "Em manutenção", "Aguardando peça"].includes(maintenance.status)) || (managerCommandFilter === "ready" && maintenance.status === "Veículo pronto para retirada") || (managerCommandFilter === "late" && maintenance.returnAt && maintenance.returnAt.slice(0, 10) < todayValue && !["Concluída", "Veículo pronto para retirada"].includes(maintenance.status));
+  return commandMatch && (!filter.base || issue.baseName === filter.base) && (!filter.vehicle || issue.vehicleId === filter.vehicle) && (!filter.date || localDateValue(issue.createdAt) === filter.date) && (!filter.owner || (issue.ownerName || "") === filter.owner) && (!filter.type || issueType(issue) === filter.type);
 }
 function renderIssueFilters(issues) {
   const bases = [...new Set(issues.map((issue) => issue.baseName).filter(Boolean))].sort();
   const vehicles = data.vehicles.filter((vehicle) => issues.some((issue) => issue.vehicleId === vehicle.id));
   const owners = [...new Set(issues.map((issue) => issue.ownerName).filter(Boolean))].sort();
   const types = ["Manutenção mecânica", "Lavagem", "Documentação", "Pneus"].filter((type) => issues.some((issue) => issueType(issue) === type));
-  return `<section class="manager-filters"><div><b>Pendências da frota</b><small>Filtre por base, veículo, categoria, data ou responsável.</small></div><label>Base<select id="issueFilterBase"><option value="">Todas</option>${bases.map((value) => `<option value="${esc(value)}" ${managerIssueFilters.base === value ? "selected" : ""}>${esc(value)}</option>`).join("")}</select></label><label>Veículo<select id="issueFilterVehicle"><option value="">Todos</option>${vehicles.map((vehicle) => `<option value="${esc(vehicle.id)}" ${managerIssueFilters.vehicle === vehicle.id ? "selected" : ""}>${esc(vehicle.prefix)} · ${esc(vehicle.plate)}</option>`).join("")}</select></label><label>Categoria<select id="issueFilterType"><option value="">Todas</option>${types.map((value) => `<option value="${esc(value)}" ${managerIssueFilters.type === value ? "selected" : ""}>${esc(value)}</option>`).join("")}</select></label><label>Data<input id="issueFilterDate" type="date" value="${esc(managerIssueFilters.date)}"></label><label>Responsável<select id="issueFilterOwner"><option value="">Todos</option>${owners.map((value) => `<option value="${esc(value)}" ${managerIssueFilters.owner === value ? "selected" : ""}>${esc(value)}</option>`).join("")}</select></label><button type="button" class="small-button" id="clearIssueFilters">Limpar filtros</button></section>`;
+  const commandLabel = { approval: "Aguardando líder", scheduled: "Agendados hoje", progress: "Em manutenção", ready: "Prontos para retirada", late: "Atrasados" }[managerCommandFilter];
+  return `<section class="manager-filters"><div><b>Pendências da frota${commandLabel ? ` · ${commandLabel}` : ""}</b><small>Filtre por base, veículo, categoria, data ou responsável.</small></div><label>Base<select id="issueFilterBase"><option value="">Todas</option>${bases.map((value) => `<option value="${esc(value)}" ${managerIssueFilters.base === value ? "selected" : ""}>${esc(value)}</option>`).join("")}</select></label><label>Veículo<select id="issueFilterVehicle"><option value="">Todos</option>${vehicles.map((vehicle) => `<option value="${esc(vehicle.id)}" ${managerIssueFilters.vehicle === vehicle.id ? "selected" : ""}>${esc(vehicle.prefix)} · ${esc(vehicle.plate)}</option>`).join("")}</select></label><label>Categoria<select id="issueFilterType"><option value="">Todas</option>${types.map((value) => `<option value="${esc(value)}" ${managerIssueFilters.type === value ? "selected" : ""}>${esc(value)}</option>`).join("")}</select></label><label>Data<input id="issueFilterDate" type="date" value="${esc(managerIssueFilters.date)}"></label><label>Responsável<select id="issueFilterOwner"><option value="">Todos</option>${owners.map((value) => `<option value="${esc(value)}" ${managerIssueFilters.owner === value ? "selected" : ""}>${esc(value)}</option>`).join("")}</select></label><button type="button" class="small-button" id="clearIssueFilters">Limpar filtros</button></section>`;
 }
 function bindIssueFilters() {
   [["#issueFilterBase", "base"], ["#issueFilterVehicle", "vehicle"], ["#issueFilterType", "type"], ["#issueFilterDate", "date"], ["#issueFilterOwner", "owner"]].forEach(([selector, key]) => $(selector)?.addEventListener("change", (event) => { managerIssueFilters[key] = event.target.value; renderIssues(); }));
@@ -1109,8 +1113,16 @@ document.addEventListener("click", (event) => {
   if (target.id === "sendDailyChecklistAlert") sendDailyChecklistAlert();
   if (target.id === "enableDailyNotifications") void enableDailyNotifications();
   if (target.id === "enableReturnNotifications") void enableReturnNotifications();
+  if (target.dataset.commandFilter) {
+    managerCommandFilter = target.dataset.commandFilter;
+    renderManagementCommandCenter();
+    renderIssues();
+    $$(".tab").forEach((button) => button.classList.toggle("active", button.dataset.tab === "issues"));
+    $$(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === "issuesPanel"));
+    $("#issuesPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
   if (target.dataset.reopenReturn) reopenReturnedIssue(target.dataset.reopenReturn);
-  if (target.id === "clearIssueFilters") { managerIssueFilters = { base: "", vehicle: "", date: "", owner: "", type: "" }; renderIssues(); }
+  if (target.id === "clearIssueFilters") { managerIssueFilters = { base: "", vehicle: "", date: "", owner: "", type: "" }; managerCommandFilter = ""; renderManagementCommandCenter(); renderIssues(); }
   if (target.dataset.viewPhoto) void openIssuePhoto(target.dataset.viewPhoto);
   if (target.dataset.managerDispatch) void dispatchManagerMaintenance(target.dataset.managerDispatch);
   if (target.dataset.approvedOwner) sendApprovedOwnerWhatsApp(target.dataset.approvedOwner);
@@ -1137,7 +1149,7 @@ $("#settingsForm").addEventListener("submit", (event) => { event.preventDefault(
 $("#maintenanceForm").addEventListener("submit", (event) => { event.preventDefault(); saveMaintenance(); });
 $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").forEach((button) => button.classList.toggle("active", button === tab)); $$(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab.dataset.tab}Panel`)); }));
 
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=137").catch(() => {}));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=139").catch(() => {}));
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
 window.addEventListener("appinstalled", () => { document.body.classList.add("app-installed"); $("#installBanner").hidden = true; });
 if (isInstalled()) document.body.classList.add("app-installed"); else window.addEventListener("load", showInstallBanner);
