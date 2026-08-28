@@ -657,7 +657,7 @@ function renderManagementCommandCenter() {
     ["Prontos para retirada", count((issue) => maintenanceOf(issue).status === "Veículo pronto para retirada"), "ready"],
     ["Atrasados", count((issue) => maintenanceOf(issue).returnAt && maintenanceOf(issue).returnAt.slice(0, 10) < todayValue && !["Concluída", "Veículo pronto para retirada"].includes(maintenanceOf(issue).status)), "late"],
   ];
-  panel.innerHTML = `<div class="section-action"><div><p class="eyebrow">PRIORIDADES DO DIA</p><h3>Central de pendências</h3><p>Toque em uma opção para abrir os chamados correspondentes.</p></div><span class="chip grave">${open.length} em aberto</span></div><div class="command-center-grid">${cards.map(([label, value, type]) => `<button type="button" class="command-card ${type} ${managerCommandFilter === type ? "active" : ""}" data-command-filter="${type}" aria-pressed="${managerCommandFilter === type}"><b>${value}</b><span>${label}</span><small>Ver chamados</small></button>`).join("")}</div>`;
+  panel.innerHTML = `<div class="section-action"><div><p class="eyebrow">PRIORIDADES DO DIA</p><h3>Central de pendências</h3><p>Toque em uma opção para abrir os chamados correspondentes.</p></div><span class="chip grave">${open.length} em aberto</span></div><div class="command-center-grid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">${cards.map(([label, value, type]) => `<button type="button" class="command-card ${type} ${managerCommandFilter === type ? "active" : ""}" data-command-filter="${type}" aria-pressed="${managerCommandFilter === type}" style="min-width:0;${type === "late" ? "grid-column:span 2;" : ""}"><b>${value}</b><span>${label}</span><small>Ver chamados</small></button>`).join("")}</div>`;
 }
 function renderVehicleTimelines() {
   const cards = $$("#vehiclesPanel .vehicle-card");
@@ -1149,7 +1149,7 @@ $("#settingsForm").addEventListener("submit", (event) => { event.preventDefault(
 $("#maintenanceForm").addEventListener("submit", (event) => { event.preventDefault(); saveMaintenance(); });
 $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").forEach((button) => button.classList.toggle("active", button === tab)); $$(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab.dataset.tab}Panel`)); }));
 
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=141").catch(() => {}));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=142").catch(() => {}));
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
 window.addEventListener("appinstalled", () => { document.body.classList.add("app-installed"); $("#installBanner").hidden = true; });
 if (isInstalled()) document.body.classList.add("app-installed"); else window.addEventListener("load", showInstallBanner);
