@@ -500,6 +500,8 @@ function saveIssue() {
   const description = $("#issueDescription").value.trim();
   if (!description) { $("#issueDescription").reportValidity(); return; }
   const photo = $("#issuePhoto").files[0];
+  if (photo && !photo.type.startsWith("image/")) return alert("Envie apenas uma foto. Vídeos não são aceitos no aplicativo.");
+  if (photo && photo.size > 20 * 1024 * 1024) return alert("A foto escolhida tem mais de 20 MB. Tire outra foto com menor tamanho antes de enviar.");
   current.states[issueDraft.itemId] = {
     status: "issue",
     issue: { severity: issueDraft.severity, description, photoName: photo?.name || "", photoFile: photo || null },
@@ -1082,7 +1084,7 @@ $("#settingsForm").addEventListener("submit", (event) => { event.preventDefault(
 $("#maintenanceForm").addEventListener("submit", (event) => { event.preventDefault(); saveMaintenance(); });
 $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").forEach((button) => button.classList.toggle("active", button === tab)); $$(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab.dataset.tab}Panel`)); }));
 
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=123").catch(() => {}));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=124").catch(() => {}));
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
 window.addEventListener("appinstalled", () => { document.body.classList.add("app-installed"); $("#installBanner").hidden = true; });
 if (isInstalled()) document.body.classList.add("app-installed"); else window.addEventListener("load", showInstallBanner);
