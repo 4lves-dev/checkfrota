@@ -239,7 +239,7 @@
         <input type="hidden" id="maintenanceIssueId" />
         <p class="dialog-copy" id="maintenanceIssueSummary"></p>
         <label for="maintenanceStatus">Situação da manutenção</label>
-        <select id="maintenanceStatus"><option>Pendente</option><option>Aguardando aprovação</option><option>Agendada</option><option>Em manutenção</option><option>Aguardando peça</option><option>Concluída</option><option>Cancelada</option></select>
+        <select id="maintenanceStatus"><option>Solicitada</option><option>Pendente</option><option>Aguardando aprovação</option><option>Agendada</option><option>Em execução</option><option>Em manutenção</option><option>Aguardando peça</option><option>Concluída</option><option>Cancelada</option></select>
         <label for="maintenanceScheduledAt">Data e horário agendados <em>opcional</em></label>
         <input id="maintenanceScheduledAt" type="datetime-local" />
         <label for="maintenanceProvider">Oficina / responsável <em>opcional</em></label>
@@ -268,7 +268,7 @@
     <template id="emptyStateTemplate"><div class="empty-state"><span>⌁</span><p>Nenhum registro por aqui.</p></div></template>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="supabase-config.js?v=1"></script>
-    <script src="app.js?v=113"></script>
+    <script src="app.js?v=114"></script>
   </body>
 </html>
 
