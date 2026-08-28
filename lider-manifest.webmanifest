@@ -1,12 +1,10 @@
 {
-  "name": "URBAM Frota Líder",
-  "short_name": "Líder URBAM",
-  "start_url": "./lider.html?v=102",
+  "name": "URBAM Frota | Liderança",
+  "short_name": "Liderança Frota",
+  "description": "Painel da liderança para aprovar chamados de frota.",
+  "start_url": "./lider.html?v=115",
   "display": "standalone",
-  "background_color": "#eef4f7",
-  "theme_color": "#0f2a43",
-  "icons": [
-    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
-  ]
+  "background_color": "#f2f6f9",
+  "theme_color": "#083557",
+  "icons": [{ "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
 }
-
