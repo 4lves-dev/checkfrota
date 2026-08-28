@@ -771,7 +771,7 @@ function renderIssues() {
     const callPhotos = isFirstFromCall ? issues.filter((entry) => entry.inspectionId === issue.inspectionId && entry.photoPath) : [];
     const gallery = callPhotos.length ? `<div class="issue-photo-gallery"><b>Fotos do chamado (${callPhotos.length})</b><div>${callPhotos.map((photo) => `<button type="button" class="photo-thumb" data-view-photo="${photo.id}" title="Abrir foto de ${esc(photo.itemName)}"><img src="${esc(publicIssuePhotoUrl(photo))}" alt="Foto: ${esc(photo.itemName)}"><span>${esc(photo.itemName)}</span></button>`).join("")}</div></div>` : "";
     const leaderApproval = issue.leaderApproval;
-    const approvalBox = leaderApproval?.status === "Aprovada" ? `<section class="manager-approval"><b>✓ Aprovado pela liderança</b><span>${esc(leaderApproval.approvedBy || `Base ${issue.baseName || ""}`)} · ${dateTime(leaderApproval.approvedAt)}</span><p>${esc(leaderApproval.note || "Sem observação da liderança.")}</p><textarea readonly aria-label="Mensagem aprovada para manutenção">${esc(leaderApproval.maintenanceMessage || "")}</textarea><div class="issue-actions"><button class="small-button" data-copy-manager-message="${issue.id}">Copiar mensagem</button><button class="small-button whatsapp" data-manager-dispatch="${issue.id}">${leaderApproval.dispatchStatus === "Enviado" ? "✓ Enviado ao grupo" : "Autorizar envio ao grupo"}</button></div></section>` : "";
+    const approvalBox = leaderApproval?.status === "Aprovada" ? `<section class="manager-approval"><b>✓ Aprovado pela liderança</b><span>${esc(leaderApproval.approvedBy || `Base ${issue.baseName || ""}`)} · ${dateTime(leaderApproval.approvedAt)}</span><p>${esc(leaderApproval.note || "Sem observação da liderança.")}</p><textarea readonly aria-label="Mensagem aprovada para manutenção">${esc(leaderApproval.maintenanceMessage || "")}</textarea><div class="issue-actions"><button class="small-button" data-copy-manager-message="${issue.id}">Copiar mensagem</button><button class="small-button whatsapp" data-manager-dispatch="${issue.id}">${leaderApproval.dispatchStatus === "Enviado" ? "✓ Enviado ao grupo" : "Autorizar envio ao grupo"}</button><button class="small-button whatsapp" data-approved-owner="${issue.id}">Enviar aprovação ao proprietário</button></div></section>` : "";
     return `<article class="issue-card ${issue.severity.toLowerCase()}">
       <div class="card-heading"><div><h3>${esc(issue.itemName)}</h3><p class="vehicle-label">Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate)} · ${esc(issue.vehicleModel || issue.vehicleType)}${issue.vehicleBase ? ` · ${esc(issue.vehicleBase)}` : ""} · ${esc(issue.odometer ?? "—")} km</p></div><span class="chip ${issue.severity.toLowerCase()}">${esc(issueType(issue))}</span></div>
       <p class="issue-desc">${esc(issue.description)}</p>
@@ -934,6 +934,13 @@ function sendIssueWhatsApp(issueId) {
   if (!target) return alert("Cadastre o número de WhatsApp do responsável ou da base nas configurações.");
   window.open(whatsappLink(target, message), "_blank", "noopener");
 }
+function sendApprovedOwnerWhatsApp(issueId) {
+  const issue = data.issues.find((entry) => entry.id === issueId); if (!issue) return;
+  const approval = issue.leaderApproval || {};
+  const message = `*MANUTENÇÃO APROVADA — VEÍCULO*\n\nPrezado(a) responsável,\n\nA solicitação de manutenção foi aprovada pela liderança.\n\n*Veículo:* Prefixo ${issue.vehiclePrefix || "—"} · Placa ${issue.vehiclePlate || "—"}\n*Ocorrência:* ${issue.itemName || "—"}\n*Descrição:* ${issue.description || "—"}\n*Base:* ${issue.baseName || "—"}\n*Decisão:* Aprovada em ${dateTime(approval.approvedAt || new Date().toISOString())}\n\nSolicitamos, por gentileza, o agendamento do atendimento e o retorno com data, horário e local da manutenção.\n\nAtenciosamente,\nURBAM Frota — Gestão`;
+  const target = issue.ownerPhone; if (!target) return alert("Este veículo não possui WhatsApp de responsável cadastrado.");
+  window.open(whatsappLink(target, message), "_blank", "noopener");
+}
 function buildSchedulingReturn(issue, maintenance = maintenanceOf(issue)) {
   const schedule = maintenance.scheduledAt ? dateTime(maintenance.scheduledAt) : "A confirmar";
   return `*RETORNO DE AGENDAMENTO — MANUTENÇÃO*\n\n*Veículo:* Prefixo ${issue.vehiclePrefix || "—"} · ${issue.vehiclePlate || "—"}\n*Ocorrência:* ${issue.itemName || "—"}\n*Situação:* ${maintenance.status || "Pendente"}\n*Agendamento:* ${schedule}\n${maintenance.provider ? `*Oficina / responsável:* ${maintenance.provider}\n` : ""}${maintenance.feedback ? `*Retorno:* ${maintenance.feedback}\n` : ""}\nEsta atualização foi registrada pela Gestão de Frota para ciência da equipe de manutenção.`;
@@ -1078,6 +1085,7 @@ document.addEventListener("click", (event) => {
   if (target.id === "clearIssueFilters") { managerIssueFilters = { base: "", vehicle: "", date: "", owner: "", type: "" }; renderIssues(); }
   if (target.dataset.viewPhoto) void openIssuePhoto(target.dataset.viewPhoto);
   if (target.dataset.managerDispatch) void dispatchManagerMaintenance(target.dataset.managerDispatch);
+  if (target.dataset.approvedOwner) sendApprovedOwnerWhatsApp(target.dataset.approvedOwner);
   if (target.dataset.copyManagerMessage) void copyManagerMaintenanceMessage(target.dataset.copyManagerMessage);
   if (target.dataset.whatsappIssue) sendIssueWhatsApp(target.dataset.whatsappIssue);
   if (target.dataset.maintenanceIssue) openMaintenanceIssue(target.dataset.maintenanceIssue);
@@ -1100,7 +1108,7 @@ $("#settingsForm").addEventListener("submit", (event) => { event.preventDefault(
 $("#maintenanceForm").addEventListener("submit", (event) => { event.preventDefault(); saveMaintenance(); });
 $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").forEach((button) => button.classList.toggle("active", button === tab)); $$(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab.dataset.tab}Panel`)); }));
 
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=131").catch(() => {}));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=132").catch(() => {}));
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
 window.addEventListener("appinstalled", () => { document.body.classList.add("app-installed"); $("#installBanner").hidden = true; });
 if (isInstalled()) document.body.classList.add("app-installed"); else window.addEventListener("load", showInstallBanner);
