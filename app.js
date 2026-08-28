@@ -70,6 +70,7 @@ const OWNER_PHONE_BY_PREFIX = {
   "1894": "5512988201150", "1922": "5512988201150", "1799": "5512988201150", "1967": "5512988201150", "1968": "5512988201150",
   "1969": "5512988604088", "1126": "5512996510614", "1919": "553597804552", "1082": "5512974059535", "1084": "5512974059535", "1577": "5512974034611",
 };
+const normalizeOwnerName = (name = "") => /authana/i.test(String(name)) ? "Locadora de Veículos Authana Ltda" : String(name);
 const BASE_BY_PREFIX = {
   "1484": "Base Vertical", "1969": "Base Vertical", "1919": "Base Vertical", "1084": "Base Vertical", "1446": "Base Vertical", "1456": "Base Vertical",
   "1447": "Base Horizontal", "1466": "Base Horizontal", "1922": "Base Horizontal", "1485": "Base Horizontal", "1577": "Base Horizontal", "157": "Base Horizontal",
@@ -80,7 +81,7 @@ const BASE_BY_PREFIX = {
 };
 const MANAGER_BY_PREFIX = { "1968": "Julio — Gestor de Contratos" };
 const DIRECT_MANAGEMENT_PREFIXES = new Set(["1446", "1447", "1894", "1968"]);
-function withFleetResponsible(vehicle) { return { ...vehicle, base: BASE_BY_PREFIX[vehicle.prefix] || vehicle.base || "", manager: MANAGER_BY_PREFIX[vehicle.prefix] || vehicle.manager || "", ownerName: RESPONSIBLES_BY_PREFIX[vehicle.prefix] || vehicle.ownerName, ownerPhone: OWNER_PHONE_BY_PREFIX[vehicle.prefix] || vehicle.ownerPhone }; }
+function withFleetResponsible(vehicle) { return { ...vehicle, base: BASE_BY_PREFIX[vehicle.prefix] || vehicle.base || "", manager: MANAGER_BY_PREFIX[vehicle.prefix] || vehicle.manager || "", ownerName: normalizeOwnerName(RESPONSIBLES_BY_PREFIX[vehicle.prefix] || vehicle.ownerName), ownerPhone: OWNER_PHONE_BY_PREFIX[vehicle.prefix] || vehicle.ownerPhone }; }
 const DRIVER_REGISTRY = [
   ["18593", "JULIO CESAR VIEIRA DA SILVA"], ["17672", "SILVIA CRISTINA TELES DE TOLEDO"], ["18920", "LUIS CARLOS ROMERO"], ["17208", "CRISTINA NASTI TAVARES"], ["23761", "BRUNA CRISTINA DE ABREU MACHADO"], ["23764", "FLAVIA MACHADO RIGOTTI"], ["25310", "LUIS ROBERTO COSTA"], ["18919", "ALEX MACHADO DA SILVA"], ["24846", "EDMILSON EVANGELISTA DA CRUZ"],
   ["18365", "EDSON DO AMARAL DE CARVALHO"], ["22748", "RENATO TARTAGLIONE FONSECA"], ["23141", "VIDAL FELIX DE SOUZA RIBEIRO"], ["18123", "ALEXANDRE FERREIRA DA SILVA ARAUJO"], ["14246", "RICARDO BATISTA DE ALMEIDA"], ["25082", "ANDRE LUIZ DE ABREU"], ["14443", "MOACIR PISARRO"], ["17096", "MARCO ALEXANDRE DE OLIVEIRA"], ["17148", "TIAGO PEREIRA DE MELO"], ["24567", "CLAUDINEI LUIS CARDOSO"], ["22300", "FRANCISCO RODRIGUES DA SILVA"], ["12928", "LUIZ SERGIO NOGUEIRA"], ["18918", "WESLEY POLICARPO GABRIEL DE MORAES"], ["23480", "ITALO JORGE LEMES CARDOSO"],
@@ -353,7 +354,7 @@ function loadData() {
     const seededVehicles = initialData.vehicles.filter((seed) => !removedVehicleIds.includes(seed.id)).map((seed) => {
       const storedVehicle = storedVehicles.find((vehicle) => vehicle.prefix === seed.prefix || vehicle.plate === seed.plate);
       const merged = { ...withFleetResponsible(seed), ...(storedVehicle || {}) };
-      if (!storedVehicle?.ownerName || storedVehicle.ownerName === "Responsável a cadastrar") merged.ownerName = RESPONSIBLES_BY_PREFIX[seed.prefix] || merged.ownerName;
+      merged.ownerName = normalizeOwnerName(RESPONSIBLES_BY_PREFIX[seed.prefix] || merged.ownerName);
       if (!storedVehicle?.ownerPhone) merged.ownerPhone = OWNER_PHONE_BY_PREFIX[seed.prefix] || merged.ownerPhone;
       return merged;
     });
@@ -772,12 +773,12 @@ function issueMatchesManagerFilters(issue) {
   const filter = managerIssueFilters;
   const maintenance = maintenanceOf(issue), todayValue = today();
   const commandMatch = !managerCommandFilter || (managerCommandFilter === "approval" && !issue.leaderApproval && issue.approvalRoute !== "gestao") || (managerCommandFilter === "scheduled" && maintenance.scheduledAt?.slice(0, 10) === todayValue) || (managerCommandFilter === "in-maintenance" && ["Em execução", "Em manutenção", "Aguardando peça"].includes(maintenance.status)) || (managerCommandFilter === "ready" && maintenance.status === "Veículo pronto para retirada") || (managerCommandFilter === "late" && maintenance.returnAt && maintenance.returnAt.slice(0, 10) < todayValue && !["Concluída", "Veículo pronto para retirada"].includes(maintenance.status));
-  return commandMatch && (!filter.base || issue.baseName === filter.base) && (!filter.vehicle || issue.vehicleId === filter.vehicle) && (!filter.date || localDateValue(issue.createdAt) === filter.date) && (!filter.owner || (issue.ownerName || "") === filter.owner) && (!filter.type || issueType(issue) === filter.type);
+  return commandMatch && (!filter.base || issue.baseName === filter.base) && (!filter.vehicle || issue.vehicleId === filter.vehicle) && (!filter.date || localDateValue(issue.createdAt) === filter.date) && (!filter.owner || normalizeOwnerName(issue.ownerName) === filter.owner) && (!filter.type || issueType(issue) === filter.type);
 }
 function renderIssueFilters(issues) {
   const bases = [...new Set(issues.map((issue) => issue.baseName).filter(Boolean))].sort();
   const vehicles = data.vehicles.filter((vehicle) => issues.some((issue) => issue.vehicleId === vehicle.id));
-  const owners = [...new Set(issues.map((issue) => issue.ownerName).filter(Boolean))].sort();
+  const owners = [...new Set(issues.map((issue) => normalizeOwnerName(issue.ownerName)).filter(Boolean))].sort();
   const types = ["Manutenção mecânica", "Lavagem", "Documentação", "Pneus"].filter((type) => issues.some((issue) => issueType(issue) === type));
   const commandLabel = { approval: "Aguardando líder", scheduled: "Agendados hoje", "in-maintenance": "Em manutenção", ready: "Prontos para retirada", late: "Atrasados" }[managerCommandFilter];
   return `<section class="manager-filters"><div><b>Pendências da frota${commandLabel ? ` · ${commandLabel}` : ""}</b><small>Filtre por base, veículo, categoria, data ou responsável.</small></div><label>Base<select id="issueFilterBase"><option value="">Todas</option>${bases.map((value) => `<option value="${esc(value)}" ${managerIssueFilters.base === value ? "selected" : ""}>${esc(value)}</option>`).join("")}</select></label><label>Veículo<select id="issueFilterVehicle"><option value="">Todos</option>${vehicles.map((vehicle) => `<option value="${esc(vehicle.id)}" ${managerIssueFilters.vehicle === vehicle.id ? "selected" : ""}>${esc(vehicle.prefix)} · ${esc(vehicle.plate)}</option>`).join("")}</select></label><label>Categoria<select id="issueFilterType"><option value="">Todas</option>${types.map((value) => `<option value="${esc(value)}" ${managerIssueFilters.type === value ? "selected" : ""}>${esc(value)}</option>`).join("")}</select></label><label>Data<input id="issueFilterDate" type="date" value="${esc(managerIssueFilters.date)}"></label><label>Responsável<select id="issueFilterOwner"><option value="">Todos</option>${owners.map((value) => `<option value="${esc(value)}" ${managerIssueFilters.owner === value ? "selected" : ""}>${esc(value)}</option>`).join("")}</select></label><button type="button" class="small-button" id="clearIssueFilters">Limpar filtros</button></section>`;
@@ -1149,7 +1150,7 @@ $("#settingsForm").addEventListener("submit", (event) => { event.preventDefault(
 $("#maintenanceForm").addEventListener("submit", (event) => { event.preventDefault(); saveMaintenance(); });
 $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").forEach((button) => button.classList.toggle("active", button === tab)); $$(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab.dataset.tab}Panel`)); }));
 
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=143").catch(() => {}));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=144").catch(() => {}));
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
 window.addEventListener("appinstalled", () => { document.body.classList.add("app-installed"); $("#installBanner").hidden = true; });
 if (isInstalled()) document.body.classList.add("app-installed"); else window.addEventListener("load", showInstallBanner);
