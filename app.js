@@ -172,7 +172,10 @@ async function cloudSave(table, row) {
 async function loadEmployeeDatabase() {
   if (!CLOUD?.url || employeeDatabase.length) return;
   try {
-    const rows = await cloudRequest("/rest/v1/fleet_employees?select=*&active=is.true&order=name.asc");
+    // Sem login, a consulta usa a visão pública sem campos de autenticação.
+    // A Gestão autenticada lê a tabela completa para poder administrar cadastros.
+    const source = cloudToken() ? "fleet_employees" : "fleet_employee_directory";
+    const rows = await cloudRequest(`/rest/v1/${source}?select=*&active=is.true&order=name.asc`);
     if (!Array.isArray(rows) || !rows.length) return;
     employeeDatabase = rows;
     lookupDriverRegistration();
@@ -606,7 +609,7 @@ function buildWhatsAppMessage(vehicle, issues, inspection) {
 function whatsappLink(phone, message) { return `https://wa.me/${phoneOnly(phone)}?text=${encodeURIComponent(message)}`; }
 function leadershipPanelUrl(baseName) {
   const base = baseName || current.baseName || "Vertical";
-  return `${location.origin}${location.pathname.replace(/[^/]*$/, "lider.html")}?v=131&base=${encodeURIComponent(base)}`;
+  return `${location.origin}${location.pathname.replace(/[^/]*$/, "lider.html")}?v=149&base=${encodeURIComponent(base)}`;
 }
 async function approvalUrl(vehicle, issues) {
   const first = issues[0] || {};
@@ -637,7 +640,7 @@ async function showCompletion(inspection, vehicle, issues, sendResult) {
   const directToManagement = issues.some((issue) => issue.approvalRoute === "gestao");
   const approvalTarget = issues[0]?.basePhone || current.basePhone || data.settings.leaderPhone;
   if (directToManagement) {
-    const managementLink = `${location.origin}${location.pathname.replace(/[^/]*$/, "gestao.html")}?v=108`;
+    const managementLink = `${location.origin}${location.pathname.replace(/[^/]*$/, "gestao.html")}?v=149`;
     buttons.push(`<a href="${managementLink}" target="_blank" rel="noopener">Enviar</a>`);
   } else if (approvalTarget) {
     buttons.push(`<button type="button" class="primary-button" data-go="inicio">Enviar</button>`);
@@ -762,7 +765,7 @@ function sendLeaderInstall() {
   const base = $("#leaderInstallBase")?.value; const phone = BASES[base];
   if (!phone) return alert("Selecione Base Vertical, Base Horizontal ou Base Abrigo.");
   const label = LEADER_BASE_LABELS[base] || `Base ${base}`;
-  const link = `https://4lves-dev.github.io/checkfrota/instalar-lider.html?v=131&base=${encodeURIComponent(base)}`;
+  const link = `https://4lves-dev.github.io/checkfrota/instalar-lider.html?v=149&base=${encodeURIComponent(base)}`;
   const message = `*CHECKFROTA — APLICATIVO DA LIDERANÇA*\n\nOlá, ${label}.\n\nEste é o link de instalação do painel da liderança desta base:\n${link}\n\nApós instalar, utilize o aplicativo para consultar as ocorrências e registrar a aprovação ou recusa.`;
   window.open(whatsappLink(phone, message), "_blank", "noopener");
 }
@@ -916,7 +919,7 @@ async function saveEmployee() {
     const rows = await cloudRequest("/rest/v1/fleet_employees?on_conflict=registration", { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=representation" }, body: JSON.stringify({ registration, name, role, active: true, leader, leader_base, access_level }) });
     const saved = rows?.[0] || { registration, name, role, active: true, leader, leader_base, access_level };
     employeeDatabase = [...employeeDatabase.filter((entry) => String(entry.registration) !== registration), saved];
-    $("#employeeDialog").close(); renderDrivers(); alert(access_level === "colaborador" ? "Colaborador salvo no banco de dados." : `${ACCESS_LEVEL_LABELS[access_level]} salvo. O acesso inicial é matrícula como usuário e senha.`);
+    $("#employeeDialog").close(); renderDrivers(); alert(access_level === "colaborador" ? "Colaborador salvo no banco de dados." : `${ACCESS_LEVEL_LABELS[access_level]} salvo. No primeiro acesso, a senha é a matrícula e deverá ser trocada por uma senha numérica.`);
   } catch (error) { alert("Não foi possível salvar o colaborador no banco. Verifique se a tabela e as permissões do Supabase foram configuradas."); console.warn(error); }
 }
 async function deactivateEmployee(registration) {
@@ -1153,11 +1156,11 @@ $("#settingsForm").addEventListener("submit", (event) => { event.preventDefault(
 $("#maintenanceForm").addEventListener("submit", (event) => { event.preventDefault(); saveMaintenance(); });
 $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").forEach((button) => button.classList.toggle("active", button === tab)); $$(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab.dataset.tab}Panel`)); }));
 
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=148").catch(() => {}));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=149").catch(() => {}));
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
 window.addEventListener("appinstalled", () => { document.body.classList.add("app-installed"); $("#installBanner").hidden = true; });
 if (isInstalled()) document.body.classList.add("app-installed"); else window.addEventListener("load", showInstallBanner);
 if (new URLSearchParams(location.search).get("gestao") === "1") {
   if (cloudToken()) showScreen("controle");
-  else location.replace("gestao.html?v=108");
+  else location.replace("gestao.html?v=149");
 } else { renderStart(); void syncLocalBacklog(); }
