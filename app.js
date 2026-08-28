@@ -965,8 +965,7 @@ function sendIssueWhatsApp(issueId) {
   window.open(whatsappLink(target, message), "_blank", "noopener");
 }
 function buildApprovedOwnerMessage(issue) {
-  const approval = issue.leaderApproval || {};
-  return `*MANUTENÇÃO APROVADA — VEÍCULO*\n\nPrezado(a) responsável,\n\nA solicitação de manutenção foi aprovada pela liderança.\n\n*Veículo:* Prefixo ${issue.vehiclePrefix || "—"} · Placa ${issue.vehiclePlate || "—"}\n*Ocorrência:* ${issue.itemName || "—"}\n*Descrição:* ${issue.description || "—"}\n*Base:* ${issue.baseName || "—"}\n*Decisão:* Aprovada em ${dateTime(approval.approvedAt || new Date().toISOString())}\n\nSolicitamos, por gentileza, o agendamento do atendimento e o retorno com data, horário e local da manutenção.\n\nAtenciosamente,\nURBAM Frota — Gestão`;
+  return `*SOLICITAÇÃO DE MANUTENÇÃO — VEÍCULO*\n\nPrezado(a) responsável,\n\nSolicitamos, por gentileza, a avaliação e o agendamento de manutenção para o veículo abaixo.\n\n*Veículo:* Prefixo ${issue.vehiclePrefix || "—"} · Placa ${issue.vehiclePlate || "—"}\n*Ocorrência:* ${issue.itemName || "—"}\n*Problema relatado:* ${issue.description || "—"}\n\nPedimos o retorno com data, horário e local para atendimento.\n\nAtenciosamente,\nURBAM Frota — Gestão`;
 }
 function sendApprovedOwnerWhatsApp(issueId) {
   const issue = data.issues.find((entry) => entry.id === issueId); if (!issue) return;
@@ -1143,7 +1142,7 @@ $("#settingsForm").addEventListener("submit", (event) => { event.preventDefault(
 $("#maintenanceForm").addEventListener("submit", (event) => { event.preventDefault(); saveMaintenance(); });
 $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").forEach((button) => button.classList.toggle("active", button === tab)); $$(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab.dataset.tab}Panel`)); }));
 
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=134").catch(() => {}));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=135").catch(() => {}));
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
 window.addEventListener("appinstalled", () => { document.body.classList.add("app-installed"); $("#installBanner").hidden = true; });
 if (isInstalled()) document.body.classList.add("app-installed"); else window.addEventListener("load", showInstallBanner);
