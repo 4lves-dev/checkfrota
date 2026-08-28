@@ -18,7 +18,7 @@ const BASES = { Vertical: "5512981567218", Abrigo: "5512997884887", Horizontal: 
 const LEADER_BASE_LABELS = { Vertical: "Base Vertical / Segurança / Elétrica", Horizontal: "Base Horizontal", Abrigo: "Base Abrigo / Manutenção / Linha Verde / Lavagem" };
 const DRIVER_NOTIFICATION_PHONE = "";
 const EMAIL_AUTOMATION_URL = "https://script.google.com/macros/s/AKfycbyfdwx76UkQcv2fz1HXLERZrcVMfW1iaNvFALmFET1kIBBeXAQVvkH89iviTDxBCQOA/exec";
-const EMAIL_COPY_RECIPIENT = "urbamfrotabylucthi@gmail.com";
+const EMAIL_COPY_RECIPIENT = "urbamforta@gmail.com";
 const MASTER_ADMIN_EMAIL = "luciano.silva@urbam.com.br";
 const MAINTENANCE_GROUP_PHONE = "5512996181645";
 const DAILY_CHECKLIST_ALERT_PHONE = "5512981111336";
@@ -822,7 +822,7 @@ function renderDrivers() {
   const employeeAction = masterAdmin ? `<button class="add-button" id="newEmployee">+ Cadastrar colaborador</button>` : "";
   const card = (driver) => {
     const leader = Boolean(driver.leader); const base = driver.leader_base || "";
-    const manage = masterAdmin ? `<button class="small-button" data-edit-employee="${esc(driver.registration)}">${leader ? "Configurar líder" : "Definir líder"}</button>` : "";
+    const manage = masterAdmin ? `<div class="issue-actions"><button class="small-button" data-edit-employee="${esc(driver.registration)}">Editar</button><button class="small-button danger-button" data-delete-employee="${esc(driver.registration)}">Excluir</button></div>` : "";
     return `<article class="driver-row"><div><b>${esc(driver.name)}</b><span>Matrícula ${esc(driver.registration)}${driver.role ? ` · ${esc(driver.role)}` : ""}${leader ? ` · <strong>Líder${base ? ` — ${esc(base)}` : ""}</strong>` : ""}</span></div>${manage}</article>`;
   };
   panel.innerHTML = `<section class="driver-registry"><div class="section-action"><div><h3>Banco de colaboradores</h3><p>Marque o líder e a base. O acesso inicial usa matrícula como usuário e senha.</p></div><div class="vehicle-actions"><span class="chip ok">${registered.length} cadastrados</span>${employeeAction}</div></div><div class="driver-grid">${registered.map(card).join("")}</div></section><section class="missing-drivers"><div class="section-action"><div><h3>Colaboradores sem matrícula</h3><p>Relação identificada na primeira tabela e ainda sem vínculo na segunda.</p></div><span class="chip grave">${missing.length} pendentes</span></div>${missing.length ? `<ul>${missing.map((name) => `<li>${esc(name)}</li>`).join("")}</ul>` : "<p>Todos os colaboradores possuem matrícula cadastrada.</p>"}</section>`;
@@ -872,6 +872,15 @@ async function saveEmployee() {
     employeeDatabase = [...employeeDatabase.filter((entry) => String(entry.registration) !== registration), saved];
     $("#employeeDialog").close(); renderDrivers(); alert(leader ? "Líder salvo. O acesso inicial é matrícula como usuário e senha." : "Colaborador salvo no banco de dados.");
   } catch (error) { alert("Não foi possível salvar o colaborador no banco. Verifique se a tabela e as permissões do Supabase foram configuradas."); console.warn(error); }
+}
+async function deactivateEmployee(registration) {
+  if (!requireMasterAccess()) return;
+  const employee = employeeDatabase.find((entry) => String(entry.registration) === String(registration));
+  if (!employee || !confirm(`Excluir ${employee.name} do cadastro ativo? O histórico de chamados será preservado.`)) return;
+  try {
+    await cloudRequest(`/rest/v1/fleet_employees?registration=eq.${encodeURIComponent(registration)}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ active: false }) });
+    employeeDatabase = employeeDatabase.filter((entry) => String(entry.registration) !== String(registration)); renderDrivers();
+  } catch (error) { alert("Não foi possível excluir o colaborador do cadastro ativo."); console.warn(error); }
 }
 function saveVehicle() {
   if (!requireMasterAccess()) return;
@@ -1039,6 +1048,7 @@ document.addEventListener("click", (event) => {
   if (target.id === "newEmployee") openEmployeeDialog();
   if (target.id === "quickNewEmployee") openEmployeeDialog();
   if (target.dataset.editEmployee) openEmployeeDialog(employeeDatabase.find((employee) => String(employee.registration) === String(target.dataset.editEmployee)) || DRIVER_REGISTRY.find((employee) => String(employee.registration) === String(target.dataset.editEmployee)));
+  if (target.dataset.deleteEmployee) void deactivateEmployee(target.dataset.deleteEmployee);
   if (target.dataset.vehicleHistory) { selectedVehicleHistoryId = selectedVehicleHistoryId === target.dataset.vehicleHistory ? "" : target.dataset.vehicleHistory; renderVehicles(); }
   if (target.dataset.editVehicle) openVehicleDialog(target.dataset.editVehicle);
   if (target.dataset.deleteVehicle) deleteVehicle(target.dataset.deleteVehicle);
@@ -1072,7 +1082,7 @@ $("#settingsForm").addEventListener("submit", (event) => { event.preventDefault(
 $("#maintenanceForm").addEventListener("submit", (event) => { event.preventDefault(); saveMaintenance(); });
 $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").forEach((button) => button.classList.toggle("active", button === tab)); $$(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab.dataset.tab}Panel`)); }));
 
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=121").catch(() => {}));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=122").catch(() => {}));
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
 window.addEventListener("appinstalled", () => { document.body.classList.add("app-installed"); $("#installBanner").hidden = true; });
 if (isInstalled()) document.body.classList.add("app-installed"); else window.addEventListener("load", showInstallBanner);
