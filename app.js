@@ -1,5 +1,6 @@
 /* URBAM Frota - MVP local-first. Dados ficam neste navegador até uma integração ser configurada. */
 const STORAGE_KEY = "checkfrota-v1";
+const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
 const CHECKLIST = [
   ["pneus", "Pneus e estepe", "Rodagem"],
   ["luzes", "Faróis, lanternas e setas", "Elétrica"],
@@ -31,7 +32,7 @@ const initialData = {
   vehicles: [
     { id: "v1446", prefix: "1446", plate: "SHR7161", type: "Carro", model: "Onix", ownerName: "Responsável a cadastrar", ownerPhone: "", email: "", contract: "50/23", urbamContract: "620/24", odometer: "" },
     { id: "v1447", prefix: "1447", plate: "SHL7J59", type: "Carro", model: "Onix", ownerName: "Responsável a cadastrar", ownerPhone: "", email: "", contract: "50/23", urbamContract: "482/22", odometer: "" },
-    { id: "v1456", prefix: "1456", plate: "SHR7128", type: "Utilitário", model: "Furgão Peugeot", ownerName: "Responsável a cadastrar", ownerPhone: "", email: "", contract: "58/23", urbamContract: "44/23", odometer: "" },
+    { id: "v1456", prefix: "1456", plate: "SHR7I28", type: "Utilitário", model: "Furgão Peugeot", ownerName: "Responsável a cadastrar", ownerPhone: "", email: "", contract: "58/23", urbamContract: "44/23", odometer: "" },
     { id: "v1466", prefix: "1466", plate: "SIA9F89", type: "Carro", model: "Orochi", ownerName: "Responsável a cadastrar", ownerPhone: "", email: "", contract: "115/23", urbamContract: "620/24", odometer: "" },
     { id: "v1894", prefix: "1894", plate: "TKI5A73", type: "Carro", model: "Kwid", ownerName: "Responsável a cadastrar", ownerPhone: "", email: "", contract: "40/2025", urbamContract: "620/24", odometer: "" },
     { id: "v1922", prefix: "1922", plate: "QSR4H49", type: "Utilitário", model: "Saveiro", ownerName: "Responsável a cadastrar", ownerPhone: "", email: "", contract: "100/25", urbamContract: "620/24", odometer: "" },
@@ -42,10 +43,10 @@ const initialData = {
     { id: "v1969", prefix: "1969", plate: "UDR0F38", type: "Caminhão", model: "Caminhão plataforma", ownerName: "Responsável a cadastrar", ownerPhone: "", email: "", contract: "172/25", urbamContract: "620/24", odometer: "" },
     { id: "v1126", prefix: "1126", plate: "GHI9I25", type: "Caminhão", model: "Caminhão pequeno porte com cabine estendida", ownerName: "Responsável a cadastrar", ownerPhone: "", email: "", contract: "608/22", urbamContract: "482/22", odometer: "" },
     { id: "v1919", prefix: "1919", plate: "TXF5B12", type: "Caminhão", model: "Caminhão 3/4 com cabine suplementar e cesto aéreo", ownerName: "Responsável a cadastrar", ownerPhone: "", email: "", contract: "075/25", urbamContract: "620/24", odometer: "" },
-    { id: "v1082", prefix: "1082", plate: "GAS8B76", type: "Caminhão", model: "Caminhão guindauto cesto", ownerName: "Responsável a cadastrar", ownerPhone: "", email: "", contract: "096/25", urbamContract: "482/22", odometer: "" },
+    { id: "v1082", prefix: "1082", plate: "GAS6B76", type: "Caminhão", model: "Caminhão guindauto cesto", ownerName: "Responsável a cadastrar", ownerPhone: "", email: "", contract: "096/25", urbamContract: "482/22", odometer: "" },
     { id: "v1084", prefix: "1084", plate: "FVY2G68", type: "Caminhão", model: "Caminhão guindauto cesto", ownerName: "Responsável a cadastrar", ownerPhone: "", email: "", contract: "096/25", urbamContract: "620/24", odometer: "" },
     { id: "v1577", prefix: "1577", plate: "FVQ8C09", type: "Caminhão", model: "Caminhão 3/4 com cabine suplementar", ownerName: "Responsável a cadastrar", ownerPhone: "", email: "", contract: "095/25", urbamContract: "620/24", odometer: "" },
-    { id: "v1967", prefix: "1967", plate: "UET6G08", type: "Carro", model: "Strada", base: "Base Horizontal", ownerName: "Responsável a cadastrar", ownerPhone: "", email: "", contract: "059/26", urbamContract: "620/24", odometer: "" },
+    { id: "v1967", prefix: "1967", plate: "UET6G08", type: "Carro", model: "Strada", base: "Base Abrigo", ownerName: "Responsável a cadastrar", ownerPhone: "", email: "", contract: "059/26", urbamContract: "620/24", odometer: "" },
     { id: "v1968", prefix: "1968", plate: "UED5G69", type: "Carro", model: "Strada", manager: "Julio — Gestor de Contratos", ownerName: "Responsável a cadastrar", ownerPhone: "", email: "", contract: "059/26", urbamContract: "620/24", odometer: "" },
     { id: "v157", prefix: "157", plate: "SVP0D79", type: "Caminhão", model: "Iveco/Tector 17-280", ownerName: "URBAM", ownerPhone: "", email: "", contract: "", urbamContract: "", odometer: "" },
   ],
@@ -73,15 +74,16 @@ const OWNER_PHONE_BY_PREFIX = {
 const normalizeOwnerName = (name = "") => /authana/i.test(String(name)) ? "Locadora de Veículos Authana Ltda" : String(name);
 const BASE_BY_PREFIX = {
   "1484": "Base Vertical", "1969": "Base Vertical", "1919": "Base Vertical", "1084": "Base Vertical", "1446": "Base Vertical", "1456": "Base Vertical",
-  "1447": "Base Horizontal", "1466": "Base Horizontal", "1922": "Base Horizontal", "1485": "Base Horizontal", "1577": "Base Horizontal", "157": "Base Horizontal",
-  "1486": "Base Abrigo", "1799": "Base Abrigo", "1126": "Base Abrigo", "1082": "Base Abrigo",
-  "1967": "Base Horizontal",
+  "1447": "Base Horizontal", "1466": "Base Horizontal", "1485": "Base Horizontal", "1577": "Base Horizontal", "157": "Base Horizontal",
+  "1486": "Base Abrigo", "1799": "Base Abrigo", "1126": "Base Abrigo", "1082": "Base Abrigo", "1922": "Base Abrigo",
+  "1967": "Base Abrigo",
   "1894": "SASC / Gestão",
   "1968": "Gestão de Contratos",
 };
 const MANAGER_BY_PREFIX = { "1968": "Julio — Gestor de Contratos" };
 const DIRECT_MANAGEMENT_PREFIXES = new Set(["1446", "1447", "1894", "1968"]);
-function withFleetResponsible(vehicle) { return { ...vehicle, base: BASE_BY_PREFIX[vehicle.prefix] || vehicle.base || "", manager: MANAGER_BY_PREFIX[vehicle.prefix] || vehicle.manager || "", ownerName: normalizeOwnerName(RESPONSIBLES_BY_PREFIX[vehicle.prefix] || vehicle.ownerName), ownerPhone: OWNER_PHONE_BY_PREFIX[vehicle.prefix] || vehicle.ownerPhone }; }
+const CORRECTED_PLATE_BY_PREFIX = { "1456": "SHR7I28", "1082": "GAS6B76" };
+function withFleetResponsible(vehicle) { return { ...vehicle, plate: CORRECTED_PLATE_BY_PREFIX[vehicle.prefix] || vehicle.plate, base: BASE_BY_PREFIX[vehicle.prefix] || vehicle.base || "", manager: MANAGER_BY_PREFIX[vehicle.prefix] || vehicle.manager || "", ownerName: normalizeOwnerName(RESPONSIBLES_BY_PREFIX[vehicle.prefix] || vehicle.ownerName), ownerPhone: OWNER_PHONE_BY_PREFIX[vehicle.prefix] || vehicle.ownerPhone }; }
 const DRIVER_REGISTRY = [
   ["18593", "JULIO CESAR VIEIRA DA SILVA"], ["17672", "SILVIA CRISTINA TELES DE TOLEDO"], ["18920", "LUIS CARLOS ROMERO"], ["17208", "CRISTINA NASTI TAVARES"], ["23761", "BRUNA CRISTINA DE ABREU MACHADO"], ["23764", "FLAVIA MACHADO RIGOTTI"], ["25310", "LUIS ROBERTO COSTA"], ["18919", "ALEX MACHADO DA SILVA"], ["24846", "EDMILSON EVANGELISTA DA CRUZ"],
   ["18365", "EDSON DO AMARAL DE CARVALHO"], ["22748", "RENATO TARTAGLIONE FONSECA"], ["23141", "VIDAL FELIX DE SOUZA RIBEIRO"], ["18123", "ALEXANDRE FERREIRA DA SILVA ARAUJO"], ["14246", "RICARDO BATISTA DE ALMEIDA"], ["25082", "ANDRE LUIZ DE ABREU"], ["14443", "MOACIR PISARRO"], ["17096", "MARCO ALEXANDRE DE OLIVEIRA"], ["17148", "TIAGO PEREIRA DE MELO"], ["24567", "CLAUDINEI LUIS CARDOSO"], ["22300", "FRANCISCO RODRIGUES DA SILVA"], ["12928", "LUIZ SERGIO NOGUEIRA"], ["18918", "WESLEY POLICARPO GABRIEL DE MORAES"], ["23480", "ITALO JORGE LEMES CARDOSO"],
@@ -169,6 +171,34 @@ async function cloudSave(table, row) {
   }
   return true;
 }
+function readCloudOutbox() { try { return JSON.parse(localStorage.getItem(OUTBOX_KEY) || "[]"); } catch { return []; } }
+function queueCloudWrite(table, row) {
+  const key = `${table}:${row.id || crypto.randomUUID()}`;
+  const queue = readCloudOutbox().filter((entry) => entry.key !== key);
+  queue.push({ key, table, row, queuedAt: new Date().toISOString() });
+  localStorage.setItem(OUTBOX_KEY, JSON.stringify(queue.slice(-100)));
+}
+async function syncCloudOutbox() {
+  const queue = readCloudOutbox();
+  if (!queue.length || !CLOUD?.url || !navigator.onLine) return 0;
+  const remaining = [];
+  for (const entry of queue) {
+    try { await cloudSave(entry.table, entry.row); }
+    catch { remaining.push(entry); }
+  }
+  localStorage.setItem(OUTBOX_KEY, JSON.stringify(remaining));
+  return queue.length - remaining.length;
+}
+async function saveSubmissionWithOutbox(table, row) {
+  try { await cloudSave(table, row); return true; }
+  catch (error) { queueCloudWrite(table, row); console.warn("Envio guardado para sincronização", error); return false; }
+}
+async function recordAuditEvent(issue, action, detail = "") {
+  if (!cloudToken() || !issue?.id) return;
+  try {
+    await cloudRequest("/rest/v1/fleet_audit_events", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ issue_id: issue.id, vehicle_id: issue.vehicleId || null, action, detail, snapshot: issue }) });
+  } catch (error) { console.warn("Evento de auditoria será registrado após aplicar a migração", error); }
+}
 async function loadEmployeeDatabase() {
   if (!CLOUD?.url || employeeDatabase.length) return;
   try {
@@ -225,8 +255,9 @@ async function cloudSyncSubmission(inspection, issues) {
   // A inspeção completa precisa acompanhar a ocorrência no banco. Assim, caso
   // a liderança peça retificação, o colaborador recebe novamente todos os
   // itens que havia preenchido, mesmo abrindo o aplicativo em outro aparelho.
-  await cloudSave("fleet_inspections", { id: inspection.id, data: inspection });
-  await Promise.all(issues.map((issue) => cloudSave("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: null, status: issue.status, data: issue })));
+  const savedInspection = await saveSubmissionWithOutbox("fleet_inspections", { id: inspection.id, data: inspection });
+  const savedIssues = await Promise.all(issues.map((issue) => saveSubmissionWithOutbox("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: issue.vehicleId || null, status: issue.status, data: issue })));
+  return savedInspection && savedIssues.every(Boolean);
 }
 async function finishCorrectionRequest(issueId, inspection, hasNewIssues) {
   if (!issueId) return;
@@ -257,14 +288,14 @@ function returnNotificationPermission() { return "Notification" in window ? Noti
 async function enableReturnNotifications() {
   if (!("Notification" in window)) return alert("Este navegador não oferece notificações do sistema.");
   const permission = await Notification.requestPermission();
-  if (permission === "granted") { alert("Avisos ativados neste celular enquanto o URBAM Frota estiver aberto."); await loadReturnedIssuesForCollaborator(); }
+  if (permission === "granted") { alert("Avisos ativados neste celular enquanto o URBAM Frotas estiver aberto."); await loadReturnedIssuesForCollaborator(); }
   else if (permission === "denied") alert("As notificações foram bloqueadas. Libere-as nas configurações do site para receber os avisos.");
 }
 function notifyReturnedIssue(issue) {
   const key = `checkfrota-return-notification-${issue.id}-${issue.leaderApproval?.approvedAt || ""}`;
   if (returnNotificationPermission() !== "granted" || localStorage.getItem(key)) return;
   const approval = issue.leaderApproval || {};
-  const title = approval.status === "Recusada" ? "URBAM Frota: chamado rejeitado" : "URBAM Frota: retificação solicitada";
+  const title = approval.status === "Recusada" ? "URBAM Frotas: chamado rejeitado" : "URBAM Frotas: retificação solicitada";
   const notification = new Notification(title, { body: `Prefixo ${issue.vehiclePrefix || "—"}: ${approval.note || "Abra o aplicativo para verificar."}`, tag: `checkfrota-return-${issue.id}`, renotify: true });
   notification.onclick = () => { window.focus(); notification.close(); };
   localStorage.setItem(key, new Date().toISOString());
@@ -515,7 +546,7 @@ function saveIssue() {
   const description = $("#issueDescription").value.trim();
   if (!description) { $("#issueDescription").reportValidity(); return; }
   const photo = $("#issuePhoto").files[0];
-  if (photo && !photo.type.startsWith("image/")) return alert("Envie apenas uma foto. Vídeos não são aceitos no aplicativo.");
+  if (photo && !["image/jpeg", "image/png", "image/webp", "image/heic"].includes(photo.type)) return alert("Envie apenas uma foto JPEG, PNG, WEBP ou HEIC. Vídeos e outros arquivos não são aceitos.");
   if (photo && photo.size > 20 * 1024 * 1024) return alert("A foto escolhida tem mais de 20 MB. Tire outra foto com menor tamanho antes de enviar.");
   current.states[issueDraft.itemId] = {
     status: "issue",
@@ -569,13 +600,16 @@ async function submitChecklist() {
     itemName: issue.item.name, severity: issue.severity, description: issue.description, photoName: issue.photoName, _photoFile: issue.photoFile || null,
     correctionOf: current.correctionOf || "", maintenance: { status: issue.item.name === "Solicitação de lavagem" ? "Solicitada" : "Pendente", scheduledAt: "", provider: "", feedback: "", updatedAt: "" },
   }));
-  await Promise.all(newIssues.map(async (issue) => { const compressedPhoto = await compressPhoto(issue._photoFile); issue.photoSize = compressedPhoto?.size || 0; issue.photoPath = await uploadIssuePhoto(issue, compressedPhoto); delete issue._photoFile; }));
+  try { await Promise.all(newIssues.map(async (issue) => { const compressedPhoto = await compressPhoto(issue._photoFile); issue.photoSize = compressedPhoto?.size || 0; issue.photoPath = await uploadIssuePhoto(issue, compressedPhoto); delete issue._photoFile; })); }
+  catch (error) { alert("Não foi possível preparar a foto. Tente outra imagem em formato JPEG, PNG, WEBP ou HEIC."); return; }
   vehicle.odometer = current.odometer;
   data.inspections.unshift(inspection);
   data.issues.unshift(...newIssues);
   saveData();
-  try { await cloudSyncSubmission(inspection, newIssues); }
-  catch (error) { console.warn("Não foi possível gravar o chamado no banco", error); alert(`O chamado foi salvo neste aparelho, mas o banco recusou o envio.\n\nDetalhe: ${error.message || "erro não informado"}`); }
+  let cloudSaved = true;
+  try { cloudSaved = await cloudSyncSubmission(inspection, newIssues); }
+  catch (error) { cloudSaved = false; console.warn("Não foi possível gravar o chamado no banco", error); }
+  if (!cloudSaved) alert("O checklist ficou salvo com segurança neste aparelho e será enviado automaticamente assim que a conexão voltar.");
   await finishCorrectionRequest(current.correctionOf, inspection, newIssues.length > 0);
   const sendResult = await sendToIntegration({ inspection, vehicle, issues: newIssues });
   await showCompletion(inspection, vehicle, newIssues, sendResult);
@@ -604,7 +638,7 @@ function buildWhatsAppMessage(vehicle, issues, inspection) {
     return `- ${item.name}: EM ORDEM`;
   }).join("\n");
   const wash = issues.find(isWashIssue);
-  return `*CHECKFROTA — FORMULÁRIO DE INSPEÇÃO*\nSolicitação para avaliação da liderança\n\n*Identificação do veículo*\nVeículo: Prefixo ${vehicle.prefix || "—"} · ${vehicle.plate} (${vehicle.model || vehicle.type})\nQuilometragem: ${inspection?.odometer ?? issues[0]?.odometer ?? vehicle.odometer ?? "Não informada"} km\nBase: ${inspection?.baseName || issues[0]?.baseName || current.baseName || "Não informada"}\nData: ${dateTime(createdAt)}\n\n*Checklist completo*\n${checklist}${wash ? `\n\n*Solicitação adicional*\nLavagem do veículo${wash.description && wash.description !== "Solicitação de lavagem do veículo." ? ` — ${wash.description}` : ""}` : ""}\n\nSolicitamos avaliação e providências para o veículo.`;
+  return `*URBAM FROTAS — FORMULÁRIO DE INSPEÇÃO*\nSolicitação para avaliação da liderança\n\n*Identificação do veículo*\nVeículo: Prefixo ${vehicle.prefix || "—"} · ${vehicle.plate} (${vehicle.model || vehicle.type})\nQuilometragem: ${inspection?.odometer ?? issues[0]?.odometer ?? vehicle.odometer ?? "Não informada"} km\nBase: ${inspection?.baseName || issues[0]?.baseName || current.baseName || "Não informada"}\nData: ${dateTime(createdAt)}\n\n*Checklist completo*\n${checklist}${wash ? `\n\n*Solicitação adicional*\nLavagem do veículo${wash.description && wash.description !== "Solicitação de lavagem do veículo." ? ` — ${wash.description}` : ""}` : ""}\n\nSolicitamos avaliação e providências para o veículo.`;
 }
 function whatsappLink(phone, message) { return `https://wa.me/${phoneOnly(phone)}?text=${encodeURIComponent(message)}`; }
 function leadershipPanelUrl(baseName) {
@@ -633,7 +667,7 @@ async function showCompletion(inspection, vehicle, issues, sendResult) {
   const form = $("#submittedForm");
   const protocol = `MAN-${String(inspection.id || Date.now()).replaceAll("-", "").slice(-8).toUpperCase()}`;
   const occurrenceRows = issues.length ? issues.map((issue) => `<article class="submitted-issue ${esc(issue.severity.toLowerCase())}"><div><b>${esc(issue.itemName)}</b><span class="chip ${esc(issue.severity.toLowerCase())}">${esc(issue.severity)}</span></div><p>${esc(issue.description)}</p>${issue.photoPath ? `<img src="${esc(publicIssuePhotoUrl(issue))}" alt="Foto da ocorrência ${esc(issue.itemName)}" loading="lazy">` : ""}</article>`).join("") : `<p class="form-empty">Nenhuma ocorrência informada.</p>`;
-  form.innerHTML = `<div class="form-top"><span class="form-mark">✓</span><div><small>CHECKFROTA · RESPOSTA ENVIADA</small><h2>Formulário de inspeção</h2></div></div><div class="form-protocol"><span>Protocolo</span><b>${esc(protocol)}</b></div><div class="form-fields"><div><span>Colaborador</span><b>${esc(inspection.driver)}</b></div>${inspection.driverRegistration ? `<div><span>Matrícula</span><b>${esc(inspection.driverRegistration)}</b></div>` : ""}${inspection.driverRole ? `<div><span>Função</span><b>${esc(inspection.driverRole)}</b></div>` : ""}<div><span>Base</span><b>${esc(inspection.baseName)}</b></div>${inspection.driverEmail ? `<div><span>Cópia para e-mail</span><b>${esc(inspection.driverEmail)}</b></div>` : ""}<div><span>Veículo</span><b>Prefixo ${esc(vehicle.prefix)} · ${esc(vehicle.plate)}</b></div><div><span>Modelo</span><b>${esc(vehicle.model || vehicle.type)}</b></div><div><span>Quilometragem</span><b>${esc(inspection.odometer)} km</b></div><div><span>Data e hora</span><b>${esc(dateTime(inspection.createdAt))}</b></div></div><div class="form-occurrences"><h3>Ocorrências relatadas</h3>${occurrenceRows}</div>${inspection.notes ? `<div class="form-notes"><span>Observação geral</span><p>${esc(inspection.notes)}</p></div>` : ""}`;
+  form.innerHTML = `<div class="form-top"><span class="form-mark">✓</span><div><small>URBAM FROTAS · RESPOSTA ENVIADA</small><h2>Formulário de inspeção</h2></div></div><div class="form-protocol"><span>Protocolo</span><b>${esc(protocol)}</b></div><div class="form-fields"><div><span>Colaborador</span><b>${esc(inspection.driver)}</b></div>${inspection.driverRegistration ? `<div><span>Matrícula</span><b>${esc(inspection.driverRegistration)}</b></div>` : ""}${inspection.driverRole ? `<div><span>Função</span><b>${esc(inspection.driverRole)}</b></div>` : ""}<div><span>Base</span><b>${esc(inspection.baseName)}</b></div>${inspection.driverEmail ? `<div><span>Cópia para e-mail</span><b>${esc(inspection.driverEmail)}</b></div>` : ""}<div><span>Veículo</span><b>Prefixo ${esc(vehicle.prefix)} · ${esc(vehicle.plate)}</b></div><div><span>Modelo</span><b>${esc(vehicle.model || vehicle.type)}</b></div><div><span>Quilometragem</span><b>${esc(inspection.odometer)} km</b></div><div><span>Data e hora</span><b>${esc(dateTime(inspection.createdAt))}</b></div></div><div class="form-occurrences"><h3>Ocorrências relatadas</h3>${occurrenceRows}</div>${inspection.notes ? `<div class="form-notes"><span>Observação geral</span><p>${esc(inspection.notes)}</p></div>` : ""}`;
   const actions = $("#dispatchActions");
   if (!issues.length) { actions.innerHTML = ""; showScreen("success"); return; }
   const buttons = [];
@@ -700,7 +734,7 @@ function renderStorageIndicator() {
   const bytes = photos.reduce((total, issue) => total + Number(issue.photoSize || 0), 0);
   const ratio = Math.min(100, (bytes / (1024 * 1024 * 1024)) * 100);
   panel.className = `storage-indicator ${ratio >= 80 ? "warning" : ""}`;
-  panel.innerHTML = `<div><b>Armazenamento de fotos</b><p>${photos.length} foto(s) registrada(s) · uso estimado: ${formatBytes(bytes)} de 1 GB.</p></div><div class="storage-progress" aria-label="Uso estimado de armazenamento"><i style="width:${ratio}%"></i></div><small>${ratio >= 80 ? "Atenção: faça backup e remova fotos antigas após confirmar o relatório." : "Este cálculo considera as fotos enviadas pelo URBAM Frota."}</small>`;
+  panel.innerHTML = `<div><b>Armazenamento de fotos</b><p>${photos.length} foto(s) registrada(s) · uso estimado: ${formatBytes(bytes)} de 1 GB.</p></div><div class="storage-progress" aria-label="Uso estimado de armazenamento"><i style="width:${ratio}%"></i></div><small>${ratio >= 80 ? "Atenção: faça backup e remova fotos antigas após confirmar o relatório." : "Este cálculo considera as fotos enviadas pelo URBAM Frotas."}</small>`;
 }
 function todayStart() { const value = new Date(); value.setHours(0, 0, 0, 0); return value.getTime(); }
 function vehiclesWithoutChecklistToday() {
@@ -738,7 +772,7 @@ function notifyDailyChecklistIfNeeded() {
   const missing = vehiclesWithoutChecklistToday(); if (!missing.length) return;
   const dayKey = new Date().toISOString().slice(0, 10); const notificationKey = `checkfrota-daily-checklist-notification-${dayKey}`;
   if (localStorage.getItem(notificationKey)) return;
-  const notification = new Notification("URBAM Frota: checklist pendente", { body: `${missing.length} veículo(s) sem checklist hoje. Abra o painel de Gestão para verificar.`, tag: "checkfrota-checklist-diario", renotify: true });
+  const notification = new Notification("URBAM Frotas: checklist pendente", { body: `${missing.length} veículo(s) sem checklist hoje. Abra o painel de Gestão para verificar.`, tag: "checkfrota-checklist-diario", renotify: true });
   notification.onclick = () => { window.focus(); notification.close(); };
   localStorage.setItem(notificationKey, new Date().toISOString());
 }
@@ -752,7 +786,7 @@ function sendDailyChecklistAlert() {
   if (!missing.length) return alert("Todos os veículos cadastrados possuem checklist hoje.");
   const date = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" }).format(new Date());
   const list = missing.map((vehicle, index) => `${index + 1}. Prefixo ${vehicle.prefix || "—"} · ${vehicle.plate || "sem placa"} · ${vehicle.model || vehicle.type || "Veículo"}`).join("\n");
-  const message = `*CHECKFROTA — ALERTA DIÁRIO DE CHECKLIST*\n\nData: ${date}\nHorário da conferência: ${new Intl.DateTimeFormat("pt-BR", { timeStyle: "short" }).format(new Date())}\n\nHá ${missing.length} carro(s) ou caminhão(ões) sem checklist registrado hoje:\n\n${list}\n\nSolicitamos verificar a situação e providenciar o preenchimento antes da operação.`;
+  const message = `*URBAM FROTAS — ALERTA DIÁRIO DE CHECKLIST*\n\nData: ${date}\nHorário da conferência: ${new Intl.DateTimeFormat("pt-BR", { timeStyle: "short" }).format(new Date())}\n\nHá ${missing.length} carro(s) ou caminhão(ões) sem checklist registrado hoje:\n\n${list}\n\nSolicitamos verificar a situação e providenciar o preenchimento antes da operação.`;
   window.open(whatsappLink(DAILY_CHECKLIST_ALERT_PHONE, message), "_blank", "noopener");
 }
 function renderLeaderInstallTarget() {
@@ -766,7 +800,7 @@ function sendLeaderInstall() {
   if (!phone) return alert("Selecione Base Vertical, Base Horizontal ou Base Abrigo.");
   const label = LEADER_BASE_LABELS[base] || `Base ${base}`;
   const link = `https://4lves-dev.github.io/checkfrota/instalar-lider.html?v=150&base=${encodeURIComponent(base)}`;
-  const message = `*CHECKFROTA — APLICATIVO DA LIDERANÇA*\n\nOlá, ${label}.\n\nEste é o link de instalação do painel da liderança desta base:\n${link}\n\nApós instalar, utilize o aplicativo para consultar as ocorrências e registrar a aprovação ou recusa.`;
+  const message = `*URBAM FROTAS — APLICATIVO DA LIDERANÇA*\n\nOlá, ${label}.\n\nEste é o link de instalação do painel da liderança desta base:\n${link}\n\nApós instalar, utilize o aplicativo para consultar as ocorrências e registrar a aprovação ou recusa.`;
   window.open(whatsappLink(phone, message), "_blank", "noopener");
 }
 function localDateValue(value) { const date = new Date(value); if (Number.isNaN(date.getTime())) return ""; const offset = date.getTimezoneOffset() * 60000; return new Date(date.getTime() - offset).toISOString().slice(0, 10); }
@@ -937,7 +971,8 @@ function saveVehicle() {
   const detail = { prefix: $("#vehiclePrefix").value.trim(), plate: $("#vehiclePlate").value.trim().toUpperCase(), type: $("#vehicleType").value, model: $("#vehicleModel").value.trim(), contract: $("#vehicleContract").value.trim(), urbamContract: $("#vehicleUrbamContract").value.trim(), odometer: $("#vehicleOdometer").value === "" ? "" : Number($("#vehicleOdometer").value), ownerName: $("#vehicleOwnerName").value.trim(), ownerPhone: phoneOnly($("#vehicleOwnerPhone").value), email: $("#vehicleEmail").value.trim() };
   if (!detail.prefix || !detail.plate || !detail.ownerName) { $("#vehicleForm").reportValidity(); return; }
   if (id) Object.assign(vehicleById(id), detail); else data.vehicles.push({ id: crypto.randomUUID(), ...detail });
-  saveData(); void cloudSave("fleet_vehicles", { id: vehicleById(id || data.vehicles[data.vehicles.length - 1].id)?.id || id, prefix: detail.prefix, plate: detail.plate, data: vehicleById(id || data.vehicles[data.vehicles.length - 1].id) }); $("#vehicleDialog").close(); renderControl(); renderStart();
+  const savedVehicle = vehicleById(id || data.vehicles[data.vehicles.length - 1].id);
+  saveData(); void cloudSave("fleet_vehicles", { id: savedVehicle?.id || id, prefix: detail.prefix, plate: detail.plate, data: savedVehicle }); void recordAuditEvent({ id: `vehicle:${savedVehicle?.id || id}`, vehicleId: savedVehicle?.id || id }, id ? "veiculo_editado" : "veiculo_cadastrado", `Prefixo ${detail.prefix} · ${detail.plate}`); $("#vehicleDialog").close(); renderControl(); renderStart();
 }
 function deleteVehicle(id) {
   if (!requireMasterAccess()) return;
@@ -965,13 +1000,13 @@ async function restoreFleet() {
 }
 function sendIssueWhatsApp(issueId) {
   const issue = data.issues.find((entry) => entry.id === issueId); if (!issue) return;
-  const message = `*SOLICITAÇÃO DE MANUTENÇÃO — VEÍCULO*\n\nPrezado(a) responsável,\n\nSolicitamos avaliação e agendamento de manutenção para o veículo abaixo.\n\n*Veículo:* Prefixo ${issue.vehiclePrefix || "—"} · ${issue.vehicleModel || issue.vehicleType || "—"} · Placa ${issue.vehiclePlate || "—"}\n*Quilometragem:* ${issue.odometer ?? "—"} km\n*Base responsável:* ${issue.baseName || "—"}\n\n*Ocorrência relatada:*\n${issue.itemName || "Ocorrência"}: ${issue.description || "—"}\n\nPedimos, por gentileza, informar disponibilidade para atendimento e previsão de agendamento.\n\nAtenciosamente,\nCheckFrota — Gestão de Manutenção`;
+  const message = `*URBAM FROTAS — SOLICITAÇÃO DE MANUTENÇÃO*\n\nPrezado(a) responsável,\n\nSolicitamos avaliação e agendamento de manutenção para o veículo abaixo.\n\n*Veículo:* Prefixo ${issue.vehiclePrefix || "—"} · ${issue.vehicleModel || issue.vehicleType || "—"} · Placa ${issue.vehiclePlate || "—"}\n*Quilometragem:* ${issue.odometer ?? "—"} km\n*Base responsável:* ${issue.baseName || "—"}\n\n*Ocorrência relatada:*\n${issue.itemName || "Ocorrência"}: ${issue.description || "—"}\n\nPedimos, por gentileza, informar disponibilidade para atendimento e previsão de agendamento.\n\nAtenciosamente,\nURBAM Frotas — Gestão de Manutenção`;
   const target = issue.ownerPhone || data.settings.maintenancePhone;
   if (!target) return alert("Cadastre o número de WhatsApp do responsável ou da base nas configurações.");
   window.open(whatsappLink(target, message), "_blank", "noopener");
 }
 function buildApprovedOwnerMessage(issue) {
-  return `*SOLICITAÇÃO DE MANUTENÇÃO — VEÍCULO*\n\nPrezado(a) responsável,\n\nSolicitamos, por gentileza, a avaliação e o agendamento de manutenção para o veículo abaixo.\n\n*Veículo:* Prefixo ${issue.vehiclePrefix || "—"} · Placa ${issue.vehiclePlate || "—"}\n*Ocorrência:* ${issue.itemName || "—"}\n*Problema relatado:* ${issue.description || "—"}\n\nPedimos o retorno com data, horário e local para atendimento.\n\nAtenciosamente,\nURBAM Frota — Gestão`;
+  return `*URBAM FROTAS — SOLICITAÇÃO DE MANUTENÇÃO*\n\nPrezado(a) responsável,\n\nSolicitamos, por gentileza, a avaliação e o agendamento de manutenção para o veículo abaixo.\n\n*Veículo:* Prefixo ${issue.vehiclePrefix || "—"} · Placa ${issue.vehiclePlate || "—"}\n*Ocorrência:* ${issue.itemName || "—"}\n*Problema relatado:* ${issue.description || "—"}\n\nPedimos o retorno com data, horário e local para atendimento.\n\nAtenciosamente,\nURBAM Frotas — Gestão`;
 }
 function sendApprovedOwnerWhatsApp(issueId) {
   const issue = data.issues.find((entry) => entry.id === issueId); if (!issue) return;
@@ -1048,21 +1083,23 @@ function sendDriverMaintenanceWhatsApp(issue) {
   if (!target) return;
   window.open(whatsappLink(target, buildMaintenanceMessage(issue)), "_blank", "noopener");
 }
-function saveMaintenance() {
+async function saveMaintenance() {
   const issue = data.issues.find((entry) => entry.id === $("#maintenanceIssueId").value); if (!issue) return;
   issue.maintenance = maintenanceFormValues();
   if (issue.maintenance.status === "Veículo pronto para retirada" && (!issue.maintenance.provider || !issue.maintenance.service)) { alert("Informe a oficina/local e o serviço executado antes de liberar o veículo."); return; }
   if (issue.maintenance.status === "Concluída") { issue.status = "resolvida"; issue.resolvedAt = new Date().toISOString(); }
   else if (issue.status === "resolvida") { issue.status = "aberta"; delete issue.resolvedAt; }
   saveData();
-  void cloudSave("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: issue.vehicleId, status: issue.status, data: issue });
+  try { await cloudSave("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: issue.vehicleId, status: issue.status, data: issue }); }
+  catch (error) { queueCloudWrite("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: issue.vehicleId, status: issue.status, data: issue }); alert("A atualização foi guardada neste aparelho e será sincronizada quando a internet voltar."); }
+  await recordAuditEvent(issue, "manutencao_atualizada", `Situação: ${issue.maintenance.status}`);
   if (data.settings.webhookUrl) void sendToIntegration({ type: "maintenance-update", issue, maintenance: issue.maintenance });
   $("#maintenanceDialog").close(); renderControl();
   if (issue.maintenance.status === "Agendada") { sendDriverMaintenanceWhatsApp(issue); sendSchedulingReturn(issue, issue.maintenance); }
   if (issue.maintenance.status === "Veículo pronto para retirada") { const leader = issue.basePhone || data.settings.leaderPhone; if (leader) window.open(whatsappLink(leader, `*VEÍCULO PRONTO PARA RETIRADA*\n\nPrefixo ${issue.vehiclePrefix || "—"} · ${issue.vehiclePlate || "—"}\nLocal: ${issue.maintenance.provider}\nServiço executado: ${issue.maintenance.service}\nLiberado em: ${dateTime(issue.maintenance.readyAt)}\n\nO aviso também está disponível no painel da Liderança.`), "_blank", "noopener"); }
 }
 function openMaintenanceMap() { const query = [$("#maintenanceProvider").value.trim(), $("#maintenanceAddress").value.trim()].filter(Boolean).join(", "); if (!query) return alert("Informe o nome ou o endereço da oficina para buscar no mapa."); window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`, "_blank", "noopener"); }
-async function closeIssue(issueId) { const issue = data.issues.find((entry) => entry.id === issueId); if (!issue) return; issue.maintenance = { ...maintenanceOf(issue), status: "Concluída", updatedAt: new Date().toISOString() }; issue.status = "resolvida"; issue.resolvedAt = new Date().toISOString(); saveData(); try { await cloudSave("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: issue.vehicleId, status: issue.status, data: issue }); } catch (error) { console.warn("Não foi possível salvar o encerramento no banco", error); alert("O chamado foi resolvido neste aparelho, mas não foi possível gravar no banco. Verifique a conexão e tente novamente."); } if (data.settings.webhookUrl) void sendToIntegration({ type: "maintenance-update", issue, maintenance: issue.maintenance }); renderControl(); }
+async function closeIssue(issueId) { const issue = data.issues.find((entry) => entry.id === issueId); if (!issue) return; issue.maintenance = { ...maintenanceOf(issue), status: "Concluída", updatedAt: new Date().toISOString() }; issue.status = "resolvida"; issue.resolvedAt = new Date().toISOString(); saveData(); try { await cloudSave("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: issue.vehicleId, status: issue.status, data: issue }); } catch (error) { queueCloudWrite("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: issue.vehicleId, status: issue.status, data: issue }); alert("O chamado foi resolvido e será sincronizado quando a internet voltar."); } await recordAuditEvent(issue, "chamado_resolvido", "Manutenção concluída pela Gestão"); if (data.settings.webhookUrl) void sendToIntegration({ type: "maintenance-update", issue, maintenance: issue.maintenance }); renderControl(); }
 function saveSettings() { if (!requireMasterAccess()) return; data.settings.webhookUrl = $("#webhookUrl").value.trim(); data.settings.maintenancePhone = phoneOnly($("#maintenancePhone").value); data.settings.maintenanceGroupPhone = phoneOnly($("#maintenanceGroupPhone").value); data.settings.leaderPhone = phoneOnly($("#leaderPhone").value); data.settings.fleetManagerPhone = phoneOnly($("#fleetManagerPhone").value); saveData(); $("#settingsDialog").close(); }
 function dismissInstallBanner() { sessionStorage.setItem("checkfrota-install-dismissed", "1"); $("#installBanner").hidden = true; }
 
@@ -1076,8 +1113,8 @@ function showInstallBanner() {
 function installInstructions() {
   const ios = isIos();
   $("#installDialogContent").innerHTML = ios
-    ? `<p class="dialog-copy">No iPhone ou iPad, a instalação é feita pelo menu do Safari.</p><ol class="install-steps"><li>Toque no ícone <b>Compartilhar</b> (quadrado com seta para cima).</li><li>Role o menu e toque em <b>Adicionar à Tela de Início</b>.</li><li>Confirme em <b>Adicionar</b>.</li></ol><p class="install-note">Depois disso, o URBAM Frota aparece com o próprio ícone na tela inicial e abre sem a barra do navegador.</p>`
-    : `<p class="dialog-copy">No Android, use o botão abaixo. Se ele não aparecer, abra o menu ⋮ do navegador e escolha <b>Instalar aplicativo</b> ou <b>Adicionar à tela inicial</b>.</p><p class="install-note">A instalação não ocupa muito espaço e permite abrir o checklist como um aplicativo normal.</p><button class="primary-button" id="installFromDialog">Instalar URBAM Frota</button>`;
+    ? `<p class="dialog-copy">No iPhone ou iPad, a instalação é feita pelo menu do Safari.</p><ol class="install-steps"><li>Toque no ícone <b>Compartilhar</b> (quadrado com seta para cima).</li><li>Role o menu e toque em <b>Adicionar à Tela de Início</b>.</li><li>Confirme em <b>Adicionar</b>.</li></ol><p class="install-note">Depois disso, o URBAM Frotas aparece com o próprio ícone na tela inicial e abre sem a barra do navegador.</p>`
+    : `<p class="dialog-copy">No Android, use o botão abaixo. Se ele não aparecer, abra o menu ⋮ do navegador e escolha <b>Instalar aplicativo</b> ou <b>Adicionar à tela inicial</b>.</p><p class="install-note">A instalação não ocupa muito espaço e permite abrir o checklist como um aplicativo normal.</p><button class="primary-button" id="installFromDialog">Instalar URBAM Frotas</button>`;
   $("#installDialog").showModal();
 }
 async function requestInstall() {
@@ -1153,14 +1190,17 @@ $("#issueForm").addEventListener("submit", (event) => { event.preventDefault(); 
 $("#vehicleForm").addEventListener("submit", (event) => { event.preventDefault(); saveVehicle(); });
 $("#employeeForm").addEventListener("submit", (event) => { event.preventDefault(); void saveEmployee(); });
 $("#settingsForm").addEventListener("submit", (event) => { event.preventDefault(); saveSettings(); });
-$("#maintenanceForm").addEventListener("submit", (event) => { event.preventDefault(); saveMaintenance(); });
+$("#maintenanceForm").addEventListener("submit", (event) => { event.preventDefault(); void saveMaintenance(); });
 $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").forEach((button) => button.classList.toggle("active", button === tab)); $$(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab.dataset.tab}Panel`)); }));
 
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=150").catch(() => {}));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=151").catch(() => {}));
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
 window.addEventListener("appinstalled", () => { document.body.classList.add("app-installed"); $("#installBanner").hidden = true; });
 if (isInstalled()) document.body.classList.add("app-installed"); else window.addEventListener("load", showInstallBanner);
+window.addEventListener("online", () => { void syncCloudOutbox().then((count) => { if (count) console.info(`${count} envio(s) pendente(s) sincronizado(s).`); }); });
 if (new URLSearchParams(location.search).get("gestao") === "1") {
   if (cloudToken()) showScreen("controle");
   else location.replace("gestao.html?v=149");
 } else { renderStart(); void syncLocalBacklog(); }
+void syncCloudOutbox();
+
