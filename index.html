@@ -4,29 +4,29 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#0f2a43" />
-    <meta name="description" content="URBAM Frota: checklist e ocorrências de veículos." />
+    <meta name="description" content="URBAM Frotas: checklist e ocorrências de veículos." />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="URBAM Frota" />
+    <meta name="apple-mobile-web-app-title" content="URBAM Frotas" />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icons/icon.svg" />
     <link rel="stylesheet" href="styles.css?v=149" />
     <style>#installBanner[hidden] { display: none !important; }</style>
-    <title>URBAM Frota</title>
+    <title>URBAM Frotas</title>
   </head>
   <body>
     <div class="app-shell">
       <header class="topbar">
-        <a class="brand" href="#inicio" aria-label="URBAM Frota - início">
+        <a class="brand" href="#inicio" aria-label="URBAM Frotas - início">
           <span class="brand-mark">✓</span>
-          <span>URBAM <span>Frota</span></span>
+          <span>URBAM <span>Frotas</span></span>
           <small class="brand-credit">por <span class="luchti-signature">LUCHTI ME</span></small>
         </a>
         <div class="header-actions">
-          <a class="management-access" href="gestao.html?v=149" title="Acesso à Gestão da Frota" aria-label="Acesso à Gestão da Frota"><span aria-hidden="true">▦</span> Gestão</a>
-          <a class="management-access" href="lider.html?v=150" title="Acesso ao painel da Liderança" aria-label="Acesso ao painel da Liderança"><span aria-hidden="true">✓</span> Liderança</a>
+          <a class="management-access" href="gestao.html?v=151" title="Acesso à Gestão da Frota" aria-label="Acesso à Gestão da Frota"><span aria-hidden="true">▦</span> Gestão</a>
+          <a class="management-access" href="lider.html?v=151" title="Acesso ao painel da Liderança" aria-label="Acesso ao painel da Liderança"><span aria-hidden="true">✓</span> Liderança</a>
           <button class="install-button" id="installApp" title="Instalar no celular">⇩ <span>Instalar</span></button>
         </div>
       </header>
@@ -39,9 +39,9 @@
             <p>Faça a inspeção antes de sair. Se algo estiver errado, a manutenção será avisada na hora.</p>
           </div>
 
-          <button class="install-card" data-install="app" aria-label="Instalar o aplicativo URBAM Frota neste celular">
+          <button class="install-card" data-install="app" aria-label="Instalar o aplicativo URBAM Frotas neste celular">
             <span class="install-card-icon">⇩</span>
-            <span class="install-card-copy"><small>APLICATIVO PARA COLABORADOR</small><b>Instalar URBAM Frota no celular</b><em>Abra com um toque, direto pela tela inicial.</em></span>
+            <span class="install-card-copy"><small>APLICATIVO PARA COLABORADOR</small><b>Instalar URBAM Frotas no celular</b><em>Abra com um toque, direto pela tela inicial.</em></span>
             <span class="install-card-arrow">›</span>
           </button>
 
@@ -61,7 +61,7 @@
             <button type="button" class="small-button" id="enableReturnNotifications">🔔 Ativar avisos neste celular</button>
             <div class="fixed-email-copy"><b>Cópia automática do checklist</b><span>urbamfrota@gmail.com</span><small>O formulário será enviado automaticamente para este e-mail após a conclusão.</small></div>
             <label for="baseSelect">Base responsável pela aprovação</label>
-            <select id="baseSelect"><option value="">Selecione a base</option><option value="Vertical">Base Vertical / Segurança / Elétrica — (12) 98156-7218</option><option value="Abrigo">Base Abrigo / Manutenção / Linha Verde / Lavagem — (12) 99788-4887</option><option value="Horizontal">Base Horizontal — (12) 98840-0697</option><option value="SASC">SASC / Gestão — encaminhamento direto</option><option value="Gestão">Gestão de Contratos — encaminhamento direto</option></select>
+            <select id="baseSelect"><option value="">Selecione a base</option><option value="Vertical">Base Vertical / Segurança / Elétrica — (12) 98156-7218</option><option value="Abrigo">Base Abrigo / Manutenção / Linha Verde / Lavagem — (12) 99788-4887</option><option value="Horizontal">Base Horizontal — (12) 98840-0697</option><option value="SASC">SASC / Gestão</option><option value="Gestão">Gestão de Contratos</option></select>
             <p class="helper" id="basePhone"></p>
             <p class="helper"><b>Selecione a base:</b> serão mostrados somente os veículos vinculados.</p>
             <label for="vehicleSelect">Veículo que vai utilizar</label>
@@ -161,7 +161,7 @@
 
     <div class="install-banner" id="installBanner" hidden>
       <div class="install-banner-icon">✓</div>
-      <div><strong>Instale o URBAM Frota</strong><p>Tenha acesso rápido na tela inicial, como um aplicativo.</p></div>
+      <div><strong>Instale o URBAM Frotas</strong><p>Tenha acesso rápido na tela inicial, como um aplicativo.</p></div>
       <button class="small-button" id="installBannerButton">Instalar</button>
       <button class="dismiss-install" id="dismissInstallBanner" type="button" aria-label="Fechar aviso">×</button>
     </div>
@@ -267,7 +267,7 @@
 
     <dialog id="installDialog" class="issue-dialog install-dialog">
       <div class="dialog-head">
-        <div><p class="eyebrow">APLICATIVO NO CELULAR</p><h2>Instalar URBAM Frota</h2></div>
+        <div><p class="eyebrow">APLICATIVO NO CELULAR</p><h2>Instalar URBAM Frotas</h2></div>
         <button class="icon-button" id="closeInstallDialog" aria-label="Fechar">×</button>
       </div>
       <div id="installDialogContent"></div>
@@ -276,6 +276,7 @@
     <template id="emptyStateTemplate"><div class="empty-state"><span>⌁</span><p>Nenhum registro por aqui.</p></div></template>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="supabase-config.js?v=1"></script>
-    <script src="app.js?v=149"></script>
+    <script src="app.js?v=151"></script>
   </body>
 </html>
+
