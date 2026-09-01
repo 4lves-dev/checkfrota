@@ -4,6 +4,7 @@ window.URBAMOneSignal = (() => {
   const DIALOG_KEY = "urbam-onesignal-verification-shown";
   let sdk = null;
   let initialized = false;
+  let initialization = null;
   let subscriptionObserverAttached = false;
   function installedPath(path) { return new URL(path, document.baseURI).pathname; }
   function isRealSubscription(id) { return Boolean(id && !String(id).startsWith("local-")); }
@@ -27,8 +28,9 @@ window.URBAMOneSignal = (() => {
   }
   async function initialize() {
     if (initialized) return sdk;
+    if (initialization) return initialization;
     window.OneSignalDeferred = window.OneSignalDeferred || [];
-    return new Promise((resolve) => {
+    initialization = new Promise((resolve) => {
       window.OneSignalDeferred.push(async (OneSignal) => {
         try {
           await OneSignal.init({ appId: APP_ID, serviceWorkerPath: "push/onesignal/OneSignalSDKWorker.js", serviceWorkerParam: { scope: installedPath("push/onesignal/") }, autoResubscribe: true, notifyButton: { enable: false } });
@@ -37,6 +39,7 @@ window.URBAMOneSignal = (() => {
         resolve(sdk);
       });
     });
+    return initialization;
   }
   async function setContext({ role = "colaborador", base = "", area = "" } = {}) {
     const OneSignal = await initialize(); if (!OneSignal?.User?.addTags) return false;
