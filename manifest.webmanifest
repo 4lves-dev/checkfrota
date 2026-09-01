@@ -1,7 +1,7 @@
 {
   "id": "/checkfrota/",
-  "name": "URBAM Frota",
-  "short_name": "URBAM Frota",
+  "name": "URBAM Frotas",
+  "short_name": "URBAM Frotas",
   "description": "Checklist e gestão de ocorrências da frota URBAM.",
   "start_url": "/checkfrota/?v=149",
   "display": "standalone",
@@ -11,3 +11,4 @@
     { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
   ]
 }
+
