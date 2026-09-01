@@ -1,5 +1,5 @@
-const CACHE = "checkfrota-v150";
-const ASSETS = ["./", "./index.html", "./gestao.html?v=149", "./lider.html?v=150", "./instalar-gestao.html?v=149", "./instalar-lider.html?v=150", "./aprovacao.html?v=149", "./styles.css?v=149", "./supabase-config.js?v=1", "./app.js?v=149", "./manifest.webmanifest", "./gestao-manifest.webmanifest", "./lider-manifest.webmanifest", "./icons/icon.svg"];
+const CACHE = "checkfrota-v151";
+const ASSETS = ["./", "./index.html", "./gestao.html?v=151", "./lider.html?v=151", "./instalar-gestao.html?v=151", "./instalar-lider.html?v=151", "./aprovacao.html?v=151", "./styles.css?v=149", "./supabase-config.js?v=1", "./app.js?v=151", "./manifest.webmanifest", "./gestao-manifest.webmanifest", "./lider-manifest.webmanifest", "./icons/icon.svg"];
 
 self.addEventListener("install", (event) => event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting())));
 self.addEventListener("activate", (event) => event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)))).then(() => self.clients.claim())));
@@ -17,7 +17,7 @@ self.addEventListener("fetch", (event) => {
 });
 
 self.addEventListener("push", (event) => {
-  let payload = { title: "URBAM Frota Líder", body: "Há um novo chamado para aprovação." };
+  let payload = { title: "URBAM Frotas Líder", body: "Há um novo chamado para aprovação." };
   try { payload = { ...payload, ...event.data.json() }; } catch (_) {}
   event.waitUntil(self.registration.showNotification(payload.title, {
     body: payload.body,
@@ -33,3 +33,4 @@ self.addEventListener("notificationclick", (event) => {
     return open ? open.focus() : clients.openWindow("./lider.html?v=150");
   }));
 });
+
