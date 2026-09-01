@@ -6,7 +6,9 @@ O aplicativo usa o App ID `3d57134c-adf3-4f8f-8ec2-093b1d02f3bf` com o SDK Web v
 
 Em **Settings → Push & In-App → Web Settings**, confirme o endereço do site:
 
-`https://4lves-dev.github.io/checkfrota/`
+`https://4lves-dev.github.io`
+
+O OneSignal aceita somente o domínio nesse campo. Isso **não** altera o endereço do aplicativo: colaboradores e liderança devem continuar acessando `https://4lves-dev.github.io/checkfrota/`. Abrir somente `https://4lves-dev.github.io` apresenta 404 porque o projeto é publicado pelo GitHub Pages dentro da pasta `/checkfrota/`.
 
 Em **Advanced Push Settings**, use o worker personalizado abaixo para ele não conflitar com o worker do PWA:
 
