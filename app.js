@@ -1195,7 +1195,11 @@ $("#settingsForm").addEventListener("submit", (event) => { event.preventDefault(
 $("#maintenanceForm").addEventListener("submit", (event) => { event.preventDefault(); void saveMaintenance(); });
 $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").forEach((button) => button.classList.toggle("active", button === tab)); $$(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab.dataset.tab}Panel`)); }));
 
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=154").catch(() => {}));
+if ("serviceWorker" in navigator) window.addEventListener("load", async () => {
+  let refreshedForUpdate = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => { if (!refreshedForUpdate) { refreshedForUpdate = true; location.reload(); } });
+  try { const registration = await navigator.serviceWorker.register("service-worker.js?v=155"); await registration.update(); } catch (_) {}
+});
 window.addEventListener("load", () => { void window.URBAMOneSignal?.initialize(); });
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
 window.addEventListener("appinstalled", () => { document.body.classList.add("app-installed"); $("#installBanner").hidden = true; });
