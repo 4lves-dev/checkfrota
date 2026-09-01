@@ -9,7 +9,8 @@ window.URBAMOneSignal = (() => {
   function installedPath(path) { return new URL(path, document.baseURI).pathname; }
   function isRealSubscription(id) { return Boolean(id && !String(id).startsWith("local-")); }
   function showVerificationDialog() {
-    if (localStorage.getItem(DIALOG_KEY)) return Promise.resolve(false);
+    // A explicação aparece uma vez; em uma nova tentativa seguimos direto ao pedido do navegador.
+    if (localStorage.getItem(DIALOG_KEY)) return Promise.resolve(true);
     return new Promise((resolve) => {
       const modal = document.createElement("div");
       modal.className = "onesignal-verification";
