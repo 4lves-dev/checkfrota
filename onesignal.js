@@ -51,7 +51,12 @@ window.URBAMOneSignal = (() => {
     const OneSignal = await initialize(); if (!OneSignal?.Notifications) return { enabled: false, reason: "unsupported" };
     await setContext(context); if (OneSignal.User?.PushSubscription?.optedIn) return { enabled: true, alreadyEnabled: true };
     if (!await showVerificationDialog()) return { enabled: false, reason: "dismissed" };
-    try { await OneSignal.Notifications.requestPermission(); evaluateSubscription(); return { enabled: Boolean(OneSignal.User?.PushSubscription?.optedIn) }; }
+    try {
+      await OneSignal.Notifications.requestPermission();
+      evaluateSubscription();
+      const enabled = Boolean(OneSignal.User?.PushSubscription?.optedIn);
+      return { enabled, reason: enabled ? "" : (Notification.permission === "denied" ? "denied" : "not-subscribed") };
+    }
     catch (error) { console.warn("Permissão de avisos não concedida.", error); return { enabled: false, reason: "denied" }; }
   }
   return { initialize, requestPermission, setContext, isEnabled: () => Boolean(sdk?.User?.PushSubscription?.optedIn) };
