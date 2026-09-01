@@ -1157,7 +1157,7 @@ document.addEventListener("click", (event) => {
   if (target.id === "sendLeaderInstall") sendLeaderInstall();
   if (target.id === "sendDailyChecklistAlert") sendDailyChecklistAlert();
   if (target.id === "enableDailyNotifications") void enableDailyNotifications();
-  if (target.id === "enablePushNotifications") void window.URBAMOneSignal?.requestPermission({ role: new URLSearchParams(location.search).get("gestao") === "1" ? "gestao" : "colaborador", base: current.baseName, area: "frota" }).then((result) => { if (result?.enabled) alert("Avisos ativados neste dispositivo."); else if (result?.reason === "denied") alert("Os avisos foram bloqueados pelo navegador. Você pode liberá-los nas configurações do site."); });
+  if (target.id === "enablePushNotifications") void window.URBAMOneSignal?.requestPermission({ role: new URLSearchParams(location.search).get("gestao") === "1" ? "gestao" : "colaborador", base: current.baseName, area: "frota" }).then((result) => { if (result?.enabled) alert("Avisos ativados neste dispositivo."); else alert("Os avisos ainda não foram ativados. Em Configurações do site, defina Notificações como Permitir e tente novamente."); });
   if (target.id === "enableReturnNotifications") void enableReturnNotifications();
   if (target.dataset.commandFilter) {
     managerCommandFilter = target.dataset.commandFilter;
@@ -1195,7 +1195,7 @@ $("#settingsForm").addEventListener("submit", (event) => { event.preventDefault(
 $("#maintenanceForm").addEventListener("submit", (event) => { event.preventDefault(); void saveMaintenance(); });
 $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").forEach((button) => button.classList.toggle("active", button === tab)); $$(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab.dataset.tab}Panel`)); }));
 
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=153").catch(() => {}));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js?v=154").catch(() => {}));
 window.addEventListener("load", () => { void window.URBAMOneSignal?.initialize(); });
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
 window.addEventListener("appinstalled", () => { document.body.classList.add("app-installed"); $("#installBanner").hidden = true; });
