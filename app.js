@@ -179,13 +179,13 @@ async function loadMasterAccess() {
     if (!managementRole) {
       sessionStorage.removeItem("checkfrota-supabase-token");
       alert("Sua conta não está autorizada para o Painel de Gestão.");
-      location.replace("gestao.html?v=161&acesso=negado");
+      location.replace("gestao.html?v=162&acesso=negado");
       return;
     }
   } catch (error) {
     console.warn("Não foi possível validar o perfil de Gestão", error);
     sessionStorage.removeItem("checkfrota-supabase-token");
-    location.replace("gestao.html?v=161&acesso=negado");
+    location.replace("gestao.html?v=162&acesso=negado");
     return;
   }
   renderControl();
@@ -448,7 +448,7 @@ function checkById(id) { return CHECKLIST.find((item) => item.id === id); }
 function showScreen(name) {
   $$(".screen").forEach((screen) => screen.classList.toggle("active", screen.dataset.screen === name));
   window.scrollTo({ top: 0, behavior: "smooth" });
-  if (name === "controle") { renderControl(); void loadCloudManager(); void loadMasterAccess(); }
+  if (name === "controle") { renderControl(); void loadCloudManager(); void loadEmployeeDatabase(); void loadMasterAccess(); }
   if (name === "inicio") renderStart();
 }
 
@@ -686,7 +686,7 @@ function buildWhatsAppMessage(vehicle, issues, inspection) {
 function whatsappLink(phone, message) { return `https://wa.me/${phoneOnly(phone)}?text=${encodeURIComponent(message)}`; }
 function leadershipPanelUrl(baseName) {
   const base = baseName || current.baseName || "Vertical";
-  return `${location.origin}${location.pathname.replace(/[^/]*$/, "lider.html")}?v=161&base=${encodeURIComponent(base)}`;
+  return `${location.origin}${location.pathname.replace(/[^/]*$/, "lider.html")}?v=162&base=${encodeURIComponent(base)}`;
 }
 async function approvalUrl(vehicle, issues) {
   const first = issues[0] || {};
@@ -701,7 +701,7 @@ async function approvalUrl(vehicle, issues) {
   const photoUrl = await issuePhotoLink(first);
   if (photoUrl) params.set("photoUrl", photoUrl);
   if (first.photoName) params.set("photoName", first.photoName);
-  return `${location.origin}${location.pathname.replace(/[^/]*$/, "aprovacao.html")}?v=161&${params.toString()}`;
+  return `${location.origin}${location.pathname.replace(/[^/]*$/, "aprovacao.html")}?v=162&${params.toString()}`;
 }
 async function showCompletion(inspection, vehicle, issues, sendResult) {
   const severe = issues.some((issue) => issue.severity === "Grave");
@@ -717,7 +717,7 @@ async function showCompletion(inspection, vehicle, issues, sendResult) {
   const directToManagement = issues.some((issue) => issue.approvalRoute === "gestao");
   const approvalTarget = issues[0]?.basePhone || current.basePhone || data.settings.leaderPhone;
   if (directToManagement) {
-    const managementLink = `${location.origin}${location.pathname.replace(/[^/]*$/, "gestao.html")}?v=161`;
+    const managementLink = `${location.origin}${location.pathname.replace(/[^/]*$/, "gestao.html")}?v=162`;
     buttons.push(`<a href="${managementLink}" target="_blank" rel="noopener">Abrir Gestão</a>`);
   } else if (approvalTarget) {
     buttons.push(`<button type="button" class="primary-button" data-go="inicio">Concluir envio à liderança</button>`);
@@ -873,7 +873,7 @@ function sendLeaderInstall() {
   const base = $("#leaderInstallBase")?.value; const phone = BASES[base];
   if (!phone) return alert("Selecione Base Vertical, Base Horizontal ou Base Abrigo.");
   const label = LEADER_BASE_LABELS[base] || `Base ${base}`;
-  const link = `https://4lves-dev.github.io/checkfrota/instalar-lider.html?v=161&base=${encodeURIComponent(base)}`;
+  const link = `https://4lves-dev.github.io/checkfrota/instalar-lider.html?v=162&base=${encodeURIComponent(base)}`;
   const message = `*URBAM FROTAS — APLICATIVO DA LIDERANÇA*\n\nOlá, ${label}.\n\nEste é o link de instalação do painel da liderança desta base:\n${link}\n\nApós instalar, utilize o aplicativo para consultar as ocorrências e registrar a aprovação ou recusa.`;
   window.open(whatsappLink(phone, message), "_blank", "noopener");
 }
@@ -1046,7 +1046,8 @@ async function saveEmployee() {
 async function deactivateEmployee(registration) {
   if (!requireMasterAccess()) return;
   const employee = employeeDatabase.find((entry) => String(entry.registration) === String(registration));
-  if (!employee || !confirm(`Excluir definitivamente ${employee.name} do banco de colaboradores? O histórico de chamados será preservado.`)) return;
+  if (!employee) { void loadEmployeeDatabase(); alert("Aguarde a sincronização dos colaboradores com o banco e tente excluir novamente."); return; }
+  if (!confirm(`Excluir definitivamente ${employee.name} do banco de colaboradores? O histórico de chamados será preservado.`)) return;
   try {
     const removed = await cloudRequest(`/rest/v1/fleet_employees?registration=eq.${encodeURIComponent(registration)}`, { method: "DELETE", headers: { Prefer: "return=representation" } });
     if (!Array.isArray(removed) || !removed.length) throw new Error("Cadastro não encontrado no banco.");
@@ -1294,7 +1295,7 @@ $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").for
 if ("serviceWorker" in navigator) window.addEventListener("load", async () => {
   let refreshedForUpdate = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => { if (!refreshedForUpdate) { refreshedForUpdate = true; location.reload(); } });
-  try { const registration = await navigator.serviceWorker.register("service-worker.js?v=161"); await registration.update(); } catch (_) {}
+  try { const registration = await navigator.serviceWorker.register("service-worker.js?v=162"); await registration.update(); } catch (_) {}
 });
 window.addEventListener("load", () => { void window.URBAMOneSignal?.initialize(); });
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
@@ -1303,7 +1304,7 @@ if (isInstalled()) document.body.classList.add("app-installed"); else window.add
 window.addEventListener("online", () => { void syncCloudOutbox().then((count) => { if (count) console.info(`${count} envio(s) pendente(s) sincronizado(s).`); }); });
 if (new URLSearchParams(location.search).get("gestao") === "1") {
   if (cloudToken()) showScreen("controle");
-  else location.replace("gestao.html?v=161");
+  else location.replace("gestao.html?v=162");
 } else { renderStart(); void syncLocalBacklog(); }
 void syncCloudOutbox();
 
