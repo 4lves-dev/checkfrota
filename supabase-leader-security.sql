@@ -76,43 +76,84 @@ begin
 end;
 $$;
 
+drop function if exists public.fleet_record_leader_decision(text, text, text, text);
+
 create or replace function public.fleet_record_leader_decision(
-  p_registration text, p_issue_id text, p_status text, p_note text default ''
+  p_registration text,
+  p_pin text,
+  p_issue_id text,
+  p_status text,
+  p_note text default ''
 ) returns void
 language plpgsql security definer set search_path = public
 as $$
-declare employee public.fleet_employees%rowtype;
-declare issue public.fleet_issues%rowtype;
-declare row_status text;
+declare
+  employee public.fleet_employees%rowtype;
+  issue public.fleet_issues%rowtype;
+  row_status text;
+  decision jsonb;
 begin
-  if p_status not in ('Aprovada','Retificação solicitada','Recusada') then
+  if p_status not in ('Aprovada','Retificação solicitada') then
     raise exception 'Decisão inválida.';
   end if;
+  if p_registration !~ '^[0-9]+$' or p_pin !~ '^[0-9]+$' then
+    raise exception 'Matrícula e senha devem conter somente números.';
+  end if;
+
   select * into employee from public.fleet_employees
-  where registration = p_registration and active = true and access_level in ('lider','coordenador','gestor');
-  if not found then raise exception 'Acesso à liderança não autorizado.'; end if;
-  select * into issue from public.fleet_issues where id = p_issue_id for update;
+  where registration = p_registration and active = true
+    and access_level in ('lider','coordenador','gestor');
+  if not found or employee.access_pin_hash is null
+    or extensions.crypt(p_pin, employee.access_pin_hash) <> employee.access_pin_hash then
+    raise exception 'Sessão de liderança inválida. Entre novamente.';
+  end if;
+
+  select * into issue from public.fleet_issues
+  where id = p_issue_id::uuid
+  for update;
   if not found then raise exception 'Chamado não encontrado.'; end if;
-  if employee.access_level = 'lider' and coalesce(issue.data ->> 'baseName','') <> coalesce(employee.leader_base,'') then
+
+  if employee.access_level = 'lider'
+    and coalesce(issue.data ->> 'baseName','') <> coalesce(employee.leader_base,'') then
     raise exception 'Este chamado pertence a outra base.';
   end if;
-  row_status := case p_status when 'Aprovada' then 'aprovada' when 'Retificação solicitada' then 'retificacao' else 'recusada' end;
+
+  row_status := case p_status
+    when 'Aprovada' then 'aprovada'
+    else 'retificacao'
+  end;
+
+  decision := jsonb_build_object(
+    'status', p_status,
+    'note', coalesce(p_note,''),
+    'approvedAt', now(),
+    'approvedBy', case employee.access_level
+      when 'lider' then 'Líder: '
+      when 'coordenador' then 'Coordenador: '
+      else 'Gestor: '
+    end || employee.name,
+    'dispatchStatus', case p_status
+      when 'Aprovada' then 'Aguardando gestor'
+      else 'Aguardando colaborador'
+    end
+  );
+
   update public.fleet_issues set
     status = row_status,
-    data = jsonb_set(issue.data, '{leaderApproval}', jsonb_build_object(
-      'status', p_status,
-      'note', coalesce(p_note,''),
-      'approvedAt', now(),
-      'approvedBy', case employee.access_level when 'lider' then 'Líder: ' when 'coordenador' then 'Coordenador: ' else 'Gestor: ' end || employee.name,
-      'dispatchStatus', case p_status when 'Aprovada' then 'Aguardando gestor' when 'Retificação solicitada' then 'Aguardando colaborador' else 'Encerrado' end
-    ), true)
-  where id = p_issue_id;
+    data = jsonb_set(issue.data, '{leaderApproval}', decision, true)
+  where id = p_issue_id::uuid;
+
+  insert into public.fleet_audit_events
+    (issue_id, vehicle_id, action, detail, actor_name, snapshot)
+  values
+    (issue.id, issue.vehicle_id, lower(replace(p_status, ' ', '_')),
+     coalesce(p_note,''), employee.name, decision);
 end;
 $$;
 
 revoke all on function public.fleet_leader_login(text,text) from public;
 revoke all on function public.fleet_change_leader_pin(text,text,text) from public;
-revoke all on function public.fleet_record_leader_decision(text,text,text,text) from public;
+revoke all on function public.fleet_record_leader_decision(text,text,text,text,text) from public;
 grant execute on function public.fleet_leader_login(text,text) to anon, authenticated;
 grant execute on function public.fleet_change_leader_pin(text,text,text) to anon, authenticated;
-grant execute on function public.fleet_record_leader_decision(text,text,text,text) to anon, authenticated;
+grant execute on function public.fleet_record_leader_decision(text,text,text,text,text) to anon, authenticated;
