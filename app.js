@@ -26,6 +26,7 @@ const DAILY_CHECKLIST_ALERT_PHONE = "5512981111336";
 let dailyChecklistNotificationTimer = null;
 let returnedIssues = [];
 let returnedIssuesTimer = null;
+let managementRole = "";
 
 const initialData = {
   settings: { maintenancePhone: "5512988400316", maintenanceGroupPhone: MAINTENANCE_GROUP_PHONE, leaderPhone: "", fleetManagerPhone: "", webhookUrl: EMAIL_AUTOMATION_URL },
@@ -146,23 +147,45 @@ const CLOUD = window.CHECKFROTA_SUPABASE;
 function cloudToken() { return sessionStorage.getItem("checkfrota-supabase-token") || ""; }
 function cloudHeaders(json = true) { const token = cloudToken(); return { apikey: CLOUD?.publishableKey || "", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(json ? { "Content-Type": "application/json" } : {}) }; }
 async function cloudRequest(path, options = {}) { if (!CLOUD?.url) return null; const response = await fetch(`${CLOUD.url}${path}`, { ...options, headers: { ...cloudHeaders(options.json !== false), ...(options.headers || {}) } }); if (!response.ok) throw new Error(`Supabase: ${response.status}`); return response.status === 204 ? null : response.json(); }
+async function cloudRpc(functionName, payload = {}) {
+  return cloudRequest(`/rest/v1/rpc/${functionName}`, { method: "POST", body: JSON.stringify(payload) });
+}
 function requireMasterAccess() { if (masterAdmin) return true; alert("Esta ação é exclusiva do Administrador Master."); return false; }
 async function loadMasterAccess() {
-  masterAdmin = false;
+  masterAdmin = false; managementRole = "";
   if (!CLOUD?.url || !cloudToken()) return renderControl();
   try {
     const response = await fetch(`${CLOUD.url}/auth/v1/user`, { headers: cloudHeaders(false) });
     if (!response.ok) throw new Error();
     const profile = await response.json();
-    masterAdmin = String(profile.email || "").trim().toLowerCase() === MASTER_ADMIN_EMAIL;
-  } catch (error) { console.warn("Não foi possível validar o perfil de Gestão", error); }
+    const email = String(profile.email || "").trim().toLowerCase();
+    // Enquanto a migração de perfis não for aplicada, somente o Master existente
+    // mantém o acesso. Depois dela, o papel vem exclusivamente do banco.
+    const role = await cloudRpc("fleet_current_management_role").catch(() => email === MASTER_ADMIN_EMAIL ? "master" : "");
+    managementRole = ["master", "gestor"].includes(String(role || "")) ? String(role) : "";
+    masterAdmin = managementRole === "master";
+    if (!managementRole) {
+      sessionStorage.removeItem("checkfrota-supabase-token");
+      alert("Sua conta não está autorizada para o Painel de Gestão.");
+      location.replace("gestao.html?v=157&acesso=negado");
+      return;
+    }
+  } catch (error) {
+    console.warn("Não foi possível validar o perfil de Gestão", error);
+    sessionStorage.removeItem("checkfrota-supabase-token");
+    location.replace("gestao.html?v=157&acesso=negado");
+    return;
+  }
   renderControl();
 }
 async function cloudSave(table, row) {
   if (!CLOUD?.url) throw new Error("A conexão com o banco de dados não está configurada.");
-  const response = await fetch(`${CLOUD.url}/rest/v1/${table}`, {
+  const authenticatedWrite = Boolean(cloudToken());
+  const endpoint = authenticatedWrite ? `${CLOUD.url}/rest/v1/${table}?on_conflict=id` : `${CLOUD.url}/rest/v1/${table}`;
+  const prefer = authenticatedWrite ? "resolution=merge-duplicates,return=minimal" : "resolution=ignore-duplicates,return=minimal";
+  const response = await fetch(endpoint, {
     method: "POST",
-    headers: { ...cloudHeaders(), Prefer: "return=minimal" },
+    headers: { ...cloudHeaders(), Prefer: prefer },
     body: JSON.stringify(row),
   });
   if (!response.ok) {
@@ -275,8 +298,12 @@ async function finishCorrectionRequest(issueId, inspection, hasNewIssues) {
   };
   returnedIssues = returnedIssues.filter((issue) => issue.id !== issueId);
   renderReturnedIssues(); saveData();
-  try { await cloudUpdateIssue(original); }
-  catch (error) { console.warn("Não foi possível encerrar a solicitação de retificação no banco", error); }
+  try {
+    const registration = inspection.driverRegistration || $("#driverRegistration")?.value.replace(/\D/g, "") || "";
+    const phone = phoneOnly(inspection.driverPhone || $("#driverPhone")?.value || current.driverPhone || "");
+    if (!registration || !phone) throw new Error("Identificação do colaborador incompleta.");
+    await cloudRpc("fleet_mark_driver_correction", { p_registration: registration, p_phone: phone, p_issue_id: issueId, p_inspection_id: inspection.id, p_has_new_issues: Boolean(hasNewIssues) });
+  } catch (error) { console.warn("Não foi possível encerrar a solicitação de retificação no banco", error); }
 }
 async function syncLocalBacklog() {
   if (!CLOUD?.url || !data.issues?.length) return;
@@ -308,12 +335,10 @@ function renderReturnedIssues() {
 }
 async function loadReturnedIssuesForCollaborator() {
   const registration = $("#driverRegistration")?.value.replace(/\D/g, "") || localStorage.getItem("checkfrota-driver-registration") || "";
-  if (!CLOUD?.url || !registration) return;
+  const phone = phoneOnly($("#driverPhone")?.value || current.driverPhone || "");
+  if (!CLOUD?.url || !registration || !phone) return;
   try {
-    // A matrícula é obrigatória e identifica o colaborador. Não use o
-    // telefone como bloqueio: ele pode ter sido digitado com outro formato ou
-    // atualizado após o chamado, o que escondia a retificação indevidamente.
-    const rows = await cloudRequest(`/rest/v1/fleet_issues?select=data,status&data->>driverRegistration=eq.${encodeURIComponent(registration)}&order=created_at.desc`);
+    const rows = await cloudRpc("fleet_driver_returns", { p_registration: registration, p_phone: phone });
     returnedIssues = (rows || []).map((row) => row.data).filter((issue) => issue && ["Retificação solicitada", "Recusada"].includes(issue.leaderApproval?.status));
     returnedIssues.forEach(notifyReturnedIssue); renderReturnedIssues();
   } catch (error) { console.warn("Não foi possível buscar devoluções do colaborador", error); }
@@ -352,7 +377,10 @@ async function reopenReturnedIssue(issueId) {
   if (inspection) return alert("Checklist original restaurado. Corrija o que for necessário e envie a nova versão.");
   if (!CLOUD?.url || !issue.inspectionId) return alert("A ocorrência devolvida foi restaurada. Complete os demais itens do checklist e envie a nova versão.");
   try {
-    const rows = await cloudRequest(`/rest/v1/fleet_inspections?select=data&id=eq.${encodeURIComponent(issue.inspectionId)}&limit=1`);
+    const registration = $("#driverRegistration")?.value.replace(/\D/g, "") || localStorage.getItem("checkfrota-driver-registration") || "";
+    const phone = phoneOnly($("#driverPhone")?.value || current.driverPhone || "");
+    if (!registration || !phone) throw new Error("Identificação do colaborador incompleta.");
+    const rows = await cloudRpc("fleet_driver_inspection", { p_registration: registration, p_phone: phone, p_inspection_id: issue.inspectionId });
     inspection = rows?.[0]?.data || null;
     if (!inspection) return alert("A ocorrência devolvida foi restaurada. Complete os demais itens do checklist e envie a nova versão.");
     if (!data.inspections.some((entry) => entry.id === inspection.id)) { data.inspections.unshift(inspection); saveData(); }
@@ -644,7 +672,7 @@ function buildWhatsAppMessage(vehicle, issues, inspection) {
 function whatsappLink(phone, message) { return `https://wa.me/${phoneOnly(phone)}?text=${encodeURIComponent(message)}`; }
 function leadershipPanelUrl(baseName) {
   const base = baseName || current.baseName || "Vertical";
-  return `${location.origin}${location.pathname.replace(/[^/]*$/, "lider.html")}?v=150&base=${encodeURIComponent(base)}`;
+  return `${location.origin}${location.pathname.replace(/[^/]*$/, "lider.html")}?v=157&base=${encodeURIComponent(base)}`;
 }
 async function approvalUrl(vehicle, issues) {
   const first = issues[0] || {};
@@ -659,12 +687,12 @@ async function approvalUrl(vehicle, issues) {
   const photoUrl = await issuePhotoLink(first);
   if (photoUrl) params.set("photoUrl", photoUrl);
   if (first.photoName) params.set("photoName", first.photoName);
-  return `${location.origin}${location.pathname.replace(/[^/]*$/, "aprovacao.html")}?v=98&${params.toString()}`;
+  return `${location.origin}${location.pathname.replace(/[^/]*$/, "aprovacao.html")}?v=157&${params.toString()}`;
 }
 async function showCompletion(inspection, vehicle, issues, sendResult) {
   const severe = issues.some((issue) => issue.severity === "Grave");
   $("#successTitle").textContent = issues.length ? (severe ? "Veículo com bloqueio de deslocamento." : "Ocorrência registrada.") : "Tudo certo para seguir.";
-  $("#successText").textContent = issues.length ? `O formulário foi salvo com ${issues.length} ocorrência(s). Confira o chamado abaixo; após enviar para a liderança, você pode voltar ao início. ${sendResult.sent ? "A integração de e-mail foi acionada." : "Configure a integração para o envio automático por e-mail."}` : "Checklist concluído sem observações. Não é necessária aprovação da liderança.";
+  $("#successText").textContent = issues.length ? `O formulário foi salvo com ${issues.length} ocorrência(s) e já está disponível para a liderança. Confira o chamado abaixo e conclua para voltar ao início. ${sendResult.sent ? "A integração de e-mail foi acionada." : "Configure a integração para o envio automático por e-mail."}` : "Checklist concluído sem observações. Não é necessária aprovação da liderança.";
   const form = $("#submittedForm");
   const protocol = `MAN-${String(inspection.id || Date.now()).replaceAll("-", "").slice(-8).toUpperCase()}`;
   const occurrenceRows = issues.length ? issues.map((issue) => `<article class="submitted-issue ${esc(issue.severity.toLowerCase())}"><div><b>${esc(issue.itemName)}</b><span class="chip ${esc(issue.severity.toLowerCase())}">${esc(issue.severity)}</span></div><p>${esc(issue.description)}</p>${issue.photoPath ? `<img src="${esc(publicIssuePhotoUrl(issue))}" alt="Foto da ocorrência ${esc(issue.itemName)}" loading="lazy">` : ""}</article>`).join("") : `<p class="form-empty">Nenhuma ocorrência informada.</p>`;
@@ -675,10 +703,10 @@ async function showCompletion(inspection, vehicle, issues, sendResult) {
   const directToManagement = issues.some((issue) => issue.approvalRoute === "gestao");
   const approvalTarget = issues[0]?.basePhone || current.basePhone || data.settings.leaderPhone;
   if (directToManagement) {
-    const managementLink = `${location.origin}${location.pathname.replace(/[^/]*$/, "gestao.html")}?v=149`;
-    buttons.push(`<a href="${managementLink}" target="_blank" rel="noopener">Enviar</a>`);
+    const managementLink = `${location.origin}${location.pathname.replace(/[^/]*$/, "gestao.html")}?v=157`;
+    buttons.push(`<a href="${managementLink}" target="_blank" rel="noopener">Abrir Gestão</a>`);
   } else if (approvalTarget) {
-    buttons.push(`<button type="button" class="primary-button" data-go="inicio">Enviar</button>`);
+    buttons.push(`<button type="button" class="primary-button" data-go="inicio">Concluir envio à liderança</button>`);
   }
   actions.innerHTML = buttons.join("");
   showScreen("success");
@@ -800,7 +828,7 @@ function sendLeaderInstall() {
   const base = $("#leaderInstallBase")?.value; const phone = BASES[base];
   if (!phone) return alert("Selecione Base Vertical, Base Horizontal ou Base Abrigo.");
   const label = LEADER_BASE_LABELS[base] || `Base ${base}`;
-  const link = `https://4lves-dev.github.io/checkfrota/instalar-lider.html?v=150&base=${encodeURIComponent(base)}`;
+  const link = `https://4lves-dev.github.io/checkfrota/instalar-lider.html?v=157&base=${encodeURIComponent(base)}`;
   const message = `*URBAM FROTAS — APLICATIVO DA LIDERANÇA*\n\nOlá, ${label}.\n\nEste é o link de instalação do painel da liderança desta base:\n${link}\n\nApós instalar, utilize o aplicativo para consultar as ocorrências e registrar a aprovação ou recusa.`;
   window.open(whatsappLink(phone, message), "_blank", "noopener");
 }
@@ -893,7 +921,10 @@ function vehicleHistoryMarkup(vehicle) {
 }
 function renderVehicles() {
   const panel = $("#vehiclesPanel");
-  const cards = data.vehicles.map((vehicle) => `<article class="vehicle-card"><div><h3>Prefixo ${esc(vehicle.prefix || "—")} · ${esc(vehicle.plate)} <span class="vehicle-label">· ${esc(vehicle.model || vehicle.type)}</span></h3><p>${esc(vehicle.ownerName)}${vehicle.manager ? ` · Gestor: ${esc(vehicle.manager)}` : ""}${vehicle.base ? ` · Base: ${esc(vehicle.base)}` : ""}${vehicle.ownerPhone ? ` · Tel.: ${esc(formatPhone(vehicle.ownerPhone))}` : ""}${vehicle.contract ? ` · Contrato: ${esc(vehicle.contract)}` : ""}${vehicle.odometer !== "" ? ` · ${esc(vehicle.odometer)} km` : ""}</p></div><div class="issue-actions"><button class="small-button" data-vehicle-history="${vehicle.id}">${selectedVehicleHistoryId === vehicle.id ? "Fechar ficha" : "Ver ficha"}</button><button class="small-button" data-edit-vehicle="${vehicle.id}">Editar</button><button class="small-button danger-button" data-delete-vehicle="${vehicle.id}">Excluir</button></div>${selectedVehicleHistoryId === vehicle.id ? vehicleHistoryMarkup(vehicle) : ""}</article>`).join("");
+  const cards = data.vehicles.map((vehicle) => {
+    const masterActions = masterAdmin ? `<button class="small-button" data-edit-vehicle="${vehicle.id}">Editar</button><button class="small-button danger-button" data-delete-vehicle="${vehicle.id}">Excluir</button>` : "";
+    return `<article class="vehicle-card"><div><h3>Prefixo ${esc(vehicle.prefix || "—")} · ${esc(vehicle.plate)} <span class="vehicle-label">· ${esc(vehicle.model || vehicle.type)}</span></h3><p>${esc(vehicle.ownerName)}${vehicle.manager ? ` · Gestor: ${esc(vehicle.manager)}` : ""}${vehicle.base ? ` · Base: ${esc(vehicle.base)}` : ""}${vehicle.ownerPhone ? ` · Tel.: ${esc(formatPhone(vehicle.ownerPhone))}` : ""}${vehicle.contract ? ` · Contrato: ${esc(vehicle.contract)}` : ""}${vehicle.odometer !== "" ? ` · ${esc(vehicle.odometer)} km` : ""}</p></div><div class="issue-actions"><button class="small-button" data-vehicle-history="${vehicle.id}">${selectedVehicleHistoryId === vehicle.id ? "Fechar ficha" : "Ver ficha"}</button>${masterActions}</div>${selectedVehicleHistoryId === vehicle.id ? vehicleHistoryMarkup(vehicle) : ""}</article>`;
+  }).join("");
   const actions = masterAdmin ? `<div class="vehicle-actions"><button class="restore-button" id="restoreFleet">↺ Restaurar frota</button><button class="add-button" id="newVehicle">+ Cadastrar veículo/caminhão</button></div>` : "";
   panel.innerHTML = `<div class="section-action"><h3>Veículos e caminhões cadastrados</h3>${actions}</div>${cards}`;
 }
@@ -1025,18 +1056,24 @@ function sendSchedulingReturn(issue, maintenance = maintenanceOf(issue)) {
   if (!target) return alert("Cadastre o WhatsApp do grupo de manutenção em Configurações da base.");
   window.open(whatsappLink(target, buildSchedulingReturn(issue, maintenance)), "_blank", "noopener");
 }
+function buildApprovedMaintenanceMessage(issue) {
+  const approval = issue?.leaderApproval || {};
+  return `*URBAM FROTAS — MANUTENÇÃO APROVADA*\n\n*Veículo:* Prefixo ${issue.vehiclePrefix || "—"} · Placa ${issue.vehiclePlate || "—"} · ${issue.vehicleModel || issue.vehicleType || "—"}\n*Base:* ${issue.baseName || "—"}\n*Quilometragem:* ${issue.odometer ?? "Não informada"} km\n*Gravidade:* ${issue.severity || "—"}\n*Ocorrência:* ${issue.itemName || "—"}\n*Descrição:* ${issue.description || "—"}\n${approval.note ? `*Parecer da liderança:* ${approval.note}\n` : ""}\nSolicitamos agendamento, local e previsão de atendimento para retorno à Gestão de Frota.`;
+}
 async function dispatchManagerMaintenance(issueId) {
   const issue = data.issues.find((entry) => entry.id === issueId);
   const approval = issue?.leaderApproval;
-  if (!issue || !approval?.maintenanceMessage) return alert("A mensagem aprovada ainda não está disponível.");
+  const message = approval?.maintenanceMessage || (issue && approval?.status === "Aprovada" ? buildApprovedMaintenanceMessage(issue) : "");
+  if (!issue || !message) return alert("Este chamado ainda não foi aprovado pela liderança.");
   const phone = data.settings.maintenanceGroupPhone || MAINTENANCE_GROUP_PHONE;
-  window.open(whatsappLink(phone, approval.maintenanceMessage), "_blank", "noopener");
-  issue.leaderApproval = { ...approval, dispatchStatus: "Enviado", dispatchedAt: new Date().toISOString() };
+  window.open(whatsappLink(phone, message), "_blank", "noopener");
+  issue.leaderApproval = { ...approval, maintenanceMessage: message, dispatchStatus: "Enviado", dispatchedAt: new Date().toISOString() };
   saveData(); renderControl();
   try { await cloudUpdateIssue(issue); } catch (error) { console.warn("Não foi possível registrar o envio", error); }
 }
 async function copyManagerMaintenanceMessage(issueId) {
-  const message = data.issues.find((entry) => entry.id === issueId)?.leaderApproval?.maintenanceMessage;
+  const issue = data.issues.find((entry) => entry.id === issueId);
+  const message = issue?.leaderApproval?.maintenanceMessage || (issue?.leaderApproval?.status === "Aprovada" ? buildApprovedMaintenanceMessage(issue) : "");
   if (!message) return;
   try { await navigator.clipboard.writeText(message); alert("Mensagem copiada."); }
   catch { alert("Não foi possível copiar automaticamente. Selecione o texto da mensagem e copie."); }
@@ -1198,7 +1235,7 @@ $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").for
 if ("serviceWorker" in navigator) window.addEventListener("load", async () => {
   let refreshedForUpdate = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => { if (!refreshedForUpdate) { refreshedForUpdate = true; location.reload(); } });
-  try { const registration = await navigator.serviceWorker.register("service-worker.js?v=156"); await registration.update(); } catch (_) {}
+  try { const registration = await navigator.serviceWorker.register("service-worker.js?v=157"); await registration.update(); } catch (_) {}
 });
 window.addEventListener("load", () => { void window.URBAMOneSignal?.initialize(); });
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
@@ -1207,7 +1244,7 @@ if (isInstalled()) document.body.classList.add("app-installed"); else window.add
 window.addEventListener("online", () => { void syncCloudOutbox().then((count) => { if (count) console.info(`${count} envio(s) pendente(s) sincronizado(s).`); }); });
 if (new URLSearchParams(location.search).get("gestao") === "1") {
   if (cloudToken()) showScreen("controle");
-  else location.replace("gestao.html?v=149");
+  else location.replace("gestao.html?v=157");
 } else { renderStart(); void syncLocalBacklog(); }
 void syncCloudOutbox();
 
