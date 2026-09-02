@@ -15,9 +15,9 @@
     <h1>URBAM Frotas Gestão</h1><p>Entre para acessar o Painel da Base.</p>
     <form id="login"><label>E-mail<input id="email" type="email" required></label><label>Senha<input id="password" type="password" minlength="6" required></label><button class="primary">Entrar no painel</button></form>
     <p id="message">Contas de gestão são liberadas pelo Administrador Master.</p>
-    <a class="secondary" href="./?v=162">← Voltar ao aplicativo do colaborador</a>
+    <a class="secondary" href="./?v=163">← Voltar ao aplicativo do colaborador</a>
   </main>
-  <script src="supabase-config.js?v=162"></script>
+  <script src="supabase-config.js?v=163"></script>
   <script>
     const c=window.CHECKFROTA_SUPABASE,$=id=>document.getElementById(id),m=t=>$('message').textContent=t,fields=()=>({email:$('email').value.trim(),password:$('password').value});
     async function requestAuth(p,b){const r=await fetch(c.url+p,{method:'POST',headers:{apikey:c.publishableKey,'Content-Type':'application/json'},body:JSON.stringify(b)}),d=await r.json();if(!r.ok)throw Error(d.msg||d.message||d.error_description||'Não foi possível concluir');return d}
