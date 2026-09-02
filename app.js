@@ -128,6 +128,7 @@ let managerIssueFilters = { base: "", vehicle: "", date: "", owner: "", type: ""
 let managerCommandFilter = "";
 let selectedVehicleHistoryId = "";
 let masterAdmin = false;
+let managementCloudLoaded = false;
 const ACCESS_LEVEL_LABELS = { colaborador: "Colaborador", lider: "Líder", coordenador: "Coordenador", gestor: "Gestor" };
 const employeeAccessLevel = (employee = {}) => employee.access_level || (employee.leader ? "lider" : "colaborador");
 function employeeRoster() {
@@ -178,13 +179,13 @@ async function loadMasterAccess() {
     if (!managementRole) {
       sessionStorage.removeItem("checkfrota-supabase-token");
       alert("Sua conta não está autorizada para o Painel de Gestão.");
-      location.replace("gestao.html?v=160&acesso=negado");
+      location.replace("gestao.html?v=161&acesso=negado");
       return;
     }
   } catch (error) {
     console.warn("Não foi possível validar o perfil de Gestão", error);
     sessionStorage.removeItem("checkfrota-supabase-token");
-    location.replace("gestao.html?v=160&acesso=negado");
+    location.replace("gestao.html?v=161&acesso=negado");
     return;
   }
   renderControl();
@@ -416,7 +417,7 @@ function mergeFleetVehicles(cloudVehicles = []) {
   const extras = allVehicles.filter((vehicle, index) => vehicle && !initialData.vehicles.some((seed) => seed.id === vehicle.id || seed.prefix === vehicle.prefix || seed.plate === vehicle.plate) && allVehicles.findIndex((entry) => entry && (entry.id === vehicle.id || entry.prefix === vehicle.prefix || entry.plate === vehicle.plate)) === index);
   return [...standard, ...extras];
 }
-async function loadCloudManager() { if (!cloudToken()) return; try { const [issues, inspections, vehicles] = await Promise.all([cloudRequest("/rest/v1/fleet_issues?select=data&order=created_at.desc"), cloudRequest("/rest/v1/fleet_inspections?select=data&order=created_at.desc"), cloudRequest("/rest/v1/fleet_vehicles?select=data")]); if (issues) data.issues = issues.map((row) => row.data); if (inspections) data.inspections = inspections.map((row) => row.data); data.vehicles = mergeFleetVehicles((vehicles || []).map((row) => row.data).filter(Boolean)); saveData(); renderControl(); } catch (error) { console.warn("Não foi possível carregar a nuvem", error); } }
+async function loadCloudManager() { if (!cloudToken()) return; try { const [issues, inspections, vehicles] = await Promise.all([cloudRequest("/rest/v1/fleet_issues?select=data&order=created_at.desc"), cloudRequest("/rest/v1/fleet_inspections?select=data&order=created_at.desc"), cloudRequest("/rest/v1/fleet_vehicles?select=data")]); if (issues) data.issues = issues.map((row) => row.data); if (inspections) data.inspections = inspections.map((row) => row.data); data.vehicles = mergeFleetVehicles((vehicles || []).map((row) => row.data).filter(Boolean)); managementCloudLoaded = true; saveData(); renderControl(); } catch (error) { console.warn("Não foi possível carregar a nuvem", error); } }
 
 function loadData() {
   try {
@@ -685,7 +686,7 @@ function buildWhatsAppMessage(vehicle, issues, inspection) {
 function whatsappLink(phone, message) { return `https://wa.me/${phoneOnly(phone)}?text=${encodeURIComponent(message)}`; }
 function leadershipPanelUrl(baseName) {
   const base = baseName || current.baseName || "Vertical";
-  return `${location.origin}${location.pathname.replace(/[^/]*$/, "lider.html")}?v=160&base=${encodeURIComponent(base)}`;
+  return `${location.origin}${location.pathname.replace(/[^/]*$/, "lider.html")}?v=161&base=${encodeURIComponent(base)}`;
 }
 async function approvalUrl(vehicle, issues) {
   const first = issues[0] || {};
@@ -700,7 +701,7 @@ async function approvalUrl(vehicle, issues) {
   const photoUrl = await issuePhotoLink(first);
   if (photoUrl) params.set("photoUrl", photoUrl);
   if (first.photoName) params.set("photoName", first.photoName);
-  return `${location.origin}${location.pathname.replace(/[^/]*$/, "aprovacao.html")}?v=160&${params.toString()}`;
+  return `${location.origin}${location.pathname.replace(/[^/]*$/, "aprovacao.html")}?v=161&${params.toString()}`;
 }
 async function showCompletion(inspection, vehicle, issues, sendResult) {
   const severe = issues.some((issue) => issue.severity === "Grave");
@@ -716,7 +717,7 @@ async function showCompletion(inspection, vehicle, issues, sendResult) {
   const directToManagement = issues.some((issue) => issue.approvalRoute === "gestao");
   const approvalTarget = issues[0]?.basePhone || current.basePhone || data.settings.leaderPhone;
   if (directToManagement) {
-    const managementLink = `${location.origin}${location.pathname.replace(/[^/]*$/, "gestao.html")}?v=160`;
+    const managementLink = `${location.origin}${location.pathname.replace(/[^/]*$/, "gestao.html")}?v=161`;
     buttons.push(`<a href="${managementLink}" target="_blank" rel="noopener">Abrir Gestão</a>`);
   } else if (approvalTarget) {
     buttons.push(`<button type="button" class="primary-button" data-go="inicio">Concluir envio à liderança</button>`);
@@ -791,8 +792,12 @@ function renderDailyChecklistAlert() {
   const missing = vehiclesWithoutChecklistToday();
   panel.hidden = false;
   if (!missing.length) { panel.className = "daily-checklist-alert clear"; panel.innerHTML = `<b>✓ Checklist diário em dia</b><p>Todos os veículos cadastrados possuem checklist registrado hoje.</p>`; return; }
+  const automaticKey = `checkfrota-daily-checklist-dispatch-${dailyChecklistAlertContent(missing).dispatchId}`;
+  const delivery = data.settings.webhookUrl
+    ? (localStorage.getItem(automaticKey) ? "✓ Resumo automático encaminhado pela integração." : "O resumo será encaminhado automaticamente pela integração após a sincronização do painel.")
+    : "Cadastre a integração nas Configurações da base para habilitar o envio automático.";
   panel.className = "daily-checklist-alert";
-  panel.innerHTML = `<div><p class="eyebrow">ALERTA DIÁRIO · APÓS 08H</p><h2>${missing.length} veículo(s) sem checklist hoje</h2><p>Verifique os carros e caminhões abaixo antes da liberação.</p></div><ul>${missing.map((vehicle) => `<li>Prefixo ${esc(vehicle.prefix || "—")} · ${esc(vehicle.plate || "sem placa")} · ${esc(vehicle.model || vehicle.type || "Veículo")}</li>`).join("")}</ul><button type="button" class="small-button whatsapp" id="sendDailyChecklistAlert">Enviar alerta à gestora</button>`;
+  panel.innerHTML = `<div><p class="eyebrow">ALERTA DIÁRIO · APÓS 08H</p><h2>${missing.length} veículo(s) sem checklist hoje</h2><p>Verifique os carros e caminhões abaixo antes da liberação.</p><small>${delivery}</small></div><ul>${missing.map((vehicle) => `<li>Prefixo ${esc(vehicle.prefix || "—")} · ${esc(vehicle.plate || "sem placa")} · ${esc(vehicle.model || vehicle.type || "Veículo")}</li>`).join("")}</ul><button type="button" class="small-button whatsapp" id="sendDailyChecklistAlert">Enviar pelo WhatsApp agora</button>`;
 }
 function notificationPermission() { return "Notification" in window ? Notification.permission : "unsupported"; }
 function renderNotificationSettings() {
@@ -818,18 +823,45 @@ function notifyDailyChecklistIfNeeded() {
   notification.onclick = () => { window.focus(); notification.close(); };
   localStorage.setItem(notificationKey, new Date().toISOString());
 }
+function dailyChecklistAlertContent(missing = vehiclesWithoutChecklistToday()) {
+  const now = new Date();
+  const date = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" }).format(now);
+  const time = new Intl.DateTimeFormat("pt-BR", { timeStyle: "short" }).format(now);
+  const list = missing.map((vehicle, index) => `${index + 1}. Prefixo ${vehicle.prefix || "—"} · ${vehicle.plate || "sem placa"} · ${vehicle.model || vehicle.type || "Veículo"}`).join("\n");
+  const dispatchId = `daily-checklist-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  return {
+    missing, dispatchId, date, time,
+    subject: `URBAM Frotas — ${missing.length} veículo(s) sem checklist em ${date}`,
+    message: `*URBAM FROTAS — ALERTA DIÁRIO DE CHECKLIST*\n\nData: ${date}\nHorário da conferência: ${time}\n\nHá ${missing.length} carro(s) ou caminhão(ões) sem checklist registrado hoje:\n\n${list}\n\nSolicitamos verificar a situação e providenciar o preenchimento antes da operação.`,
+  };
+}
+async function dispatchDailyChecklistAlert() {
+  if (new Date().getHours() < 8 || !managementCloudLoaded) return false;
+  const alert = dailyChecklistAlertContent();
+  if (!alert.missing.length || !data.settings.webhookUrl) return false;
+  const key = `checkfrota-daily-checklist-dispatch-${alert.dispatchId}`;
+  if (localStorage.getItem(key)) return true;
+  const result = await sendToIntegration({
+    type: "daily-checklist-alert", automatic: true, dispatchId: alert.dispatchId, subject: alert.subject, message: alert.message,
+    generatedAt: new Date().toISOString(),
+    missingVehicles: alert.missing.map((vehicle) => ({ id: vehicle.id, prefix: vehicle.prefix || "", plate: vehicle.plate || "", model: vehicle.model || vehicle.type || "", base: vehicle.base || "" })),
+  });
+  if (!result.sent) return false;
+  localStorage.setItem(key, new Date().toISOString());
+  renderDailyChecklistAlert();
+  console.info("Alerta diário de checklist encaminhado pela integração.");
+  return true;
+}
 function startDailyChecklistNotifications() {
   notifyDailyChecklistIfNeeded();
+  void dispatchDailyChecklistAlert();
   if (dailyChecklistNotificationTimer) return;
-  dailyChecklistNotificationTimer = window.setInterval(() => { renderDailyChecklistAlert(); notifyDailyChecklistIfNeeded(); }, 60 * 1000);
+  dailyChecklistNotificationTimer = window.setInterval(() => { renderDailyChecklistAlert(); notifyDailyChecklistIfNeeded(); void dispatchDailyChecklistAlert(); }, 60 * 1000);
 }
 function sendDailyChecklistAlert() {
-  const missing = vehiclesWithoutChecklistToday();
-  if (!missing.length) return alert("Todos os veículos cadastrados possuem checklist hoje.");
-  const date = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" }).format(new Date());
-  const list = missing.map((vehicle, index) => `${index + 1}. Prefixo ${vehicle.prefix || "—"} · ${vehicle.plate || "sem placa"} · ${vehicle.model || vehicle.type || "Veículo"}`).join("\n");
-  const message = `*URBAM FROTAS — ALERTA DIÁRIO DE CHECKLIST*\n\nData: ${date}\nHorário da conferência: ${new Intl.DateTimeFormat("pt-BR", { timeStyle: "short" }).format(new Date())}\n\nHá ${missing.length} carro(s) ou caminhão(ões) sem checklist registrado hoje:\n\n${list}\n\nSolicitamos verificar a situação e providenciar o preenchimento antes da operação.`;
-  window.open(whatsappLink(DAILY_CHECKLIST_ALERT_PHONE, message), "_blank", "noopener");
+  const alert = dailyChecklistAlertContent();
+  if (!alert.missing.length) return alert("Todos os veículos cadastrados possuem checklist hoje.");
+  window.open(whatsappLink(DAILY_CHECKLIST_ALERT_PHONE, alert.message), "_blank", "noopener");
 }
 function renderLeaderInstallTarget() {
   const select = $("#leaderInstallBase"); const hint = $("#leaderInstallHint");
@@ -841,7 +873,7 @@ function sendLeaderInstall() {
   const base = $("#leaderInstallBase")?.value; const phone = BASES[base];
   if (!phone) return alert("Selecione Base Vertical, Base Horizontal ou Base Abrigo.");
   const label = LEADER_BASE_LABELS[base] || `Base ${base}`;
-  const link = `https://4lves-dev.github.io/checkfrota/instalar-lider.html?v=160&base=${encodeURIComponent(base)}`;
+  const link = `https://4lves-dev.github.io/checkfrota/instalar-lider.html?v=161&base=${encodeURIComponent(base)}`;
   const message = `*URBAM FROTAS — APLICATIVO DA LIDERANÇA*\n\nOlá, ${label}.\n\nEste é o link de instalação do painel da liderança desta base:\n${link}\n\nApós instalar, utilize o aplicativo para consultar as ocorrências e registrar a aprovação ou recusa.`;
   window.open(whatsappLink(phone, message), "_blank", "noopener");
 }
@@ -1262,7 +1294,7 @@ $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").for
 if ("serviceWorker" in navigator) window.addEventListener("load", async () => {
   let refreshedForUpdate = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => { if (!refreshedForUpdate) { refreshedForUpdate = true; location.reload(); } });
-  try { const registration = await navigator.serviceWorker.register("service-worker.js?v=160"); await registration.update(); } catch (_) {}
+  try { const registration = await navigator.serviceWorker.register("service-worker.js?v=161"); await registration.update(); } catch (_) {}
 });
 window.addEventListener("load", () => { void window.URBAMOneSignal?.initialize(); });
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
@@ -1271,7 +1303,7 @@ if (isInstalled()) document.body.classList.add("app-installed"); else window.add
 window.addEventListener("online", () => { void syncCloudOutbox().then((count) => { if (count) console.info(`${count} envio(s) pendente(s) sincronizado(s).`); }); });
 if (new URLSearchParams(location.search).get("gestao") === "1") {
   if (cloudToken()) showScreen("controle");
-  else location.replace("gestao.html?v=160");
+  else location.replace("gestao.html?v=161");
 } else { renderStart(); void syncLocalBacklog(); }
 void syncCloudOutbox();
 
