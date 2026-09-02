@@ -946,13 +946,23 @@ function renderDrivers() {
   if (!panel) return;
   const registered = employeeRoster().sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
   const missing = driversMissingRegistration().sort((a, b) => a.localeCompare(b, "pt-BR"));
-  const employeeAction = masterAdmin ? `<button class="add-button" type="button" onclick="window.CHECKFROTA_OPEN_EMPLOYEE()">+ Cadastrar colaborador</button>` : "";
+  const employeeAction = masterAdmin ? `<button class="add-button" type="button" data-employee-action="new">+ Cadastrar colaborador</button>` : "";
   const card = (driver) => {
     const accessLevel = employeeAccessLevel(driver); const base = driver.leader_base || "";
-    const manage = masterAdmin ? `<div class="issue-actions"><button class="small-button" type="button" onclick="window.CHECKFROTA_EDIT_EMPLOYEE('${esc(driver.registration)}')">Editar</button><button class="small-button danger-button" type="button" onclick="window.CHECKFROTA_DELETE_EMPLOYEE('${esc(driver.registration)}')">Excluir</button></div>` : "";
+    const manage = masterAdmin ? `<div class="issue-actions"><button class="small-button" type="button" data-employee-action="edit" data-registration="${esc(driver.registration)}">Editar</button><button class="small-button danger-button" type="button" data-employee-action="delete" data-registration="${esc(driver.registration)}">Excluir</button></div>` : "";
     return `<article class="driver-row"><div><b>${esc(driver.name)}</b><span>Matrícula ${esc(driver.registration)}${driver.role ? ` · ${esc(driver.role)}` : ""}${accessLevel !== "colaborador" ? ` · <strong>${esc(ACCESS_LEVEL_LABELS[accessLevel] || accessLevel)}${accessLevel === "lider" && base ? ` — ${esc(base)}` : ""}</strong>` : ""}</span></div>${manage}</article>`;
   };
   panel.innerHTML = `<section class="driver-registry"><div class="section-action"><div><h3>Banco de colaboradores</h3><p>Defina o perfil: Líder aprova a base; Coordenador aprova as bases; Gestor acompanha toda a frota. O acesso inicial usa matrícula como usuário e senha.</p></div><div class="vehicle-actions"><span class="chip ok">${registered.length} cadastrados</span>${employeeAction}</div></div><div class="driver-grid">${registered.map(card).join("")}</div></section><section class="missing-drivers"><div class="section-action"><div><h3>Colaboradores sem matrícula</h3><p>Relação identificada na primeira tabela e ainda sem vínculo na segunda.</p></div><span class="chip grave">${missing.length} pendentes</span></div>${missing.length ? `<ul>${missing.map((name) => `<li>${esc(name)}</li>`).join("")}</ul>` : "<p>Todos os colaboradores possuem matrícula cadastrada.</p>"}</section>`;
+  panel.querySelector('[data-employee-action="new"]')?.addEventListener("click", () => openEmployeeDialog());
+  panel.querySelectorAll('[data-employee-action="edit"]').forEach((button) => button.addEventListener("click", () => {
+    const registration = button.dataset.registration || "";
+    openEmployeeDialog(employeeDatabase.find((employee) => String(employee.registration) === registration) || DRIVER_REGISTRY.find((employee) => String(employee.registration) === registration));
+  }));
+  panel.querySelectorAll('[data-employee-action="delete"]').forEach((button) => button.addEventListener("click", () => { void deactivateEmployee(button.dataset.registration || ""); }));
+  const quickEmployee = $("#quickNewEmployee");
+  if (quickEmployee) quickEmployee.onclick = (event) => { event.stopPropagation(); openEmployeeDialog(); };
+  const employeeForm = $("#employeeForm");
+  if (employeeForm) employeeForm.onsubmit = (event) => { event.preventDefault(); void saveEmployee(); };
 }
 function renderAuditLog() {
   const panel = $("#auditPanel");
@@ -1184,15 +1194,6 @@ async function requestInstall() {
     installInstructions();
   }
 }
-
-// Controles diretos do cadastro: não dependem da delegação de clique e funcionam
-// também dentro da lista que é reconstruída após cada sincronização.
-window.CHECKFROTA_OPEN_EMPLOYEE = () => openEmployeeDialog();
-window.CHECKFROTA_EDIT_EMPLOYEE = (registration) => openEmployeeDialog(
-  employeeDatabase.find((employee) => String(employee.registration) === String(registration))
-  || DRIVER_REGISTRY.find((employee) => String(employee.registration) === String(registration))
-);
-window.CHECKFROTA_DELETE_EMPLOYEE = (registration) => { void deactivateEmployee(registration); };
 
 document.addEventListener("click", (event) => {
   const target = event.target.closest("button, [data-go]"); if (!target) return;
