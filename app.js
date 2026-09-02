@@ -178,13 +178,13 @@ async function loadMasterAccess() {
     if (!managementRole) {
       sessionStorage.removeItem("checkfrota-supabase-token");
       alert("Sua conta não está autorizada para o Painel de Gestão.");
-      location.replace("gestao.html?v=158&acesso=negado");
+      location.replace("gestao.html?v=159&acesso=negado");
       return;
     }
   } catch (error) {
     console.warn("Não foi possível validar o perfil de Gestão", error);
     sessionStorage.removeItem("checkfrota-supabase-token");
-    location.replace("gestao.html?v=158&acesso=negado");
+    location.replace("gestao.html?v=159&acesso=negado");
     return;
   }
   renderControl();
@@ -685,7 +685,7 @@ function buildWhatsAppMessage(vehicle, issues, inspection) {
 function whatsappLink(phone, message) { return `https://wa.me/${phoneOnly(phone)}?text=${encodeURIComponent(message)}`; }
 function leadershipPanelUrl(baseName) {
   const base = baseName || current.baseName || "Vertical";
-  return `${location.origin}${location.pathname.replace(/[^/]*$/, "lider.html")}?v=158&base=${encodeURIComponent(base)}`;
+  return `${location.origin}${location.pathname.replace(/[^/]*$/, "lider.html")}?v=159&base=${encodeURIComponent(base)}`;
 }
 async function approvalUrl(vehicle, issues) {
   const first = issues[0] || {};
@@ -700,7 +700,7 @@ async function approvalUrl(vehicle, issues) {
   const photoUrl = await issuePhotoLink(first);
   if (photoUrl) params.set("photoUrl", photoUrl);
   if (first.photoName) params.set("photoName", first.photoName);
-  return `${location.origin}${location.pathname.replace(/[^/]*$/, "aprovacao.html")}?v=158&${params.toString()}`;
+  return `${location.origin}${location.pathname.replace(/[^/]*$/, "aprovacao.html")}?v=159&${params.toString()}`;
 }
 async function showCompletion(inspection, vehicle, issues, sendResult) {
   const severe = issues.some((issue) => issue.severity === "Grave");
@@ -716,7 +716,7 @@ async function showCompletion(inspection, vehicle, issues, sendResult) {
   const directToManagement = issues.some((issue) => issue.approvalRoute === "gestao");
   const approvalTarget = issues[0]?.basePhone || current.basePhone || data.settings.leaderPhone;
   if (directToManagement) {
-    const managementLink = `${location.origin}${location.pathname.replace(/[^/]*$/, "gestao.html")}?v=158`;
+    const managementLink = `${location.origin}${location.pathname.replace(/[^/]*$/, "gestao.html")}?v=159`;
     buttons.push(`<a href="${managementLink}" target="_blank" rel="noopener">Abrir Gestão</a>`);
   } else if (approvalTarget) {
     buttons.push(`<button type="button" class="primary-button" data-go="inicio">Concluir envio à liderança</button>`);
@@ -841,7 +841,7 @@ function sendLeaderInstall() {
   const base = $("#leaderInstallBase")?.value; const phone = BASES[base];
   if (!phone) return alert("Selecione Base Vertical, Base Horizontal ou Base Abrigo.");
   const label = LEADER_BASE_LABELS[base] || `Base ${base}`;
-  const link = `https://4lves-dev.github.io/checkfrota/instalar-lider.html?v=158&base=${encodeURIComponent(base)}`;
+  const link = `https://4lves-dev.github.io/checkfrota/instalar-lider.html?v=159&base=${encodeURIComponent(base)}`;
   const message = `*URBAM FROTAS — APLICATIVO DA LIDERANÇA*\n\nOlá, ${label}.\n\nEste é o link de instalação do painel da liderança desta base:\n${link}\n\nApós instalar, utilize o aplicativo para consultar as ocorrências e registrar a aprovação ou recusa.`;
   window.open(whatsappLink(phone, message), "_blank", "noopener");
 }
@@ -946,10 +946,10 @@ function renderDrivers() {
   if (!panel) return;
   const registered = employeeRoster().sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
   const missing = driversMissingRegistration().sort((a, b) => a.localeCompare(b, "pt-BR"));
-  const employeeAction = masterAdmin ? `<button class="add-button" id="newEmployee">+ Cadastrar colaborador</button>` : "";
+  const employeeAction = masterAdmin ? `<button class="add-button" type="button" onclick="window.CHECKFROTA_OPEN_EMPLOYEE()">+ Cadastrar colaborador</button>` : "";
   const card = (driver) => {
     const accessLevel = employeeAccessLevel(driver); const base = driver.leader_base || "";
-    const manage = masterAdmin ? `<div class="issue-actions"><button class="small-button" data-edit-employee="${esc(driver.registration)}">Editar</button><button class="small-button danger-button" data-delete-employee="${esc(driver.registration)}">Excluir</button></div>` : "";
+    const manage = masterAdmin ? `<div class="issue-actions"><button class="small-button" type="button" onclick="window.CHECKFROTA_EDIT_EMPLOYEE('${esc(driver.registration)}')">Editar</button><button class="small-button danger-button" type="button" onclick="window.CHECKFROTA_DELETE_EMPLOYEE('${esc(driver.registration)}')">Excluir</button></div>` : "";
     return `<article class="driver-row"><div><b>${esc(driver.name)}</b><span>Matrícula ${esc(driver.registration)}${driver.role ? ` · ${esc(driver.role)}` : ""}${accessLevel !== "colaborador" ? ` · <strong>${esc(ACCESS_LEVEL_LABELS[accessLevel] || accessLevel)}${accessLevel === "lider" && base ? ` — ${esc(base)}` : ""}</strong>` : ""}</span></div>${manage}</article>`;
   };
   panel.innerHTML = `<section class="driver-registry"><div class="section-action"><div><h3>Banco de colaboradores</h3><p>Defina o perfil: Líder aprova a base; Coordenador aprova as bases; Gestor acompanha toda a frota. O acesso inicial usa matrícula como usuário e senha.</p></div><div class="vehicle-actions"><span class="chip ok">${registered.length} cadastrados</span>${employeeAction}</div></div><div class="driver-grid">${registered.map(card).join("")}</div></section><section class="missing-drivers"><div class="section-action"><div><h3>Colaboradores sem matrícula</h3><p>Relação identificada na primeira tabela e ainda sem vínculo na segunda.</p></div><span class="chip grave">${missing.length} pendentes</span></div>${missing.length ? `<ul>${missing.map((name) => `<li>${esc(name)}</li>`).join("")}</ul>` : "<p>Todos os colaboradores possuem matrícula cadastrada.</p>"}</section>`;
@@ -1185,6 +1185,15 @@ async function requestInstall() {
   }
 }
 
+// Controles diretos do cadastro: não dependem da delegação de clique e funcionam
+// também dentro da lista que é reconstruída após cada sincronização.
+window.CHECKFROTA_OPEN_EMPLOYEE = () => openEmployeeDialog();
+window.CHECKFROTA_EDIT_EMPLOYEE = (registration) => openEmployeeDialog(
+  employeeDatabase.find((employee) => String(employee.registration) === String(registration))
+  || DRIVER_REGISTRY.find((employee) => String(employee.registration) === String(registration))
+);
+window.CHECKFROTA_DELETE_EMPLOYEE = (registration) => { void deactivateEmployee(registration); };
+
 document.addEventListener("click", (event) => {
   const target = event.target.closest("button, [data-go]"); if (!target) return;
   if (target.dataset.go) showScreen(target.dataset.go);
@@ -1252,7 +1261,7 @@ $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").for
 if ("serviceWorker" in navigator) window.addEventListener("load", async () => {
   let refreshedForUpdate = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => { if (!refreshedForUpdate) { refreshedForUpdate = true; location.reload(); } });
-  try { const registration = await navigator.serviceWorker.register("service-worker.js?v=158"); await registration.update(); } catch (_) {}
+  try { const registration = await navigator.serviceWorker.register("service-worker.js?v=159"); await registration.update(); } catch (_) {}
 });
 window.addEventListener("load", () => { void window.URBAMOneSignal?.initialize(); });
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
@@ -1261,7 +1270,7 @@ if (isInstalled()) document.body.classList.add("app-installed"); else window.add
 window.addEventListener("online", () => { void syncCloudOutbox().then((count) => { if (count) console.info(`${count} envio(s) pendente(s) sincronizado(s).`); }); });
 if (new URLSearchParams(location.search).get("gestao") === "1") {
   if (cloudToken()) showScreen("controle");
-  else location.replace("gestao.html?v=158");
+  else location.replace("gestao.html?v=159");
 } else { renderStart(); void syncLocalBacklog(); }
 void syncCloudOutbox();
 
