@@ -106,11 +106,15 @@ const EMPLOYEE_ROLE_BY_REGISTRATION = {
 const DRIVER_LIST_SOURCE = ["ADENILSON SILVA PEREIRA", "ALEIXO DE OLIVEIRA CEZAR", "ANDRE DE JESUS COUTINHO", "ANDRE PEREIRA DO CARMO", "CARLOS ALEXANDRE APARECIDO RAMOS", "CARLOS ROBERTO DE MORAIS FILHO", "CLAUDINEI FERNANDES TEIXEIRA", "DANIEL DOS SANTOS DE SA", "EDSON DO AMARAL DE CARVALHO", "FRANCISCO VILAMAR FERNANDES DA SILVA", "JOAO PAULO DA ROCHA", "JOAO SILVERIO DA SILVA", "JOSE RODOLFO TELES", "LUIS ANTONIO VICHI", "MARCO ALEXANDRE DE OLIVEIRA", "RENATO TARTAGLIONE FONSECA", "RODOLFO APARECIDO DA SILVA", "ROMEU CLEMENTE DE OLIVEIRA", "SAULO DE CARVALHO SILVA", "TIAGO APARECIDO DE MORAES", "VALNEI APARECIDO LIMA"];
 const driverNameKey = (name = "") => String(name).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/\s+/g, " ").trim();
 let employeeDatabase = [];
+let employeeDatabaseReady = false;
 let editingEmployeeRegistration = "";
 const driverByRegistration = (registration = "") => {
   const normalized = String(registration).replace(/\D/g, "");
   const cloudEmployee = employeeDatabase.find((entry) => String(entry.registration).replace(/\D/g, "") === normalized);
   if (cloudEmployee) return { ...cloudEmployee, registration: String(cloudEmployee.registration), name: cloudEmployee.name, role: cloudEmployee.role || "Funcionário" };
+  // A lista incorporada só atende ao primeiro uso/offline. Com o banco acessível,
+  // a fonte oficial é exclusivamente o cadastro do Supabase.
+  if (employeeDatabaseReady) return null;
   const driver = DRIVER_REGISTRY.find((entry) => entry.registration === normalized);
   return driver ? { ...driver, role: EMPLOYEE_ROLE_BY_REGISTRATION[driver.registration] || "Funcionário" } : null;
 };
@@ -127,7 +131,14 @@ let masterAdmin = false;
 const ACCESS_LEVEL_LABELS = { colaborador: "Colaborador", lider: "Líder", coordenador: "Coordenador", gestor: "Gestor" };
 const employeeAccessLevel = (employee = {}) => employee.access_level || (employee.leader ? "lider" : "colaborador");
 function employeeRoster() {
-  const combined = new Map(DRIVER_REGISTRY.map((employee) => [String(employee.registration), { ...employee, role: EMPLOYEE_ROLE_BY_REGISTRATION[employee.registration] || "Funcionário", active: true, access_level: "colaborador" }]));
+  // Após sincronizar, não misture a relação antiga do aplicativo com a base real:
+  // assim uma exclusão feita pelo Master desaparece em todos os dispositivos.
+  const combined = new Map();
+  if (!employeeDatabaseReady) {
+    DRIVER_REGISTRY.forEach((employee) => combined.set(String(employee.registration), {
+      ...employee, role: EMPLOYEE_ROLE_BY_REGISTRATION[employee.registration] || "Funcionário", active: true, access_level: "colaborador",
+    }));
+  }
   employeeDatabase.filter((employee) => employee?.active !== false).forEach((employee) => {
     const registration = String(employee.registration || "");
     if (registration) combined.set(registration, { ...(combined.get(registration) || {}), ...employee, registration });
@@ -167,13 +178,13 @@ async function loadMasterAccess() {
     if (!managementRole) {
       sessionStorage.removeItem("checkfrota-supabase-token");
       alert("Sua conta não está autorizada para o Painel de Gestão.");
-      location.replace("gestao.html?v=157&acesso=negado");
+      location.replace("gestao.html?v=158&acesso=negado");
       return;
     }
   } catch (error) {
     console.warn("Não foi possível validar o perfil de Gestão", error);
     sessionStorage.removeItem("checkfrota-supabase-token");
-    location.replace("gestao.html?v=157&acesso=negado");
+    location.replace("gestao.html?v=158&acesso=negado");
     return;
   }
   renderControl();
@@ -223,15 +234,17 @@ async function recordAuditEvent(issue, action, detail = "") {
   } catch (error) { console.warn("Evento de auditoria será registrado após aplicar a migração", error); }
 }
 async function loadEmployeeDatabase() {
-  if (!CLOUD?.url || employeeDatabase.length) return;
+  if (!CLOUD?.url || employeeDatabaseReady) return;
   try {
     // Sem login, a consulta usa a visão pública sem campos de autenticação.
     // A Gestão autenticada lê a tabela completa para poder administrar cadastros.
     const source = cloudToken() ? "fleet_employees" : "fleet_employee_directory";
     const rows = await cloudRequest(`/rest/v1/${source}?select=*&active=is.true&order=name.asc`);
-    if (!Array.isArray(rows) || !rows.length) return;
+    if (!Array.isArray(rows)) return;
     employeeDatabase = rows;
+    employeeDatabaseReady = true;
     lookupDriverRegistration();
+    renderDrivers();
     console.info(`Base de colaboradores sincronizada: ${rows.length} registro(s).`);
   } catch (error) {
     // A lista incorporada mantém a busca por matrícula funcionando até a tabela ser criada ou ficar disponível.
@@ -672,7 +685,7 @@ function buildWhatsAppMessage(vehicle, issues, inspection) {
 function whatsappLink(phone, message) { return `https://wa.me/${phoneOnly(phone)}?text=${encodeURIComponent(message)}`; }
 function leadershipPanelUrl(baseName) {
   const base = baseName || current.baseName || "Vertical";
-  return `${location.origin}${location.pathname.replace(/[^/]*$/, "lider.html")}?v=157&base=${encodeURIComponent(base)}`;
+  return `${location.origin}${location.pathname.replace(/[^/]*$/, "lider.html")}?v=158&base=${encodeURIComponent(base)}`;
 }
 async function approvalUrl(vehicle, issues) {
   const first = issues[0] || {};
@@ -687,7 +700,7 @@ async function approvalUrl(vehicle, issues) {
   const photoUrl = await issuePhotoLink(first);
   if (photoUrl) params.set("photoUrl", photoUrl);
   if (first.photoName) params.set("photoName", first.photoName);
-  return `${location.origin}${location.pathname.replace(/[^/]*$/, "aprovacao.html")}?v=157&${params.toString()}`;
+  return `${location.origin}${location.pathname.replace(/[^/]*$/, "aprovacao.html")}?v=158&${params.toString()}`;
 }
 async function showCompletion(inspection, vehicle, issues, sendResult) {
   const severe = issues.some((issue) => issue.severity === "Grave");
@@ -703,7 +716,7 @@ async function showCompletion(inspection, vehicle, issues, sendResult) {
   const directToManagement = issues.some((issue) => issue.approvalRoute === "gestao");
   const approvalTarget = issues[0]?.basePhone || current.basePhone || data.settings.leaderPhone;
   if (directToManagement) {
-    const managementLink = `${location.origin}${location.pathname.replace(/[^/]*$/, "gestao.html")}?v=157`;
+    const managementLink = `${location.origin}${location.pathname.replace(/[^/]*$/, "gestao.html")}?v=158`;
     buttons.push(`<a href="${managementLink}" target="_blank" rel="noopener">Abrir Gestão</a>`);
   } else if (approvalTarget) {
     buttons.push(`<button type="button" class="primary-button" data-go="inicio">Concluir envio à liderança</button>`);
@@ -828,7 +841,7 @@ function sendLeaderInstall() {
   const base = $("#leaderInstallBase")?.value; const phone = BASES[base];
   if (!phone) return alert("Selecione Base Vertical, Base Horizontal ou Base Abrigo.");
   const label = LEADER_BASE_LABELS[base] || `Base ${base}`;
-  const link = `https://4lves-dev.github.io/checkfrota/instalar-lider.html?v=157&base=${encodeURIComponent(base)}`;
+  const link = `https://4lves-dev.github.io/checkfrota/instalar-lider.html?v=158&base=${encodeURIComponent(base)}`;
   const message = `*URBAM FROTAS — APLICATIVO DA LIDERANÇA*\n\nOlá, ${label}.\n\nEste é o link de instalação do painel da liderança desta base:\n${link}\n\nApós instalar, utilize o aplicativo para consultar as ocorrências e registrar a aprovação ou recusa.`;
   window.open(whatsappLink(phone, message), "_blank", "noopener");
 }
@@ -991,11 +1004,15 @@ async function saveEmployee() {
 async function deactivateEmployee(registration) {
   if (!requireMasterAccess()) return;
   const employee = employeeDatabase.find((entry) => String(entry.registration) === String(registration));
-  if (!employee || !confirm(`Excluir ${employee.name} do cadastro ativo? O histórico de chamados será preservado.`)) return;
+  if (!employee || !confirm(`Excluir definitivamente ${employee.name} do banco de colaboradores? O histórico de chamados será preservado.`)) return;
   try {
-    await cloudRequest(`/rest/v1/fleet_employees?registration=eq.${encodeURIComponent(registration)}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ active: false }) });
-    employeeDatabase = employeeDatabase.filter((entry) => String(entry.registration) !== String(registration)); renderDrivers();
-  } catch (error) { alert("Não foi possível excluir o colaborador do cadastro ativo."); console.warn(error); }
+    const removed = await cloudRequest(`/rest/v1/fleet_employees?registration=eq.${encodeURIComponent(registration)}`, { method: "DELETE", headers: { Prefer: "return=representation" } });
+    if (!Array.isArray(removed) || !removed.length) throw new Error("Cadastro não encontrado no banco.");
+    employeeDatabase = employeeDatabase.filter((entry) => String(entry.registration) !== String(registration));
+    employeeDatabaseReady = true;
+    renderDrivers();
+    alert("Colaborador excluído definitivamente do banco de dados. O histórico de chamados foi preservado.");
+  } catch (error) { alert("Não foi possível excluir o colaborador do banco de dados. Tente novamente com a internet ativa."); console.warn(error); }
 }
 function saveVehicle() {
   if (!requireMasterAccess()) return;
@@ -1235,7 +1252,7 @@ $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").for
 if ("serviceWorker" in navigator) window.addEventListener("load", async () => {
   let refreshedForUpdate = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => { if (!refreshedForUpdate) { refreshedForUpdate = true; location.reload(); } });
-  try { const registration = await navigator.serviceWorker.register("service-worker.js?v=157"); await registration.update(); } catch (_) {}
+  try { const registration = await navigator.serviceWorker.register("service-worker.js?v=158"); await registration.update(); } catch (_) {}
 });
 window.addEventListener("load", () => { void window.URBAMOneSignal?.initialize(); });
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
@@ -1244,7 +1261,7 @@ if (isInstalled()) document.body.classList.add("app-installed"); else window.add
 window.addEventListener("online", () => { void syncCloudOutbox().then((count) => { if (count) console.info(`${count} envio(s) pendente(s) sincronizado(s).`); }); });
 if (new URLSearchParams(location.search).get("gestao") === "1") {
   if (cloudToken()) showScreen("controle");
-  else location.replace("gestao.html?v=157");
+  else location.replace("gestao.html?v=158");
 } else { renderStart(); void syncLocalBacklog(); }
 void syncCloudOutbox();
 
