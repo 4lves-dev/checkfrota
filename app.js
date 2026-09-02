@@ -859,9 +859,9 @@ function startDailyChecklistNotifications() {
   dailyChecklistNotificationTimer = window.setInterval(() => { renderDailyChecklistAlert(); notifyDailyChecklistIfNeeded(); void dispatchDailyChecklistAlert(); }, 60 * 1000);
 }
 function sendDailyChecklistAlert() {
-  const alert = dailyChecklistAlertContent();
-  if (!alert.missing.length) return alert("Todos os veículos cadastrados possuem checklist hoje.");
-  window.open(whatsappLink(DAILY_CHECKLIST_ALERT_PHONE, alert.message), "_blank", "noopener");
+  const dailyAlert = dailyChecklistAlertContent();
+  if (!dailyAlert.missing.length) return window.alert("Todos os veículos cadastrados possuem checklist hoje.");
+  window.open(whatsappLink(DAILY_CHECKLIST_ALERT_PHONE, dailyAlert.message), "_blank", "noopener");
 }
 function renderLeaderInstallTarget() {
   const select = $("#leaderInstallBase"); const hint = $("#leaderInstallHint");
