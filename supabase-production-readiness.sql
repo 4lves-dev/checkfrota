@@ -39,20 +39,26 @@ create index if not exists fleet_issues_created_at_idx on public.fleet_issues (c
 create index if not exists fleet_issues_status_idx on public.fleet_issues (status);
 
 -- Necessária para o colaborador receber retificação ou recusa no próprio app.
-create or replace function public.fleet_driver_returns(p_registration text, p_phone text)
+-- O DROP evita erro caso já exista uma versão antiga da função.
+drop function if exists public.fleet_driver_returns(text,text);
+create function public.fleet_driver_returns(p_registration text, p_phone text)
 returns table (data jsonb)
-language sql security definer set search_path = public
-as $$
+language plpgsql
+security definer
+set search_path = public
+as $fn$
+begin
+  return query
   select issue.data
-  from public.fleet_issues issue
+  from public.fleet_issues as issue
   where coalesce(issue.data ->> 'driverRegistration','') = coalesce(p_registration,'')
-    and regexp_replace(coalesce(issue.data ->> 'driverPhone',''), '\\D', '', 'g')
-        = regexp_replace(coalesce(p_phone,''), '\\D', '', 'g')
-    and coalesce(issue.data -> 'leaderApproval' ->> 'status','')
-        in ('Retificação solicitada','Recusada')
+    and regexp_replace(coalesce(issue.data ->> 'driverPhone',''), '[^0-9]', '', 'g') =
+        regexp_replace(coalesce(p_phone,''), '[^0-9]', '', 'g')
+    and coalesce(issue.data -> 'leaderApproval' ->> 'status','') in ('Retificação solicitada','Recusada')
   order by issue.created_at desc
   limit 30;
-$$;
+end;
+$fn$;
 revoke all on function public.fleet_driver_returns(text,text) from public;
 grant execute on function public.fleet_driver_returns(text,text) to anon, authenticated;
 
