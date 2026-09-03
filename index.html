@@ -12,7 +12,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icons/icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=165" />
+    <link rel="stylesheet" href="styles.css?v=166" />
     <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
     <style>#installBanner[hidden] { display: none !important; }</style>
     <title>URBAM Frotas</title>
@@ -26,8 +26,8 @@
           <small class="brand-credit">por <span class="luchti-signature">LUCHTI ME</span></small>
         </a>
         <div class="header-actions">
-          <a class="management-access" href="gestao.html?v=165" title="Acesso à Gestão da Frota" aria-label="Acesso à Gestão da Frota"><span aria-hidden="true">▦</span> Gestão</a>
-          <a class="management-access" href="lider.html?v=165" title="Acesso ao painel da Liderança" aria-label="Acesso ao painel da Liderança"><span aria-hidden="true">✓</span> Liderança</a>
+          <a class="management-access" href="gestao.html?v=166" title="Acesso à Gestão da Frota" aria-label="Acesso à Gestão da Frota"><span aria-hidden="true">▦</span> Gestão</a>
+          <a class="management-access" href="lider.html?v=166" title="Acesso ao painel da Liderança" aria-label="Acesso ao painel da Liderança"><span aria-hidden="true">✓</span> Liderança</a>
           <button class="install-button" id="enablePushNotifications" type="button" title="Ativar avisos no celular">🔔 <span>Avisos</span></button>
           <button class="install-button" id="installApp" title="Instalar no celular">⇩ <span>Instalar</span></button>
         </div>
@@ -172,7 +172,7 @@
       <form method="dialog" id="issueForm">
         <div class="dialog-head">
           <div><p class="eyebrow">OCORRÊNCIA</p><h2 id="issueItemName">Item</h2></div>
-          <button class="icon-button" value="cancel" aria-label="Fechar">×</button>
+          <button class="icon-button" value="cancel" formnovalidate aria-label="Fechar">×</button>
         </div>
         <p class="dialog-copy">Descreva o problema e escolha a gravidade. A base será avisada ao concluir o checklist.</p>
         <label for="issueSeverity">Gravidade</label>
@@ -192,7 +192,7 @@
 
     <dialog id="vehicleDialog" class="issue-dialog">
       <form method="dialog" id="vehicleForm">
-        <div class="dialog-head"><div><p class="eyebrow">CADASTRO</p><h2 id="vehicleDialogTitle">Novo veículo</h2></div><button class="icon-button" value="cancel" aria-label="Fechar">×</button></div>
+        <div class="dialog-head"><div><p class="eyebrow">CADASTRO</p><h2 id="vehicleDialogTitle">Novo veículo</h2></div><button class="icon-button" value="cancel" formnovalidate aria-label="Fechar">×</button></div>
         <input type="hidden" id="editVehicleId" />
         <label for="vehiclePrefix">Prefixo</label><input id="vehiclePrefix" required inputmode="numeric" placeholder="Ex.: 1446" />
         <label for="vehiclePlate">Placa / identificação</label><input id="vehiclePlate" required placeholder="ABC1D23" />
@@ -211,7 +211,7 @@
 
     <dialog id="employeeDialog" class="issue-dialog">
       <form method="dialog" id="employeeForm">
-        <div class="dialog-head"><div><p class="eyebrow">BANCO DE COLABORADORES</p><h2 id="employeeDialogTitle">Novo colaborador</h2></div><button class="icon-button" value="cancel" aria-label="Fechar">×</button></div>
+        <div class="dialog-head"><div><p class="eyebrow">BANCO DE COLABORADORES</p><h2 id="employeeDialogTitle">Novo colaborador</h2></div><button class="icon-button" value="cancel" formnovalidate aria-label="Fechar">×</button></div>
         <p class="dialog-copy">A matrícula preencherá automaticamente o nome e a função no checklist.</p>
         <label for="employeeRegistration">Matrícula</label><input id="employeeRegistration" required inputmode="numeric" placeholder="Ex.: 12345" />
         <label for="employeeName">Nome completo</label><input id="employeeName" required placeholder="Nome do colaborador" />
@@ -224,7 +224,7 @@
 
     <dialog id="settingsDialog" class="issue-dialog">
       <form method="dialog" id="settingsForm">
-        <div class="dialog-head"><div><p class="eyebrow">INTEGRAÇÃO</p><h2>Configurações</h2></div><button class="icon-button" value="cancel" aria-label="Fechar">×</button></div>
+        <div class="dialog-head"><div><p class="eyebrow">INTEGRAÇÃO</p><h2>Configurações</h2></div><button class="icon-button" value="cancel" formnovalidate aria-label="Fechar">×</button></div>
         <p class="dialog-copy">Cole a URL do seu fluxo do Power Automate, Make ou Apps Script. Ele receberá o formulário e poderá enviar o e-mail automático.</p>
         <label for="webhookUrl">URL de envio do formulário</label>
         <input id="webhookUrl" type="url" placeholder="https://..." />
@@ -242,7 +242,7 @@
 
     <dialog id="maintenanceDialog" class="issue-dialog">
       <form method="dialog" id="maintenanceForm">
-        <div class="dialog-head"><div><p class="eyebrow">MANUTENÇÃO</p><h2 id="maintenanceDialogTitle">Retorno da manutenção</h2></div><button class="icon-button" value="cancel" aria-label="Fechar">×</button></div>
+        <div class="dialog-head"><div><p class="eyebrow">MANUTENÇÃO</p><h2 id="maintenanceDialogTitle">Retorno da manutenção</h2></div><button class="icon-button" value="cancel" formnovalidate aria-label="Fechar">×</button></div>
         <input type="hidden" id="maintenanceIssueId" />
         <p class="dialog-copy" id="maintenanceIssueSummary"></p>
         <label for="maintenanceStatus">Situação da manutenção</label>
@@ -277,9 +277,9 @@
 
     <template id="emptyStateTemplate"><div class="empty-state"><span>⌁</span><p>Nenhum registro por aqui.</p></div></template>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script src="supabase-config.js?v=165"></script>
-    <script src="onesignal.js?v=165"></script>
-    <script src="app.js?v=165"></script>
+    <script src="supabase-config.js?v=166"></script>
+    <script src="onesignal.js?v=166"></script>
+    <script src="app.js?v=166"></script>
   </body>
 </html>
 
