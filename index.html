@@ -1,22 +1,20 @@
-<!doctype html>
-<html lang="pt-BR">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0f2a43" />
-    <meta name="description" content="URBAM Frotas: checklist e ocorrências de veículos." />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="URBAM Frotas" />
-    <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
-    <link rel="apple-touch-icon" href="icons/icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=169" />
-    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+<html lang="pt-BR"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#0f2a43">
+    <meta name="description" content="URBAM Frotas: checklist e ocorrências de veículos.">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="URBAM Frotas">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="icons/icon.svg">
+    <link rel="stylesheet" href="styles.css?v=170">
+    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer=""></script>
     <style>#installBanner[hidden] { display: none !important; }</style>
     <title>URBAM Frotas</title>
-  </head>
+  <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.es6.js?v=160609" defer=""></script></head>
   <body>
     <div class="app-shell">
       <header class="topbar">
@@ -26,11 +24,11 @@
           <small class="brand-credit">por <span class="luchti-signature">LUCHTI ME</span></small>
         </a>
         <div class="header-actions">
-          <a class="management-access" href="gestao.html?v=169" title="Acesso à Gestão da Frota" aria-label="Acesso à Gestão da Frota"><span aria-hidden="true">▦</span> Gestão</a>
-          <a class="management-access" href="lider.html?v=169" title="Acesso ao painel da Liderança" aria-label="Acesso ao painel da Liderança"><span aria-hidden="true">✓</span> Liderança</a>
+          <a class="management-access" href="gestao.html?v=170" title="Acesso à Gestão da Frota" aria-label="Acesso à Gestão da Frota"><span aria-hidden="true">▦</span> Gestão</a>
+          <a class="management-access" href="lider.html?v=170" title="Acesso ao painel da Liderança" aria-label="Acesso ao painel da Liderança"><span aria-hidden="true">✓</span> Liderança</a>
           <button class="install-button" id="enablePushNotifications" type="button" title="Ativar avisos no celular">🔔 <span>Avisos</span></button>
           <button class="install-button" id="installApp" title="Instalar no celular">⇩ <span>Instalar</span></button>
-        </div><span class="sync-status" id="cloudSyncStatus" aria-live="polite">Verificando sincronização...</span>
+        </div><span class="sync-status" id="cloudSyncStatus" aria-live="polite" data-state="ok">✓ Sincronizado</span>
       </header>
 
       <main>
@@ -47,35 +45,35 @@
             <span class="install-card-arrow">›</span>
           </button>
 
-          <section id="returnNotifications" class="return-notifications" hidden aria-live="polite"></section>
+          <section id="returnNotifications" class="return-notifications" hidden="" aria-live="polite"></section>
 
           <div class="card driver-card">
             <label for="driverRegistration">Matrícula do colaborador</label>
-            <input id="driverRegistration" type="text" inputmode="numeric" placeholder="Ex.: 12345" autocomplete="off" required />
-            <p class="helper" id="driverLookupHint">Digite a matrícula para localizar o nome do colaborador.</p>
+            <input id="driverRegistration" type="text" inputmode="numeric" placeholder="Ex.: 12345" autocomplete="off" required="">
+            <p class="helper ok" id="driverLookupHint">Colaborador localizado: LUCIANO ALVES DA SILVA.</p>
             <label for="driverName">Nome do colaborador</label>
-            <input id="driverName" type="text" placeholder="O nome será preenchido pela matrícula" autocomplete="name" readonly />
+            <input id="driverName" type="text" placeholder="O nome será preenchido pela matrícula" autocomplete="name" readonly="">
             <label for="driverRole">Função</label>
-            <input id="driverRole" type="text" placeholder="A função será preenchida pela matrícula" readonly />
+            <input id="driverRole" type="text" placeholder="A função será preenchida pela matrícula" readonly="">
             <label for="driverPhone">WhatsApp do colaborador</label>
-            <input id="driverPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="Ex.: (12) 98888-7777" required />
+            <input id="driverPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="Ex.: (12) 98888-7777" required="">
             <p class="helper">Este número identifica quem abriu o chamado e será usado para devoluções da liderança.</p>
             <button type="button" class="small-button" id="enableReturnNotifications">🔔 Ativar avisos neste celular</button>
             <div class="fixed-email-copy"><b>Cópia automática do checklist</b><span>urbamfrota@gmail.com</span><small>O formulário será enviado automaticamente para este e-mail após a conclusão.</small></div>
             <label for="baseSelect">Base responsável pela aprovação</label>
             <select id="baseSelect"><option value="">Selecione a base</option><option value="Vertical">Base Vertical / Segurança / Elétrica — (12) 98156-7218</option><option value="Abrigo">Base Abrigo / Manutenção / Linha Verde / Lavagem — (12) 99788-4887</option><option value="Horizontal">Base Horizontal — (12) 98840-0697</option><option value="SASC">SASC / Gestão</option><option value="Gestão">Gestão de Contratos</option></select>
-            <p class="helper" id="basePhone"></p>
+            <p class="helper" id="basePhone">Telefone da Base Vertical: (12) 98156-7218</p>
             <p class="helper"><b>Selecione a base:</b> serão mostrados somente os veículos vinculados.</p>
             <label for="vehicleSelect">Veículo que vai utilizar</label>
-            <select id="vehicleSelect" aria-label="Escolha o veículo"></select>
+            <select id="vehicleSelect" aria-label="Escolha o veículo"><option value="">Selecione o veículo</option><option value="v1446">Prefixo 1446 · SHR7161 · Onix</option><option value="v1456">Prefixo 1456 · SHR7I28 · Furgão Peugeot</option><option value="v1484">Prefixo 1484 · TEW4C59 · VUC</option><option value="v1969">Prefixo 1969 · UDR0F38 · Caminhão plataforma</option><option value="v1919">Prefixo 1919 · TXF5B12 · Caminhão 3/4 com cabine suplementar e cesto aéreo</option><option value="v1084">Prefixo 1084 · FVY2G68 · Caminhão guindauto cesto</option></select>
             <label for="odometer">Quilometragem atual (km)</label>
-            <input id="odometer" type="number" min="0" step="1" inputmode="numeric" placeholder="Ex.: 125480" />
+            <input id="odometer" type="number" min="0" step="1" inputmode="numeric" placeholder="Ex.: 125480">
             <p class="helper" id="vehicleOwner"></p>
             <button class="primary-button" id="startChecklist">Iniciar checklist <span>→</span></button>
           </div>
 
           <section class="quick-status" aria-label="Resumo da frota">
-            <div><span id="dailyDone">0</span><small>checklists hoje</small></div>
+            <div><span id="dailyDone">3</span><small>checklists hoje</small></div>
             <div><span id="openIssues">0</span><small>ocorrências abertas</small></div>
           </section>
 
@@ -129,8 +127,8 @@
             <button class="back-button" data-go="inicio">←</button>
             <div><p class="eyebrow">PAINEL DA BASE</p><h1>Controle da frota</h1></div>
           </div>
-          <button class="base-settings-button" id="openSettings" data-master-only hidden>⚙ Configurações da base</button>
-          <section class="management-quick-actions" data-master-only hidden aria-label="Ações rápidas da gestão"><button class="add-button" id="quickNewVehicle">+ Veículo ou caminhão</button><button class="add-button" id="quickNewEmployee">+ Colaborador</button></section>
+          <button class="base-settings-button" id="openSettings" data-master-only="" hidden="">⚙ Configurações da base</button>
+          <section class="management-quick-actions" data-master-only="" hidden="" aria-label="Ações rápidas da gestão"><button class="add-button" id="quickNewVehicle">+ Veículo ou caminhão</button><button class="add-button" id="quickNewEmployee">+ Colaborador</button></section>
           <section class="leader-install-card" aria-labelledby="leaderInstallTitle">
             <div>
               <p class="eyebrow">LIDERANÇA</p>
@@ -150,7 +148,7 @@
           </section>
           <div class="stat-grid"><article><span id="fleetCount">0</span><small>veículos</small></article><article class="alert"><span id="seriousCount">0</span><small>graves</small></article><article><span id="weekChecks">0</span><small>checklists (7 dias)</small></article></div>
           <section class="storage-indicator" id="storageIndicator" aria-live="polite"></section>
-          <section class="daily-checklist-alert" id="dailyChecklistAlert" hidden aria-live="polite"></section>
+          <section class="daily-checklist-alert" id="dailyChecklistAlert" hidden="" aria-live="polite"></section>
           <section class="notification-setting" aria-labelledby="notificationTitle"><div><b id="notificationTitle">Notificação diária no computador</b><p id="notificationStatus">Ative para receber o aviso de veículos sem checklist após as 08h.</p></div><button type="button" class="small-button" id="enableDailyNotifications">🔔 Ativar notificações</button></section>
           <section id="managementCommandCenter" class="management-command-center" aria-label="Central de pendências"></section>
           <div class="tabs" role="tablist"><button class="tab active" data-tab="issues">Ocorrências</button><button class="tab" data-tab="reports">Relatório</button><button class="tab" data-tab="history">Histórico</button><button class="tab" data-tab="vehicles">Veículos</button><button class="tab" data-tab="drivers">Colaboradores</button><button class="tab" data-tab="audit">Auditoria</button></div>
@@ -161,7 +159,7 @@
       <footer class="app-credit" aria-label="Créditos do aplicativo">Desenvolvido por <span class="luchti-signature">LUCHTI ME</span></footer>
     </div>
 
-    <div class="install-banner" id="installBanner" hidden>
+    <div class="install-banner" id="installBanner">
       <div class="install-banner-icon">✓</div>
       <div><strong>Instale o URBAM Frotas</strong><p>Tenha acesso rápido na tela inicial, como um aplicativo.</p></div>
       <button class="small-button" id="installBannerButton">Instalar</button>
@@ -172,7 +170,7 @@
       <form method="dialog" id="issueForm">
         <div class="dialog-head">
           <div><p class="eyebrow">OCORRÊNCIA</p><h2 id="issueItemName">Item</h2></div>
-          <button class="icon-button" value="cancel" formnovalidate aria-label="Fechar">×</button>
+          <button class="icon-button" value="cancel" formnovalidate="" aria-label="Fechar">×</button>
         </div>
         <p class="dialog-copy">Descreva o problema e escolha a gravidade. A base será avisada ao concluir o checklist.</p>
         <label for="issueSeverity">Gravidade</label>
@@ -182,9 +180,9 @@
           <button type="button" data-severity="Grave" class="severity grave"><b>Grave</b><small>Não pode se deslocar</small></button>
         </div>
         <label for="issueDescription">O que foi encontrado?</label>
-        <textarea id="issueDescription" required placeholder="Ex.: pneu dianteiro direito com corte lateral"></textarea>
+        <textarea id="issueDescription" required="" placeholder="Ex.: pneu dianteiro direito com corte lateral"></textarea>
         <label for="issuePhoto">Foto <em>opcional</em></label>
-        <input id="issuePhoto" type="file" accept="image/jpeg,image/png,image/webp,image/heic" capture="environment" />
+        <input id="issuePhoto" type="file" accept="image/jpeg,image/png,image/webp,image/heic" capture="environment">
         <p class="helper">Somente fotos de até 20 MB. Vídeos não são aceitos; fotos grandes são reduzidas automaticamente antes do envio.</p>
         <button class="primary-button" id="saveIssue" value="default">Salvar ocorrência</button>
       </form>
@@ -192,74 +190,74 @@
 
     <dialog id="vehicleDialog" class="issue-dialog">
       <form method="dialog" id="vehicleForm">
-        <div class="dialog-head"><div><p class="eyebrow">CADASTRO</p><h2 id="vehicleDialogTitle">Novo veículo</h2></div><button class="icon-button" value="cancel" formnovalidate aria-label="Fechar">×</button></div>
-        <input type="hidden" id="editVehicleId" />
-        <label for="vehiclePrefix">Prefixo</label><input id="vehiclePrefix" required inputmode="numeric" placeholder="Ex.: 1446" />
-        <label for="vehiclePlate">Placa / identificação</label><input id="vehiclePlate" required placeholder="ABC1D23" />
+        <div class="dialog-head"><div><p class="eyebrow">CADASTRO</p><h2 id="vehicleDialogTitle">Novo veículo</h2></div><button class="icon-button" value="cancel" formnovalidate="" aria-label="Fechar">×</button></div>
+        <input type="hidden" id="editVehicleId">
+        <label for="vehiclePrefix">Prefixo</label><input id="vehiclePrefix" required="" inputmode="numeric" placeholder="Ex.: 1446">
+        <label for="vehiclePlate">Placa / identificação</label><input id="vehiclePlate" required="" placeholder="ABC1D23">
         <label for="vehicleType">Tipo</label><select id="vehicleType"><option>Caminhão</option><option>Carro</option><option>Utilitário</option><option>Outro</option></select>
-        <label for="vehicleModel">Modelo</label><input id="vehicleModel" placeholder="Ex.: VUC" />
-        <label for="vehicleOdometer">Quilometragem atual (km)</label><input id="vehicleOdometer" type="number" min="0" step="1" inputmode="numeric" />
+        <label for="vehicleModel">Modelo</label><input id="vehicleModel" placeholder="Ex.: VUC">
+        <label for="vehicleOdometer">Quilometragem atual (km)</label><input id="vehicleOdometer" type="number" min="0" step="1" inputmode="numeric">
         <p class="dialog-copy">Dados abaixo são exclusivos da gestão e não aparecem no aplicativo do motorista.</p>
-        <label for="vehicleContract">Contrato do fornecedor</label><input id="vehicleContract" placeholder="Ex.: 066/25" />
-        <label for="vehicleUrbamContract">Contrato URBAM</label><input id="vehicleUrbamContract" placeholder="Ex.: 620/24" />
-        <label for="vehicleOwnerName">Responsável / dono</label><input id="vehicleOwnerName" required placeholder="Nome do responsável" />
-        <label for="vehicleOwnerPhone">WhatsApp do responsável</label><input id="vehicleOwnerPhone" inputmode="tel" placeholder="5512999999999" />
-        <label for="vehicleEmail">E-mail para o formulário</label><input id="vehicleEmail" type="email" placeholder="manutencao@empresa.com" />
+        <label for="vehicleContract">Contrato do fornecedor</label><input id="vehicleContract" placeholder="Ex.: 066/25">
+        <label for="vehicleUrbamContract">Contrato URBAM</label><input id="vehicleUrbamContract" placeholder="Ex.: 620/24">
+        <label for="vehicleOwnerName">Responsável / dono</label><input id="vehicleOwnerName" required="" placeholder="Nome do responsável">
+        <label for="vehicleOwnerPhone">WhatsApp do responsável</label><input id="vehicleOwnerPhone" inputmode="tel" placeholder="5512999999999">
+        <label for="vehicleEmail">E-mail para o formulário</label><input id="vehicleEmail" type="email" placeholder="manutencao@empresa.com">
         <button class="primary-button" value="default">Salvar veículo</button>
       </form>
     </dialog>
 
     <dialog id="employeeDialog" class="issue-dialog">
       <form method="dialog" id="employeeForm">
-        <div class="dialog-head"><div><p class="eyebrow">BANCO DE COLABORADORES</p><h2 id="employeeDialogTitle">Novo colaborador</h2></div><button class="icon-button" value="cancel" formnovalidate aria-label="Fechar">×</button></div>
+        <div class="dialog-head"><div><p class="eyebrow">BANCO DE COLABORADORES</p><h2 id="employeeDialogTitle">Novo colaborador</h2></div><button class="icon-button" value="cancel" formnovalidate="" aria-label="Fechar">×</button></div>
         <p class="dialog-copy">A matrícula preencherá automaticamente o nome e a função no checklist.</p>
-        <label for="employeeRegistration">Matrícula</label><input id="employeeRegistration" required inputmode="numeric" placeholder="Ex.: 12345" />
-        <label for="employeeName">Nome completo</label><input id="employeeName" required placeholder="Nome do colaborador" />
-        <label for="employeeRole">Função</label><input id="employeeRole" required placeholder="Ex.: Motorista, Monitor, Pintor" />
+        <label for="employeeRegistration">Matrícula</label><input id="employeeRegistration" required="" inputmode="numeric" placeholder="Ex.: 12345">
+        <label for="employeeName">Nome completo</label><input id="employeeName" required="" placeholder="Nome do colaborador">
+        <label for="employeeRole">Função</label><input id="employeeRole" required="" placeholder="Ex.: Motorista, Monitor, Pintor">
         <label for="employeeAccessLevel">Perfil de acesso no aplicativo</label><select id="employeeAccessLevel"><option value="colaborador">Colaborador — apenas checklist</option><option value="lider">Líder — aprova a própria base</option><option value="coordenador">Coordenador — acompanha e aprova todas as bases</option><option value="gestor">Gestor — acompanha toda a frota, inclusive encaminhamentos diretos</option></select>
-        <label id="employeeLeaderBaseField" hidden for="employeeLeaderBase">Base que o líder poderá aprovar</label><select id="employeeLeaderBase" hidden><option value="">Selecione a base</option><option value="Vertical">Base Vertical</option><option value="Horizontal">Base Horizontal</option><option value="Abrigo">Base Abrigo</option><option value="SASC">SASC</option></select>
+        <label id="employeeLeaderBaseField" hidden="" for="employeeLeaderBase">Base que o líder poderá aprovar</label><select id="employeeLeaderBase" hidden=""><option value="">Selecione a base</option><option value="Vertical">Base Vertical</option><option value="Horizontal">Base Horizontal</option><option value="Abrigo">Base Abrigo</option><option value="SASC">SASC</option></select>
         <button class="primary-button" value="default">Salvar colaborador no banco</button>
       </form>
     </dialog>
 
     <dialog id="settingsDialog" class="issue-dialog">
       <form method="dialog" id="settingsForm">
-        <div class="dialog-head"><div><p class="eyebrow">INTEGRAÇÃO</p><h2>Configurações</h2></div><button class="icon-button" value="cancel" formnovalidate aria-label="Fechar">×</button></div>
+        <div class="dialog-head"><div><p class="eyebrow">INTEGRAÇÃO</p><h2>Configurações</h2></div><button class="icon-button" value="cancel" formnovalidate="" aria-label="Fechar">×</button></div>
         <p class="dialog-copy">Cole a URL do seu fluxo do Power Automate, Make ou Apps Script. Ele receberá o formulário e poderá enviar o e-mail automático.</p>
         <label for="webhookUrl">URL de envio do formulário</label>
-        <input id="webhookUrl" type="url" placeholder="https://..." />
+        <input id="webhookUrl" type="url" placeholder="https://...">
         <label for="maintenancePhone">WhatsApp da manutenção / base</label>
-        <input id="maintenancePhone" inputmode="tel" placeholder="5512988400316" />
+        <input id="maintenancePhone" inputmode="tel" placeholder="5512988400316">
         <label for="maintenanceGroupPhone">WhatsApp do grupo de manutenção / responsável pelo grupo</label>
-        <input id="maintenanceGroupPhone" inputmode="tel" placeholder="5512999999999" />
+        <input id="maintenanceGroupPhone" inputmode="tel" placeholder="5512999999999">
         <label for="leaderPhone">WhatsApp do líder aprovador</label>
-        <input id="leaderPhone" inputmode="tel" placeholder="5512999999999" />
+        <input id="leaderPhone" inputmode="tel" placeholder="5512999999999">
         <label for="fleetManagerPhone">WhatsApp do gestor de frota</label>
-        <input id="fleetManagerPhone" inputmode="tel" placeholder="5512999999999" />
+        <input id="fleetManagerPhone" inputmode="tel" placeholder="5512999999999">
         <button class="primary-button" value="default">Salvar configurações</button>
       </form>
     </dialog>
 
     <dialog id="maintenanceDialog" class="issue-dialog">
       <form method="dialog" id="maintenanceForm">
-        <div class="dialog-head"><div><p class="eyebrow">MANUTENÇÃO</p><h2 id="maintenanceDialogTitle">Retorno da manutenção</h2></div><button class="icon-button" value="cancel" formnovalidate aria-label="Fechar">×</button></div>
-        <input type="hidden" id="maintenanceIssueId" />
+        <div class="dialog-head"><div><p class="eyebrow">MANUTENÇÃO</p><h2 id="maintenanceDialogTitle">Retorno da manutenção</h2></div><button class="icon-button" value="cancel" formnovalidate="" aria-label="Fechar">×</button></div>
+        <input type="hidden" id="maintenanceIssueId">
         <p class="dialog-copy" id="maintenanceIssueSummary"></p>
         <label for="maintenanceStatus">Situação da manutenção</label>
         <select id="maintenanceStatus"><option>Solicitada</option><option>Pendente</option><option>Aguardando aprovação</option><option>Agendada</option><option>Em execução</option><option>Em manutenção</option><option>Aguardando peça</option><option>Veículo pronto para retirada</option><option>Concluída</option><option>Cancelada</option></select>
         <label for="maintenanceScheduledAt">Data e horário agendados <em>opcional</em></label>
-        <input id="maintenanceScheduledAt" type="datetime-local" />
+        <input id="maintenanceScheduledAt" type="datetime-local">
         <label for="maintenanceProvider">Oficina / responsável <em>opcional</em></label>
-        <input id="maintenanceProvider" placeholder="Ex.: Oficina Central" />
+        <input id="maintenanceProvider" placeholder="Ex.: Oficina Central">
         <label for="maintenanceAddress">Endereço da oficina <em>opcional</em></label>
-        <input id="maintenanceAddress" placeholder="Rua, número, bairro, cidade" />
+        <input id="maintenanceAddress" placeholder="Rua, número, bairro, cidade">
         <button type="button" class="secondary-button" id="openMaintenanceMap">📍 Buscar oficina no mapa</button>
         <label for="maintenanceService">Serviço executado / previsto <em>obrigatório ao liberar veículo</em></label>
         <textarea id="maintenanceService" placeholder="Ex.: troca de pneu dianteiro e alinhamento."></textarea>
         <label for="maintenanceCost">Custo da manutenção (R$) <em>opcional</em></label>
-        <input id="maintenanceCost" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Ex.: 350,00" />
+        <input id="maintenanceCost" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Ex.: 350,00">
         <label for="maintenanceReturnAt">Previsão de retorno <em>opcional</em></label>
-        <input id="maintenanceReturnAt" type="datetime-local" />
+        <input id="maintenanceReturnAt" type="datetime-local">
         <label for="maintenanceFeedback">Retorno para ciência do grupo de manutenção</label>
         <textarea id="maintenanceFeedback" placeholder="Ex.: manutenção confirmada para terça, às 08h."></textarea>
         <button type="button" class="secondary-button" id="sendMaintenanceUpdate">Enviar retorno de agendamento ao grupo</button>
@@ -277,9 +275,10 @@
 
     <template id="emptyStateTemplate"><div class="empty-state"><span>⌁</span><p>Nenhum registro por aqui.</p></div></template>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script src="supabase-config.js?v=169"></script>
-    <script src="onesignal.js?v=169"></script>
-    <script src="app.js?v=169"></script>
-  </body>
-</html>
+    <script src="supabase-config.js?v=170"></script>
+    <script src="onesignal.js?v=170"></script>
+    <script src="app.js?v=170"></script>
+  
 
+
+</body><div id="codex-browser-sidebar-comments-root" style="position: fixed; inset: 0px; pointer-events: none; z-index: 2147483647;"></div></html>
