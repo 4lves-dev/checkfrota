@@ -1,6 +1,7 @@
 /* URBAM Frota - MVP local-first. Dados ficam neste navegador até uma integração ser configurada. */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
+const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v165";
 const CHECKLIST = [
   ["pneus", "Pneus e estepe", "Rodagem"],
   ["luzes", "Faróis, lanternas e setas", "Elétrica"],
@@ -131,6 +132,7 @@ let selectedVehicleHistoryId = "";
 let masterAdmin = false;
 let managementCloudLoaded = false;
 const ACCESS_LEVEL_LABELS = { colaborador: "Colaborador", lider: "Líder", coordenador: "Coordenador", gestor: "Gestor" };
+const MASTER_EMPLOYEE_REGISTRATIONS = new Set(["23135"]);
 const employeeAccessLevel = (employee = {}) => employee.access_level || (employee.leader ? "lider" : "colaborador");
 function employeeRoster() {
   // Após sincronizar, não misture a relação antiga do aplicativo com a base real:
@@ -180,13 +182,13 @@ async function loadMasterAccess() {
     if (!managementRole) {
       sessionStorage.removeItem("checkfrota-supabase-token");
       alert("Sua conta não está autorizada para o Painel de Gestão.");
-      location.replace("gestao.html?v=164&acesso=negado");
+      location.replace("gestao.html?v=165&acesso=negado");
       return;
     }
   } catch (error) {
     console.warn("Não foi possível validar o perfil de Gestão", error);
     sessionStorage.removeItem("checkfrota-supabase-token");
-    location.replace("gestao.html?v=164&acesso=negado");
+    location.replace("gestao.html?v=165&acesso=negado");
     return;
   }
   renderControl();
@@ -424,6 +426,14 @@ function loadData() {
   try {
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
     if (!stored) { const initial = structuredClone(initialData); initial.vehicles = initial.vehicles.map(withFleetResponsible); return initial; }
+    // Limpeza solicitada para reiniciar os testes: registros e fila antigos não podem
+    // reaparecer no banco ao abrir outro celular.
+    if (localStorage.getItem(LOCAL_DATA_RESET_KEY) !== "v165") {
+      stored.issues = [];
+      stored.inspections = [];
+      localStorage.setItem(OUTBOX_KEY, "[]");
+      localStorage.setItem(LOCAL_DATA_RESET_KEY, "v165");
+    }
     // Atualiza aparelhos que ainda guardam os três veículos de demonstração,
     // preservando veículos reais já cadastrados manualmente pela base.
     const storedVehicles = Array.isArray(stored.vehicles) ? stored.vehicles : [];
@@ -688,7 +698,7 @@ function buildWhatsAppMessage(vehicle, issues, inspection) {
 function whatsappLink(phone, message) { return `https://wa.me/${phoneOnly(phone)}?text=${encodeURIComponent(message)}`; }
 function leadershipPanelUrl(baseName) {
   const base = baseName || current.baseName || "Vertical";
-  return `${location.origin}${location.pathname.replace(/[^/]*$/, "lider.html")}?v=164&base=${encodeURIComponent(base)}`;
+  return `${location.origin}${location.pathname.replace(/[^/]*$/, "lider.html")}?v=165&base=${encodeURIComponent(base)}`;
 }
 async function approvalUrl(vehicle, issues) {
   const first = issues[0] || {};
@@ -703,7 +713,7 @@ async function approvalUrl(vehicle, issues) {
   const photoUrl = await issuePhotoLink(first);
   if (photoUrl) params.set("photoUrl", photoUrl);
   if (first.photoName) params.set("photoName", first.photoName);
-  return `${location.origin}${location.pathname.replace(/[^/]*$/, "aprovacao.html")}?v=164&${params.toString()}`;
+  return `${location.origin}${location.pathname.replace(/[^/]*$/, "aprovacao.html")}?v=165&${params.toString()}`;
 }
 async function showCompletion(inspection, vehicle, issues, sendResult) {
   const severe = issues.some((issue) => issue.severity === "Grave");
@@ -719,7 +729,7 @@ async function showCompletion(inspection, vehicle, issues, sendResult) {
   const directToManagement = issues.some((issue) => issue.approvalRoute === "gestao");
   const approvalTarget = issues[0]?.basePhone || current.basePhone || data.settings.leaderPhone;
   if (directToManagement) {
-    const managementLink = `${location.origin}${location.pathname.replace(/[^/]*$/, "gestao.html")}?v=164`;
+    const managementLink = `${location.origin}${location.pathname.replace(/[^/]*$/, "gestao.html")}?v=165`;
     buttons.push(`<a href="${managementLink}" target="_blank" rel="noopener">Abrir Gestão</a>`);
   } else if (approvalTarget) {
     buttons.push(`<button type="button" class="primary-button" data-go="inicio">Concluir envio à liderança</button>`);
@@ -875,7 +885,7 @@ function sendLeaderInstall() {
   const base = $("#leaderInstallBase")?.value; const phone = BASES[base];
   if (!phone) return alert("Selecione Base Vertical, Base Horizontal ou Base Abrigo.");
   const label = LEADER_BASE_LABELS[base] || `Base ${base}`;
-  const link = `https://4lves-dev.github.io/checkfrota/instalar-lider.html?v=164&base=${encodeURIComponent(base)}`;
+  const link = `https://4lves-dev.github.io/checkfrota/instalar-lider.html?v=165&base=${encodeURIComponent(base)}`;
   const message = `*URBAM FROTAS — APLICATIVO DA LIDERANÇA*\n\nOlá, ${label}.\n\nEste é o link de instalação do painel da liderança desta base:\n${link}\n\nApós instalar, utilize o aplicativo para consultar as ocorrências e registrar a aprovação ou recusa.`;
   window.open(whatsappLink(phone, message), "_blank", "noopener");
 }
@@ -983,8 +993,9 @@ function renderDrivers() {
   const employeeAction = masterAdmin ? `<button class="add-button" type="button" data-employee-action="new">+ Cadastrar colaborador</button>` : "";
   const card = (driver) => {
     const accessLevel = employeeAccessLevel(driver); const base = driver.leader_base || "";
+    const isMaster = MASTER_EMPLOYEE_REGISTRATIONS.has(String(driver.registration || ""));
     const manage = masterAdmin ? `<div class="issue-actions"><button class="small-button" type="button" data-employee-action="edit" data-registration="${esc(driver.registration)}">Editar</button><button class="small-button danger-button" type="button" data-employee-action="delete" data-registration="${esc(driver.registration)}">Excluir</button></div>` : "";
-    return `<article class="driver-row"><div><b>${esc(driver.name)}</b><span>Matrícula ${esc(driver.registration)}${driver.role ? ` · ${esc(driver.role)}` : ""}${accessLevel !== "colaborador" ? ` · <strong>${esc(ACCESS_LEVEL_LABELS[accessLevel] || accessLevel)}${accessLevel === "lider" && base ? ` — ${esc(base)}` : ""}</strong>` : ""}</span></div>${manage}</article>`;
+    return `<article class="driver-row"><div><b>${esc(driver.name)}</b><span>Matrícula ${esc(driver.registration)}${driver.role ? ` · ${esc(driver.role)}` : ""}${isMaster ? " · <strong>Administrador Master</strong>" : ""}${accessLevel !== "colaborador" ? ` · <strong>${esc(ACCESS_LEVEL_LABELS[accessLevel] || accessLevel)}${accessLevel === "lider" && base ? ` — ${esc(base)}` : ""}</strong>` : ""}</span></div>${manage}</article>`;
   };
   panel.innerHTML = `<section class="driver-registry"><div class="section-action"><div><h3>Banco de colaboradores</h3><p>Defina o perfil: Líder aprova a base; Coordenador aprova as bases; Gestor acompanha toda a frota. O acesso inicial usa matrícula como usuário e senha.</p></div><div class="vehicle-actions"><span class="chip ok">${registered.length} cadastrados</span>${employeeAction}</div></div><div class="driver-grid">${registered.map(card).join("")}</div></section><section class="missing-drivers"><div class="section-action"><div><h3>Colaboradores sem matrícula</h3><p>Relação identificada na primeira tabela e ainda sem vínculo na segunda.</p></div><span class="chip grave">${missing.length} pendentes</span></div>${missing.length ? `<ul>${missing.map((name) => `<li>${esc(name)}</li>`).join("")}</ul>` : "<p>Todos os colaboradores possuem matrícula cadastrada.</p>"}</section>`;
   panel.querySelector('[data-employee-action="new"]')?.addEventListener("click", () => openEmployeeDialog());
@@ -1297,7 +1308,7 @@ $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").for
 if ("serviceWorker" in navigator) window.addEventListener("load", async () => {
   let refreshedForUpdate = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => { if (!refreshedForUpdate) { refreshedForUpdate = true; location.reload(); } });
-  try { const registration = await navigator.serviceWorker.register("service-worker.js?v=164"); await registration.update(); } catch (_) {}
+  try { const registration = await navigator.serviceWorker.register("service-worker.js?v=165"); await registration.update(); } catch (_) {}
 });
 window.addEventListener("load", () => { void window.URBAMOneSignal?.initialize(); });
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
@@ -1306,7 +1317,7 @@ if (isInstalled()) document.body.classList.add("app-installed"); else window.add
 window.addEventListener("online", () => { void syncCloudOutbox().then((count) => { if (count) console.info(`${count} envio(s) pendente(s) sincronizado(s).`); }); });
 if (new URLSearchParams(location.search).get("gestao") === "1") {
   if (cloudToken()) showScreen("controle");
-  else location.replace("gestao.html?v=164");
-} else { renderStart(); void syncLocalBacklog(); }
+  else location.replace("gestao.html?v=165");
+} else { renderStart(); }
 void syncCloudOutbox();
 
