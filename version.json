@@ -1,5 +1,5 @@
 {
-  "version": "167",
+  "version": "168",
   "released_at": "2026-09-03",
-  "notes": "Sincronização segura, versões unificadas e proteção contra tentativas repetidas de login."
+  "notes": "Reenvio automático a cada 30 segundos e status de sincronização visível."
 }
