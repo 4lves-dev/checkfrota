@@ -1,7 +1,7 @@
 /* URBAM Frota - MVP local-first. Dados ficam neste navegador até uma integração ser configurada. */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "170";
+const APP_VERSION = "171";
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v165";
 const CHECKLIST = [
   ["pneus", "Pneus e estepe", "Rodagem"],
@@ -739,10 +739,7 @@ async function showCompletion(inspection, vehicle, issues, sendResult) {
   const buttons = [];
   const directToManagement = issues.some((issue) => issue.approvalRoute === "gestao");
   const approvalTarget = issues[0]?.basePhone || current.basePhone || data.settings.leaderPhone;
-  if (directToManagement) {
-    const managementLink = `${location.origin}${location.pathname.replace(/[^/]*$/, "gestao.html")}?v=169`;
-    buttons.push(`<a href="${managementLink}" target="_blank" rel="noopener">Abrir Gestão</a>`);
-  } else if (approvalTarget) {
+  if (!directToManagement && approvalTarget) {
     buttons.push(`<button type="button" class="primary-button" data-go="inicio">Concluir envio à liderança</button>`);
   }
   actions.innerHTML = buttons.join("");
