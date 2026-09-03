@@ -68,7 +68,8 @@ begin
      or extensions.crypt(p_pin, employee.access_pin_hash) <> employee.access_pin_hash then
     raise exception 'Sessão de liderança inválida. Entre novamente.';
   end if;
-  select * into issue from public.fleet_issues where id = p_issue_id for update;
+  -- Compatível tanto com IDs UUID quanto com IDs text no banco.
+  select * into issue from public.fleet_issues where id::text = p_issue_id for update;
   if not found then raise exception 'Chamado não encontrado.'; end if;
   if employee.access_level = 'lider'
      and coalesce(issue.data ->> 'baseName','') <> coalesce(employee.leader_base,'') then
@@ -84,9 +85,9 @@ begin
   );
   update public.fleet_issues
   set status = row_status, data = jsonb_set(issue.data, '{leaderApproval}', decision, true)
-  where id = p_issue_id;
+  where id::text = p_issue_id;
   insert into public.fleet_audit_events (issue_id, vehicle_id, action, detail, actor_name, snapshot)
-  values (issue.id, issue.vehicle_id, lower(replace(p_status, ' ', '_')), coalesce(p_note,''), employee.name, decision);
+  values (issue.id::text, issue.vehicle_id::text, lower(replace(p_status, ' ', '_')), coalesce(p_note,''), employee.name, decision);
 end;
 $$;
 
@@ -102,4 +103,3 @@ alter table public.fleet_issues
 alter table public.fleet_issues
   add constraint fleet_issues_status_check
   check (status in ('aberta','aprovada','retificacao','recusada','reenviada','resolvida'));
-
