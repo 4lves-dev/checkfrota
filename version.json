@@ -1,5 +1,5 @@
 {
-  "version": "157",
+  "version": "167",
   "released_at": "2026-09-03",
-  "notes": "Sincronização segura e atualização uniforme dos três aplicativos."
+  "notes": "Sincronização segura, versões unificadas e proteção contra tentativas repetidas de login."
 }
