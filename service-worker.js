@@ -1,5 +1,5 @@
 const CACHE = "checkfrota-v166";
-const ASSETS = ["./", "./index.html", "./gestao.html?v=166", "./lider.html?v=166", "./instalar-gestao.html?v=166", "./instalar-lider.html?v=166", "./aprovacao.html?v=166", "./styles.css?v=166", "./supabase-config.js?v=166", "./onesignal.js?v=166", "./app.js?v=166", "./manifest.webmanifest", "./gestao-manifest.webmanifest", "./lider-manifest.webmanifest", "./icons/icon.svg"];
+const ASSETS = ["./", "./index.html", "./gestao.html?v=166", "./lider.html?v=166", "./instalar-gestao.html?v=166", "./instalar-lider.html?v=166", "./aprovacao.html?v=166", "./styles.css?v=166", "./supabase-config.js?v=166", "./onesignal.js?v=166", "./app.js?v=166", "./manifest.webmanifest", "./gestao-manifest.webmanifest", "./lider-manifest.webmanifest", "./icons/icon.svg", "./version.json"];
 
 self.addEventListener("install", (event) => event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting())));
 self.addEventListener("activate", (event) => event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)))).then(() => self.clients.claim())));
