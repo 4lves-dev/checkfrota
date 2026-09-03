@@ -1,6 +1,7 @@
 /* URBAM Frota - MVP local-first. Dados ficam neste navegador até uma integração ser configurada. */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
+const APP_VERSION = "157";
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v165";
 const CHECKLIST = [
   ["pneus", "Pneus e estepe", "Rodagem"],
@@ -323,10 +324,9 @@ async function finishCorrectionRequest(issueId, inspection, hasNewIssues) {
   } catch (error) { console.warn("Não foi possível encerrar a solicitação de retificação no banco", error); }
 }
 async function syncLocalBacklog() {
-  if (!CLOUD?.url || !data.issues?.length) return;
-  try {
-    await Promise.all(data.issues.map((issue) => cloudSave("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: null, status: issue.status || "aberta", data: issue })));
-  } catch (error) { console.warn("Não foi possível migrar os chamados deste aparelho", error); }
+  // Somente a fila explícita é reenviada. Reenviar todos os dados locais pode
+  // sobrescrever uma decisão mais recente registrada pela Liderança.
+  return syncCloudOutbox();
 }
 function returnNotificationPermission() { return "Notification" in window ? Notification.permission : "unsupported"; }
 async function enableReturnNotifications() {
