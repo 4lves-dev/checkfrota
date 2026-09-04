@@ -1,5 +1,5 @@
 {
-  "version": "174",
-  "released_at": "2026-09-03",
-  "notes": "Restauração dos estilos completos e atualização forçada do cache em todos os aplicativos."
+  "version": "175",
+  "released_at": "2026-09-04",
+  "notes": "Restauração completa do painel da Liderança e alerta diário de checklist sempre visível na Gestão."
 }
