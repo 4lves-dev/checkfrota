@@ -1,5 +1,5 @@
 const CACHE = "checkfrota-v171";
-const ASSETS = ["./", "./index.html", "./gestao.html?v=171", "./lider.html?v=171", "./instalar-gestao.html?v=171", "./instalar-lider.html?v=171", "./aprovacao.html?v=171", "./styles.css?v=171", "./supabase-config.js?v=171", "./onesignal.js?v=171", "./app.js?v=171", "./manifest.webmanifest", "./gestao-manifest.webmanifest", "./lider-manifest.webmanifest", "./icons/icon.svg", "./version.json"];
+const ASSETS = ["./", "./index.html", "./gestao.html?v=172", "./lider.html?v=172", "./instalar-gestao.html?v=172", "./instalar-lider.html?v=172", "./aprovacao.html?v=172", "./styles.css?v=172", "./supabase-config.js?v=172", "./onesignal.js?v=172", "./app.js?v=172", "./manifest.webmanifest", "./gestao-manifest.webmanifest", "./lider-manifest.webmanifest", "./icons/icon.svg", "./version.json"];
 
 self.addEventListener("install", (event) => event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting())));
 self.addEventListener("activate", (event) => event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)))).then(() => self.clients.claim())));
@@ -30,7 +30,7 @@ self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   event.waitUntil(clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
     const open = windows.find((client) => client.url.includes("lider.html"));
-    return open ? open.focus() : clients.openWindow("./lider.html?v=171");
+    return open ? open.focus() : clients.openWindow("./lider.html?v=172");
   }));
 });
 
