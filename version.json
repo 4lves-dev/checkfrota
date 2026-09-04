@@ -1,5 +1,5 @@
 {
-  "version": "168",
+  "version": "172",
   "released_at": "2026-09-03",
-  "notes": "Reenvio automático a cada 30 segundos e status de sincronização visível."
+  "notes": "Correção do reconhecimento imediato do Administrador Master no Painel de Gestão."
 }
