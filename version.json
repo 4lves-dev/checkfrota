@@ -1,5 +1,5 @@
 {
-  "version": "172",
+  "version": "173",
   "released_at": "2026-09-03",
-  "notes": "Correção do reconhecimento imediato do Administrador Master no Painel de Gestão."
+  "notes": "Restauração completa dos estilos visuais dos aplicativos de colaborador, Gestão e Liderança."
 }
