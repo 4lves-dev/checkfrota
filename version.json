@@ -1,5 +1,5 @@
 {
-  "version": "173",
+  "version": "174",
   "released_at": "2026-09-03",
-  "notes": "Restauração completa dos estilos visuais dos aplicativos de colaborador, Gestão e Liderança."
+  "notes": "Restauração dos estilos completos e atualização forçada do cache em todos os aplicativos."
 }
