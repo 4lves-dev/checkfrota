@@ -1,5 +1,5 @@
 {
-  "version": "179",
+  "version": "180",
   "released_at": "2026-09-05",
-  "notes": "Fluxo de manutenção simplificado, mapa com link direto e custo removido da Gestão."
+  "notes": "Controle formal do prazo de 6 horas, aviso à empresa e confirmação de retirada."
 }
