@@ -1,7 +1,7 @@
 /* URBAM Frota - MVP local-first. Dados ficam neste navegador até uma integração ser configurada. */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "176";
+const APP_VERSION = "177";
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v165";
 const CHECKLIST = [
   ["pneus", "Pneus e estepe", "Rodagem"],
@@ -31,6 +31,7 @@ let returnedIssuesTimer = null;
 let scheduledAppointments = [];
 let scheduledAppointmentsTimer = null;
 let maintenanceMapLocation = null;
+let maintenanceWatchTimer = null;
 let managementRole = "";
 
 const initialData = {
@@ -208,7 +209,7 @@ async function loadMasterAccess() {
     if (!managementRole) {
       sessionStorage.removeItem("checkfrota-supabase-token");
       alert("Sua conta não está autorizada para o Painel de Gestão.");
-      location.replace("gestao.html?v=176&acesso=negado");
+      location.replace("gestao.html?v=177&acesso=negado");
       return;
     }
   } catch (error) {
@@ -220,7 +221,7 @@ async function loadMasterAccess() {
       return;
     }
     sessionStorage.removeItem("checkfrota-supabase-token");
-    location.replace("gestao.html?v=176&acesso=negado");
+    location.replace("gestao.html?v=177&acesso=negado");
     return;
   }
   renderControl();
@@ -405,7 +406,21 @@ function renderScheduledAppointments() {
   const panel = $("#scheduleNotifications"); if (!panel) return;
   if (!scheduledAppointments.length) { panel.hidden = true; panel.innerHTML = ""; return; }
   panel.hidden = false;
-  panel.innerHTML = scheduledAppointments.map((issue) => { const maintenance = maintenanceOf(issue); const mapUrl = maintenanceMapUrl(maintenance); return `<article class="return-notice schedule"><h2>⌖ Manutenção agendada</h2><p><b>Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate || "—")}</b></p><p><b>Data e horário:</b> ${esc(maintenance.scheduledAt ? dateTime(maintenance.scheduledAt) : "A confirmar")}</p><p><b>Local:</b> ${esc(maintenance.provider || "Oficina a confirmar")}${maintenance.address ? `<br>${esc(maintenance.address)}` : ""}</p><p>${esc(issue.itemName || "Manutenção")} · ${esc(issue.description || "")}</p>${mapUrl ? `<a class="small-button" href="${esc(mapUrl)}" target="_blank" rel="noopener">Abrir rota no mapa</a>` : ""}</article>`; }).join("");
+  panel.innerHTML = scheduledAppointments.map((issue) => { const maintenance = maintenanceOf(issue); const mapUrl = maintenanceMapUrl(maintenance); const delivered = maintenance.deliveryAt; return `<article class="return-notice schedule"><h2>${delivered ? "✓ Veículo em manutenção" : "⌖ Manutenção agendada"}</h2><p><b>Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate || "—")}</b></p><p><b>Data e horário:</b> ${esc(maintenance.scheduledAt ? dateTime(maintenance.scheduledAt) : "A confirmar")}</p><p><b>Local:</b> ${esc(maintenance.provider || "Oficina a confirmar")}${maintenance.address ? `<br>${esc(maintenance.address)}` : ""}</p><p>${esc(issue.itemName || "Manutenção")} · ${esc(issue.description || "")}</p>${delivered ? `<p class="delivery-confirmed"><b>Entregue para manutenção:</b> ${esc(dateTime(delivered))}<br><small>A Gestão foi avisada. O prazo termina em ${esc(dateTime(maintenance.supplierDeadlineAt || new Date(new Date(delivered).getTime() + 21600000).toISOString()))}.</small></p>` : `<button type="button" class="small-button delivery-button" data-mark-maintenance-delivery="${esc(issue.id)}">✓ Marcar veículo entregue para manutenção</button>`}${mapUrl ? `<a class="small-button" href="${esc(mapUrl)}" target="_blank" rel="noopener">Abrir rota no mapa</a>` : ""}</article>`; }).join("");
+}
+async function markVehicleDeliveredForMaintenance(issueId) {
+  const issue = scheduledAppointments.find((entry) => entry.id === issueId); if (!issue) return;
+  if (!confirm(`Confirmar que o Prefixo ${issue.vehiclePrefix || "—"} foi entregue para manutenção agora? O prazo corrido de 6 horas para o fornecedor começará neste horário.`)) return;
+  const registration = $("#driverRegistration")?.value.replace(/\D/g, "") || localStorage.getItem("checkfrota-driver-registration") || "";
+  const phone = phoneOnly($("#driverPhone")?.value || current.driverPhone || localStorage.getItem("checkfrota-driver-phone") || "");
+  if (!registration || !phone) return alert("Informe sua matrícula e WhatsApp para registrar a entrega.");
+  try {
+    const rows = await cloudRpc("fleet_driver_mark_maintenance_delivery", { p_registration: registration, p_phone: phone, p_issue_id: issueId });
+    const updated = rows?.[0]?.data || rows?.data;
+    if (updated) Object.assign(issue, updated);
+    renderScheduledAppointments();
+    alert("Entrega registrada. A Gestão recebeu o aviso e o prazo de 6 horas corridas começou agora.");
+  } catch (error) { console.warn("Entrega não registrada", error); alert("Não foi possível registrar a entrega no banco. Verifique a internet e tente novamente."); }
 }
 async function loadScheduledAppointmentsForCollaborator() {
   const registration = $("#driverRegistration")?.value.replace(/\D/g, "") || localStorage.getItem("checkfrota-driver-registration") || "";
@@ -413,7 +428,7 @@ async function loadScheduledAppointmentsForCollaborator() {
   if (!CLOUD?.url || !registration || !phone) return;
   try {
     const rows = await cloudRpc("fleet_driver_appointments", { p_registration: registration, p_phone: phone });
-    scheduledAppointments = (rows || []).map((row) => row.data || row).filter((issue) => maintenanceOf(issue).status === "Agendada");
+    scheduledAppointments = (rows || []).map((row) => row.data || row).filter((issue) => ["Agendada", "Em manutenção"].includes(maintenanceOf(issue).status));
     scheduledAppointments.forEach(notifyScheduledAppointment); renderScheduledAppointments();
   } catch (error) { console.warn("Não foi possível buscar agendamentos do colaborador", error); }
 }
@@ -834,6 +849,7 @@ function renderVehicleTimelines() {
       const maintenance = maintenanceOf(issue), entries = [{ at: issue.createdAt, label: `Chamado aberto: ${issue.itemName || "manutenção"}` }];
       if (issue.leaderApproval?.approvedAt) entries.push({ at: issue.leaderApproval.approvedAt, label: `Liderança: ${issue.leaderApproval.status}` });
       if (maintenance.scheduledAt) entries.push({ at: maintenance.scheduledAt, label: `Agendado${maintenance.provider ? ` — ${maintenance.provider}` : ""}` });
+      if (maintenance.deliveryAt) entries.push({ at: maintenance.deliveryAt, label: "Veículo entregue para manutenção" });
       if (maintenance.readyAt) entries.push({ at: maintenance.readyAt, label: "Veículo pronto para retirada" });
       if (issue.resolvedAt) entries.push({ at: issue.resolvedAt, label: "Chamado concluído" });
       return entries;
@@ -842,19 +858,37 @@ function renderVehicleTimelines() {
     card.insertAdjacentHTML("beforeend", `<section class="vehicle-timeline"><b>Linha do tempo recente</b>${events.map((event) => `<p><span>●</span> ${esc(dateTime(event.at))} · ${esc(event.label)}</p>`).join("")}</section>`);
   });
 }
+function maintenanceDeadline(issue) { const maintenance = maintenanceOf(issue); return maintenance.deliveryAt ? new Date(maintenance.supplierDeadlineAt || new Date(maintenance.deliveryAt).getTime() + 21600000) : null; }
+function durationLabel(milliseconds) { const minutes = Math.max(0, Math.ceil(milliseconds / 60000)); return minutes >= 60 ? `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, "0")}min` : `${minutes} min`; }
+function notifyManagementMaintenanceWatch(issue, overdue) {
+  if (returnNotificationPermission() !== "granted") return;
+  const maintenance = maintenanceOf(issue); const key = `checkfrota-management-watch-${overdue ? "deadline" : "delivery"}-${issue.id}-${maintenance.deliveryAt}`;
+  if (localStorage.getItem(key)) return;
+  const notification = new Notification(overdue ? "URBAM Frotas: prazo de fornecedor vencido" : "URBAM Frotas: veículo entregue para manutenção", { body: overdue ? `Prefixo ${issue.vehiclePrefix || "—"}: ultrapassou as 6 horas corridas.` : `Prefixo ${issue.vehiclePrefix || "—"}: entregue às ${dateTime(maintenance.deliveryAt)}.`, tag: `checkfrota-management-${issue.id}-${overdue ? "deadline" : "delivery"}`, renotify: true });
+  notification.onclick = () => { window.focus(); notification.close(); }; localStorage.setItem(key, new Date().toISOString());
+}
+function renderMaintenanceWatchAlerts() {
+  const panel = $("#maintenanceWatchAlerts"); if (!panel) return;
+  const active = data.issues.filter((issue) => { const maintenance = maintenanceOf(issue); return maintenance.deliveryAt && !["Veículo pronto para retirada", "Concluída", "Cancelada"].includes(maintenance.status) && issue.status !== "resolvida"; });
+  if (!active.length) { panel.hidden = true; panel.innerHTML = ""; return; }
+  const now = Date.now(); panel.hidden = false;
+  panel.innerHTML = `<div class="section-action"><div><p class="eyebrow">ACOMPANHAMENTO DO FORNECEDOR</p><h3>Veículos em manutenção</h3></div><span class="chip grave">${active.length} em acompanhamento</span></div>${active.map((issue) => { const maintenance = maintenanceOf(issue), deadline = maintenanceDeadline(issue), remaining = deadline.getTime() - now, overdue = remaining <= 0; notifyManagementMaintenanceWatch(issue, overdue); return `<article class="maintenance-watch ${overdue ? "overdue" : ""}"><b>${overdue ? "! Prazo de 6 horas vencido" : "◷ Prazo do fornecedor em andamento"}</b><p><strong>Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate || "—")}</strong><br>Entregue: ${esc(dateTime(maintenance.deliveryAt))} · ${esc(maintenance.provider || "Oficina não informada")}</p><small>${overdue ? `Excedido há ${esc(durationLabel(-remaining))}.` : `Restam ${esc(durationLabel(remaining))} das 6 horas corridas.`} Prazo final: ${esc(dateTime(deadline))}.</small></article>`; }).join("")}`;
+}
+function startMaintenanceWatch() { if (maintenanceWatchTimer) return; maintenanceWatchTimer = window.setInterval(() => { renderMaintenanceWatchAlerts(); if (cloudToken()) void loadCloudManager(); }, 60000); }
 function renderControl() {
   const open = data.issues.filter((issue) => issue.status === "aberta");
   $("#fleetCount").textContent = data.vehicles.length;
   $("#seriousCount").textContent = open.filter((issue) => issue.severity === "Grave").length;
   const since = Date.now() - 7 * 24 * 60 * 60 * 1000;
   $("#weekChecks").textContent = data.inspections.filter((inspection) => new Date(inspection.createdAt).getTime() >= since).length;
-  renderManagementCommandCenter(); renderIssues(); renderReports(); renderHistory(); renderVehicles(); renderVehicleTimelines(); renderDrivers(); renderAuditLog();
+  renderManagementCommandCenter(); renderMaintenanceWatchAlerts(); renderIssues(); renderReports(); renderHistory(); renderVehicles(); renderVehicleTimelines(); renderDrivers(); renderAuditLog();
   renderLeaderInstallTarget();
   renderDailyChecklistAlert();
   renderStorageIndicator();
   renderNotificationSettings();
   $$("[data-master-only]").forEach((element) => { element.hidden = !masterAdmin; });
   startDailyChecklistNotifications();
+  startMaintenanceWatch();
 }
 function formatBytes(bytes = 0) { if (!bytes) return "0 MB"; const mb = bytes / (1024 * 1024); return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(mb >= 10 ? 0 : 1)} MB`; }
 function renderStorageIndicator() {
@@ -988,7 +1022,7 @@ function bindIssueFilters() {
   [["#issueFilterBase", "base"], ["#issueFilterVehicle", "vehicle"], ["#issueFilterType", "type"], ["#issueFilterDate", "date"], ["#issueFilterOwner", "owner"]].forEach(([selector, key]) => $(selector)?.addEventListener("change", (event) => { managerIssueFilters[key] = event.target.value; renderIssues(); }));
 }
 function empty() { return $("#emptyStateTemplate").content.cloneNode(true); }
-function maintenanceOf(issue) { return { status: isWashIssue(issue) ? "Solicitada" : "Pendente", scheduledAt: "", returnAt: "", provider: "", address: "", service: "", cost: "", feedback: "", readyAt: "", ...issue.maintenance }; }
+function maintenanceOf(issue) { return { status: isWashIssue(issue) ? "Solicitada" : "Pendente", scheduledAt: "", returnAt: "", provider: "", address: "", service: "", cost: "", feedback: "", readyAt: "", deliveryAt: "", supplierDeadlineAt: "", ...issue.maintenance }; }
 function renderIssues() {
   const panel = $("#issuesPanel");
   const allIssues = data.issues.filter((issue) => issue.status !== "resolvida" && maintenanceOf(issue).status !== "Concluída").sort((a,b) => severityRank(b.severity) - severityRank(a.severity) || new Date(b.createdAt)-new Date(a.createdAt));
@@ -1372,6 +1406,7 @@ document.addEventListener("click", (event) => {
     $("#issuesPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
   if (target.dataset.reopenReturn) reopenReturnedIssue(target.dataset.reopenReturn);
+  if (target.dataset.markMaintenanceDelivery) void markVehicleDeliveredForMaintenance(target.dataset.markMaintenanceDelivery);
   if (target.id === "clearIssueFilters") { managerIssueFilters = { base: "", vehicle: "", date: "", owner: "", type: "" }; managerCommandFilter = ""; renderManagementCommandCenter(); renderIssues(); }
   if (target.dataset.viewPhoto) void openIssuePhoto(target.dataset.viewPhoto);
   if (target.dataset.managerDispatch) void dispatchManagerMaintenance(target.dataset.managerDispatch);
@@ -1404,7 +1439,7 @@ $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").for
 if ("serviceWorker" in navigator) window.addEventListener("load", async () => {
   let refreshedForUpdate = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => { if (!refreshedForUpdate) { refreshedForUpdate = true; location.reload(); } });
-  try { const registration = await navigator.serviceWorker.register("service-worker.js?v=176"); await registration.update(); } catch (_) {}
+  try { const registration = await navigator.serviceWorker.register("service-worker.js?v=177"); await registration.update(); } catch (_) {}
 });
 window.addEventListener("load", () => { void window.URBAMOneSignal?.initialize(); });
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
@@ -1413,7 +1448,7 @@ if (isInstalled()) document.body.classList.add("app-installed"); else window.add
 window.addEventListener("online", () => { void syncCloudOutbox().then((count) => { if (count) console.info(`${count} envio(s) pendente(s) sincronizado(s).`); }); });
 if (new URLSearchParams(location.search).get("gestao") === "1") {
   if (cloudToken()) showScreen("controle");
-  else location.replace("gestao.html?v=176");
+  else location.replace("gestao.html?v=177");
 } else { renderStart(); }
 void syncCloudOutbox();
 window.setInterval(() => { void syncCloudOutbox(); }, 30 * 1000);
