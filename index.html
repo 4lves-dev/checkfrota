@@ -10,7 +10,7 @@
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="icons/icon.svg">
-    <link rel="stylesheet" href="styles.css?v=178">
+    <link rel="stylesheet" href="styles.css?v=179">
     <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer=""></script>
     <style>#installBanner[hidden] { display: none !important; }</style>
     <title>URBAM Frotas</title>
@@ -24,8 +24,8 @@
           <small class="brand-credit">por <span class="luchti-signature">LUCHTI ME</span></small>
         </a>
         <div class="header-actions">
-          <a class="management-access" href="gestao.html?v=178" title="Acesso à Gestão da Frota" aria-label="Acesso à Gestão da Frota"><span aria-hidden="true">▦</span> Gestão</a>
-          <a class="management-access" href="lider.html?v=178" title="Acesso ao painel da Liderança" aria-label="Acesso ao painel da Liderança"><span aria-hidden="true">✓</span> Liderança</a>
+          <a class="management-access" href="gestao.html?v=179" title="Acesso à Gestão da Frota" aria-label="Acesso à Gestão da Frota"><span aria-hidden="true">▦</span> Gestão</a>
+          <a class="management-access" href="lider.html?v=179" title="Acesso ao painel da Liderança" aria-label="Acesso ao painel da Liderança"><span aria-hidden="true">✓</span> Liderança</a>
           <button class="install-button" id="enablePushNotifications" type="button" title="Ativar avisos no celular">🔔 <span>Avisos</span></button>
           <button class="install-button" id="installApp" title="Instalar no celular">⇩ <span>Instalar</span></button>
         </div><span class="sync-status" id="cloudSyncStatus" aria-live="polite" data-state="ok">✓ Sincronizado</span>
@@ -246,8 +246,8 @@
         <input type="hidden" id="maintenanceIssueId">
         <p class="dialog-copy" id="maintenanceIssueSummary"></p>
         <label for="maintenanceStatus">Etapa da manutenção</label>
-        <select id="maintenanceStatus"><option>Solicitada</option><option>Agendada</option><option>Em manutenção</option><option>Veículo pronto para retirada</option><option>Concluída</option></select>
-        <p class="helper">Fluxo: solicitação → agendamento → veículo entregue → pronto para retirada → concluída.</p>
+        <select id="maintenanceStatus"><option>Solicitada</option><option>Agendada</option><option>Em manutenção</option><option>Veículo pronto para retirada</option></select>
+        <p class="helper">Fluxo: solicitação → agendamento → veículo entregue → pronto para retirada → confirmação de retirada pela liderança → concluída.</p>
         <label for="maintenanceScheduledAt">Data e horário agendados <em>opcional</em></label>
         <input id="maintenanceScheduledAt" type="datetime-local">
         <label for="maintenanceProvider">Oficina / responsável <em>opcional</em></label>
@@ -277,9 +277,9 @@
 
     <template id="emptyStateTemplate"><div class="empty-state"><span>⌁</span><p>Nenhum registro por aqui.</p></div></template>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script src="supabase-config.js?v=178"></script>
-    <script src="onesignal.js?v=178"></script>
-    <script src="app.js?v=178"></script>
+    <script src="supabase-config.js?v=179"></script>
+    <script src="onesignal.js?v=179"></script>
+    <script src="app.js?v=179"></script>
   
 
 
