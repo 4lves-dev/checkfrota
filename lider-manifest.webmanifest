@@ -2,10 +2,9 @@
   "name": "URBAM Frotas | Liderança",
   "short_name": "Liderança Frota",
   "description": "Painel da liderança para aprovar chamados de frota.",
-  "start_url": "./lider.html?v=179",
+  "start_url": "./lider.html?v=180",
   "display": "standalone",
   "background_color": "#f2f6f9",
   "theme_color": "#083557",
   "icons": [{ "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
 }
-
