@@ -1,7 +1,7 @@
 /* URBAM Frota - MVP local-first. Dados ficam neste navegador até uma integração ser configurada. */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "171";
+const APP_VERSION = "176";
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v165";
 const CHECKLIST = [
   ["pneus", "Pneus e estepe", "Rodagem"],
@@ -28,6 +28,9 @@ const DAILY_CHECKLIST_ALERT_PHONE = "5512981111336";
 let dailyChecklistNotificationTimer = null;
 let returnedIssues = [];
 let returnedIssuesTimer = null;
+let scheduledAppointments = [];
+let scheduledAppointmentsTimer = null;
+let maintenanceMapLocation = null;
 let managementRole = "";
 
 const initialData = {
@@ -205,7 +208,7 @@ async function loadMasterAccess() {
     if (!managementRole) {
       sessionStorage.removeItem("checkfrota-supabase-token");
       alert("Sua conta não está autorizada para o Painel de Gestão.");
-      location.replace("gestao.html?v=175&acesso=negado");
+      location.replace("gestao.html?v=176&acesso=negado");
       return;
     }
   } catch (error) {
@@ -217,7 +220,7 @@ async function loadMasterAccess() {
       return;
     }
     sessionStorage.removeItem("checkfrota-supabase-token");
-    location.replace("gestao.html?v=175&acesso=negado");
+    location.replace("gestao.html?v=176&acesso=negado");
     return;
   }
   renderControl();
@@ -383,6 +386,38 @@ function notifyReturnedIssue(issue) {
   notification.onclick = () => { window.focus(); notification.close(); };
   localStorage.setItem(key, new Date().toISOString());
 }
+function maintenanceMapUrl(maintenance = {}) {
+  if (maintenance.latitude !== "" && maintenance.latitude != null && maintenance.longitude !== "" && maintenance.longitude != null) return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${maintenance.latitude},${maintenance.longitude}`)}`;
+  const query = [maintenance.provider, maintenance.address].filter(Boolean).join(", ");
+  return query ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}` : "";
+}
+function appointmentFingerprint(issue) { const maintenance = maintenanceOf(issue); return [maintenance.scheduledAt, maintenance.provider, maintenance.address, maintenance.latitude, maintenance.longitude, maintenance.updatedAt].join("|"); }
+function notifyScheduledAppointment(issue) {
+  const maintenance = maintenanceOf(issue); const key = `checkfrota-schedule-notification-${issue.id}-${appointmentFingerprint(issue)}`;
+  if (returnNotificationPermission() !== "granted" || localStorage.getItem(key)) return;
+  const when = maintenance.scheduledAt ? dateTime(maintenance.scheduledAt) : "horário a confirmar";
+  const where = maintenance.provider || maintenance.address || "local a confirmar";
+  const notification = new Notification("URBAM Frotas: manutenção agendada", { body: `Prefixo ${issue.vehiclePrefix || "—"}: ${when} · ${where}`, tag: `checkfrota-schedule-${issue.id}`, renotify: true });
+  notification.onclick = () => { window.focus(); notification.close(); };
+  localStorage.setItem(key, new Date().toISOString());
+}
+function renderScheduledAppointments() {
+  const panel = $("#scheduleNotifications"); if (!panel) return;
+  if (!scheduledAppointments.length) { panel.hidden = true; panel.innerHTML = ""; return; }
+  panel.hidden = false;
+  panel.innerHTML = scheduledAppointments.map((issue) => { const maintenance = maintenanceOf(issue); const mapUrl = maintenanceMapUrl(maintenance); return `<article class="return-notice schedule"><h2>⌖ Manutenção agendada</h2><p><b>Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate || "—")}</b></p><p><b>Data e horário:</b> ${esc(maintenance.scheduledAt ? dateTime(maintenance.scheduledAt) : "A confirmar")}</p><p><b>Local:</b> ${esc(maintenance.provider || "Oficina a confirmar")}${maintenance.address ? `<br>${esc(maintenance.address)}` : ""}</p><p>${esc(issue.itemName || "Manutenção")} · ${esc(issue.description || "")}</p>${mapUrl ? `<a class="small-button" href="${esc(mapUrl)}" target="_blank" rel="noopener">Abrir rota no mapa</a>` : ""}</article>`; }).join("");
+}
+async function loadScheduledAppointmentsForCollaborator() {
+  const registration = $("#driverRegistration")?.value.replace(/\D/g, "") || localStorage.getItem("checkfrota-driver-registration") || "";
+  const phone = phoneOnly($("#driverPhone")?.value || current.driverPhone || localStorage.getItem("checkfrota-driver-phone") || "");
+  if (!CLOUD?.url || !registration || !phone) return;
+  try {
+    const rows = await cloudRpc("fleet_driver_appointments", { p_registration: registration, p_phone: phone });
+    scheduledAppointments = (rows || []).map((row) => row.data || row).filter((issue) => maintenanceOf(issue).status === "Agendada");
+    scheduledAppointments.forEach(notifyScheduledAppointment); renderScheduledAppointments();
+  } catch (error) { console.warn("Não foi possível buscar agendamentos do colaborador", error); }
+}
+function startScheduledAppointmentsPolling() { if (scheduledAppointmentsTimer) return; scheduledAppointmentsTimer = window.setInterval(() => void loadScheduledAppointmentsForCollaborator(), 60 * 1000); }
 function renderReturnedIssues() {
   const panel = $("#returnNotifications"); if (!panel) return;
   if (!returnedIssues.length) { panel.hidden = true; panel.innerHTML = ""; return; }
@@ -519,6 +554,8 @@ function renderStart() {
   renderBasePhone();
   void loadReturnedIssuesForCollaborator();
   startReturnedIssuesPolling();
+  void loadScheduledAppointmentsForCollaborator();
+  startScheduledAppointmentsPolling();
   const correctionId = new URLSearchParams(location.search).get("retificar");
   if (correctionId && !sessionStorage.getItem(`checkfrota-retificacao-${correctionId}`)) {
     sessionStorage.setItem(`checkfrota-retificacao-${correctionId}`, "1");
@@ -1163,7 +1200,7 @@ function sendApprovedOwnerWhatsApp(issueId) {
 async function copyOwnerMessage(issueId) { const issue = data.issues.find((entry) => entry.id === issueId); if (!issue) return; try { await navigator.clipboard.writeText(buildApprovedOwnerMessage(issue)); alert("Mensagem para o proprietário copiada."); } catch { alert("Não foi possível copiar automaticamente. Selecione a mensagem e copie."); } }
 function buildSchedulingReturn(issue, maintenance = maintenanceOf(issue)) {
   const schedule = maintenance.scheduledAt ? dateTime(maintenance.scheduledAt) : "A confirmar";
-  return `*RETORNO DE AGENDAMENTO — MANUTENÇÃO*\n\n*Veículo:* Prefixo ${issue.vehiclePrefix || "—"} · ${issue.vehiclePlate || "—"}\n*Ocorrência:* ${issue.itemName || "—"}\n*Situação:* ${maintenance.status || "Pendente"}\n*Agendamento:* ${schedule}\n${maintenance.provider ? `*Oficina / responsável:* ${maintenance.provider}\n` : ""}${maintenance.feedback ? `*Retorno:* ${maintenance.feedback}\n` : ""}\nEsta atualização foi registrada pela Gestão de Frota para ciência da equipe de manutenção.`;
+  return `*RETORNO DE AGENDAMENTO — MANUTENÇÃO*\n\n*Veículo:* Prefixo ${issue.vehiclePrefix || "—"} · ${issue.vehiclePlate || "—"}\n*Ocorrência:* ${issue.itemName || "—"}\n*Situação:* ${maintenance.status || "Pendente"}\n*Agendamento:* ${schedule}\n${maintenance.provider ? `*Oficina / responsável:* ${maintenance.provider}\n` : ""}${maintenance.address ? `*Endereço:* ${maintenance.address}\n` : ""}${maintenanceMapUrl(maintenance) ? `*Mapa / rota:* ${maintenanceMapUrl(maintenance)}\n` : ""}${maintenance.feedback ? `*Retorno:* ${maintenance.feedback}\n` : ""}\nEsta atualização foi registrada pela Gestão de Frota para ciência da equipe de manutenção.`;
 }
 function sendSchedulingReturn(issue, maintenance = maintenanceOf(issue)) {
   const target = data.settings.maintenanceGroupPhone || MAINTENANCE_GROUP_PHONE;
@@ -1192,7 +1229,7 @@ async function copyManagerMaintenanceMessage(issueId) {
   try { await navigator.clipboard.writeText(message); alert("Mensagem copiada."); }
   catch { alert("Não foi possível copiar automaticamente. Selecione o texto da mensagem e copie."); }
 }
-function maintenanceFormValues() { const status = $("#maintenanceStatus").value; return { status, scheduledAt: $("#maintenanceScheduledAt").value, returnAt: $("#maintenanceReturnAt").value, provider: $("#maintenanceProvider").value.trim(), address: $("#maintenanceAddress").value.trim(), service: $("#maintenanceService").value.trim(), cost: $("#maintenanceCost").value === "" ? "" : Number($("#maintenanceCost").value), feedback: $("#maintenanceFeedback").value.trim(), readyAt: status === "Veículo pronto para retirada" ? new Date().toISOString() : "", updatedAt: new Date().toISOString() }; }
+function maintenanceFormValues() { const status = $("#maintenanceStatus").value; const location = maintenanceMapLocation || {}; return { status, scheduledAt: $("#maintenanceScheduledAt").value, returnAt: $("#maintenanceReturnAt").value, provider: $("#maintenanceProvider").value.trim(), address: $("#maintenanceAddress").value.trim(), service: $("#maintenanceService").value.trim(), cost: $("#maintenanceCost").value === "" ? "" : Number($("#maintenanceCost").value), feedback: $("#maintenanceFeedback").value.trim(), latitude: location.latitude ?? "", longitude: location.longitude ?? "", mapLabel: location.mapLabel || "", mapUrl: location.mapUrl || "", readyAt: status === "Veículo pronto para retirada" ? new Date().toISOString() : "", updatedAt: new Date().toISOString() }; }
 function buildMaintenanceMessage(issue) {
   const maintenance = maintenanceOf(issue);
   return `*RETORNO DE SERVIÇO — ${maintenance.status.toUpperCase()}*\n\nVeículo: Prefixo ${issue.vehiclePrefix || "—"} · ${issue.vehiclePlate} (${issue.vehicleModel || issue.vehicleType})\nQuilometragem: ${issue.odometer ?? "Não informada"} km\nSolicitação: ${issue.itemName}\n${maintenance.scheduledAt ? `Agendamento: ${dateTime(maintenance.scheduledAt)}\n` : ""}${maintenance.returnAt ? `Previsão de retorno: ${dateTime(maintenance.returnAt)}\n` : ""}${maintenance.provider ? `Oficina / responsável: ${maintenance.provider}\n` : ""}${maintenance.service ? `Serviço: ${maintenance.service}\n` : ""}${maintenance.cost !== "" ? `Custo: R$ ${Number(maintenance.cost).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}\n` : ""}${maintenance.feedback ? `Retorno: ${maintenance.feedback}\n` : ""}\nSolicitação original: ${issue.description}`;
@@ -1219,6 +1256,8 @@ function openMaintenanceIssue(issueId) {
   $("#maintenanceScheduledAt").value = maintenance.scheduledAt ? maintenance.scheduledAt.slice(0, 16) : "";
   $("#maintenanceProvider").value = maintenance.provider;
   $("#maintenanceAddress").value = maintenance.address || "";
+  maintenanceMapLocation = { latitude: maintenance.latitude ?? "", longitude: maintenance.longitude ?? "", mapLabel: maintenance.mapLabel || "", mapUrl: maintenance.mapUrl || maintenanceMapUrl(maintenance) || "" };
+  $("#maintenanceMapStatus").textContent = maintenanceMapLocation.mapUrl ? `Localização confirmada: ${maintenanceMapLocation.mapLabel || `${maintenanceMapLocation.latitude}, ${maintenanceMapLocation.longitude}`}` : "Informe o endereço e localize para gravar a rota do atendimento.";
   $("#maintenanceService").value = maintenance.service || "";
   $("#maintenanceCost").value = maintenance.cost ?? "";
   $("#maintenanceReturnAt").value = maintenance.returnAt ? maintenance.returnAt.slice(0, 16) : "";
@@ -1238,6 +1277,7 @@ function sendDriverMaintenanceWhatsApp(issue) {
 async function saveMaintenance() {
   const issue = data.issues.find((entry) => entry.id === $("#maintenanceIssueId").value); if (!issue) return;
   issue.maintenance = maintenanceFormValues();
+  if (issue.maintenance.status === "Agendada" && (!issue.maintenance.scheduledAt || !issue.maintenance.provider || !issue.maintenance.address)) { alert("Para agendar, informe data e horário, oficina e endereço do atendimento."); return; }
   if (issue.maintenance.status === "Veículo pronto para retirada" && (!issue.maintenance.provider || !issue.maintenance.service)) { alert("Informe a oficina/local e o serviço executado antes de liberar o veículo."); return; }
   if (issue.maintenance.status === "Concluída") { issue.status = "resolvida"; issue.resolvedAt = new Date().toISOString(); }
   else if (issue.status === "resolvida") { issue.status = "aberta"; delete issue.resolvedAt; }
@@ -1245,12 +1285,25 @@ async function saveMaintenance() {
   try { await cloudSave("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: issue.vehicleId, status: issue.status, data: issue }); }
   catch (error) { queueCloudWrite("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: issue.vehicleId, status: issue.status, data: issue }); alert("A atualização foi guardada neste aparelho e será sincronizada quando a internet voltar."); }
   await recordAuditEvent(issue, "manutencao_atualizada", `Situação: ${issue.maintenance.status}`);
-  if (data.settings.webhookUrl) void sendToIntegration({ type: "maintenance-update", issue, maintenance: issue.maintenance });
+  if (data.settings.webhookUrl) void sendToIntegration({ type: issue.maintenance.status === "Agendada" ? "maintenance-scheduled" : "maintenance-update", issue, maintenance: issue.maintenance });
   $("#maintenanceDialog").close(); renderControl();
   if (issue.maintenance.status === "Agendada") { sendDriverMaintenanceWhatsApp(issue); sendSchedulingReturn(issue, issue.maintenance); }
   if (issue.maintenance.status === "Veículo pronto para retirada") { const leader = issue.basePhone || data.settings.leaderPhone; if (leader) window.open(whatsappLink(leader, `*VEÍCULO PRONTO PARA RETIRADA*\n\nPrefixo ${issue.vehiclePrefix || "—"} · ${issue.vehiclePlate || "—"}\nLocal: ${issue.maintenance.provider}\nServiço executado: ${issue.maintenance.service}\nLiberado em: ${dateTime(issue.maintenance.readyAt)}\n\nO aviso também está disponível no painel da Liderança.`), "_blank", "noopener"); }
 }
-function openMaintenanceMap() { const query = [$("#maintenanceProvider").value.trim(), $("#maintenanceAddress").value.trim()].filter(Boolean).join(", "); if (!query) return alert("Informe o nome ou o endereço da oficina para buscar no mapa."); window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`, "_blank", "noopener"); }
+async function locateMaintenanceAddress() {
+  const provider = $("#maintenanceProvider").value.trim(), address = $("#maintenanceAddress").value.trim(), status = $("#maintenanceMapStatus");
+  const query = [provider, address].filter(Boolean).join(", "); if (!address) return alert("Informe o endereço da oficina antes de localizar.");
+  if (!confirm("O endereço informado será consultado no OpenStreetMap para obter coordenadas e montar a rota. Deseja continuar?")) return;
+  status.textContent = "Localizando endereço no mapa...";
+  try {
+    const response = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(query)}`, { headers: { Accept: "application/json" } });
+    if (!response.ok) throw new Error("consulta indisponível"); const found = await response.json(); const place = found?.[0];
+    if (!place?.lat || !place?.lon) throw new Error("endereço não encontrado");
+    maintenanceMapLocation = { latitude: Number(place.lat), longitude: Number(place.lon), mapLabel: place.display_name || address, mapUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${place.lat},${place.lon}`)}` };
+    status.textContent = `Local confirmado: ${maintenanceMapLocation.mapLabel}`;
+  } catch (error) { maintenanceMapLocation = null; status.textContent = "Não foi possível localizar automaticamente. Confira o endereço e use Abrir no mapa."; }
+}
+function openMaintenanceMap() { const draft = maintenanceFormValues(); const mapUrl = maintenanceMapLocation?.mapUrl || maintenanceMapUrl(draft); if (!mapUrl) return alert("Informe o nome ou o endereço da oficina para buscar no mapa."); window.open(mapUrl, "_blank", "noopener"); }
 async function closeIssue(issueId) { const issue = data.issues.find((entry) => entry.id === issueId); if (!issue) return; issue.maintenance = { ...maintenanceOf(issue), status: "Concluída", updatedAt: new Date().toISOString() }; issue.status = "resolvida"; issue.resolvedAt = new Date().toISOString(); saveData(); try { await cloudSave("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: issue.vehicleId, status: issue.status, data: issue }); } catch (error) { queueCloudWrite("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: issue.vehicleId, status: issue.status, data: issue }); alert("O chamado foi resolvido e será sincronizado quando a internet voltar."); } await recordAuditEvent(issue, "chamado_resolvido", "Manutenção concluída pela Gestão"); if (data.settings.webhookUrl) void sendToIntegration({ type: "maintenance-update", issue, maintenance: issue.maintenance }); renderControl(); }
 function saveSettings() { if (!requireMasterAccess()) return; data.settings.webhookUrl = $("#webhookUrl").value.trim(); data.settings.maintenancePhone = phoneOnly($("#maintenancePhone").value); data.settings.maintenanceGroupPhone = phoneOnly($("#maintenanceGroupPhone").value); data.settings.leaderPhone = phoneOnly($("#leaderPhone").value); data.settings.fleetManagerPhone = phoneOnly($("#fleetManagerPhone").value); saveData(); $("#settingsDialog").close(); }
 function dismissInstallBanner() { sessionStorage.setItem("checkfrota-install-dismissed", "1"); $("#installBanner").hidden = true; }
@@ -1331,6 +1384,7 @@ document.addEventListener("click", (event) => {
   if (target.dataset.closeIssue) void closeIssue(target.dataset.closeIssue);
   if (target.id === "sendMaintenanceUpdate") { const issue = data.issues.find((entry) => entry.id === $("#maintenanceIssueId").value); if (issue) { const maintenance = maintenanceFormValues(); issue.maintenance = maintenance; sendSchedulingReturn(issue, maintenance); } }
   if (target.id === "openMaintenanceMap") openMaintenanceMap();
+  if (target.id === "locateMaintenanceAddress") void locateMaintenanceAddress();
   if (target.id === "downloadReport") downloadReport();
 });
 $("#vehicleSelect").addEventListener("change", renderVehicleOwner);
@@ -1344,12 +1398,13 @@ $("#vehicleForm").addEventListener("submit", (event) => { event.preventDefault()
 $("#employeeForm").addEventListener("submit", (event) => { event.preventDefault(); void saveEmployee(); });
 $("#settingsForm").addEventListener("submit", (event) => { event.preventDefault(); saveSettings(); });
 $("#maintenanceForm").addEventListener("submit", (event) => { event.preventDefault(); void saveMaintenance(); });
+$("#maintenanceAddress")?.addEventListener("input", () => { maintenanceMapLocation = null; const status = $("#maintenanceMapStatus"); if (status) status.textContent = "Endereço alterado. Localize novamente para atualizar a rota."; });
 $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").forEach((button) => button.classList.toggle("active", button === tab)); $$(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab.dataset.tab}Panel`)); }));
 
 if ("serviceWorker" in navigator) window.addEventListener("load", async () => {
   let refreshedForUpdate = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => { if (!refreshedForUpdate) { refreshedForUpdate = true; location.reload(); } });
-  try { const registration = await navigator.serviceWorker.register("service-worker.js?v=175"); await registration.update(); } catch (_) {}
+  try { const registration = await navigator.serviceWorker.register("service-worker.js?v=176"); await registration.update(); } catch (_) {}
 });
 window.addEventListener("load", () => { void window.URBAMOneSignal?.initialize(); });
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
@@ -1358,7 +1413,7 @@ if (isInstalled()) document.body.classList.add("app-installed"); else window.add
 window.addEventListener("online", () => { void syncCloudOutbox().then((count) => { if (count) console.info(`${count} envio(s) pendente(s) sincronizado(s).`); }); });
 if (new URLSearchParams(location.search).get("gestao") === "1") {
   if (cloudToken()) showScreen("controle");
-  else location.replace("gestao.html?v=175");
+  else location.replace("gestao.html?v=176");
 } else { renderStart(); }
 void syncCloudOutbox();
 window.setInterval(() => { void syncCloudOutbox(); }, 30 * 1000);
