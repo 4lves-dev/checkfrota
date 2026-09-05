@@ -1,4 +1,4 @@
-const CACHE = "checkfrota-v179";
+const CACHE = "checkfrota-v180";
 const ASSETS = ["./", "./index.html", "./gestao.html?v=180", "./lider.html?v=180", "./instalar-gestao.html?v=180", "./instalar-lider.html?v=180", "./aprovacao.html?v=180", "./styles.css?v=180", "./supabase-config.js?v=180", "./onesignal.js?v=180", "./app.js?v=180", "./manifest.webmanifest", "./gestao-manifest.webmanifest", "./lider-manifest.webmanifest", "./icons/icon.svg", "./version.json"];
 
 
@@ -32,4 +32,3 @@ self.addEventListener("notificationclick", (event) => {
     return open ? open.focus() : clients.openWindow("./lider.html?v=180");
   }));
 });
-
