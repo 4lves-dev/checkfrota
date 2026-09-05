@@ -1,7 +1,7 @@
 /* URBAM Frota - MVP local-first. Dados ficam neste navegador até uma integração ser configurada. */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "179";
+const APP_VERSION = "180";
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v165";
 const CHECKLIST = [
   ["pneus", "Pneus e estepe", "Rodagem"],
@@ -209,7 +209,7 @@ async function loadMasterAccess() {
     if (!managementRole) {
       sessionStorage.removeItem("checkfrota-supabase-token");
       alert("Sua conta não está autorizada para o Painel de Gestão.");
-      location.replace("gestao.html?v=179&acesso=negado");
+      location.replace("gestao.html?v=180&acesso=negado");
       return;
     }
   } catch (error) {
@@ -221,7 +221,7 @@ async function loadMasterAccess() {
       return;
     }
     sessionStorage.removeItem("checkfrota-supabase-token");
-    location.replace("gestao.html?v=179&acesso=negado");
+    location.replace("gestao.html?v=180&acesso=negado");
     return;
   }
   renderControl();
@@ -860,6 +860,17 @@ function renderVehicleTimelines() {
 }
 function maintenanceDeadline(issue) { const maintenance = maintenanceOf(issue); return maintenance.deliveryAt ? new Date(maintenance.supplierDeadlineAt || new Date(maintenance.deliveryAt).getTime() + 21600000) : null; }
 function durationLabel(milliseconds) { const minutes = Math.max(0, Math.ceil(milliseconds / 60000)); return minutes >= 60 ? `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, "0")}min` : `${minutes} min`; }
+function supplierSlaResult(issue) {
+  const maintenance = maintenanceOf(issue); const deadline = maintenanceDeadline(issue);
+  if (!deadline) return null;
+  const finishedAt = maintenance.readyAt || maintenance.pickupAt || (maintenance.status === "Concluída" ? issue.resolvedAt : "");
+  if (finishedAt) {
+    const difference = new Date(finishedAt).getTime() - deadline.getTime();
+    return { deadline, finishedAt: new Date(finishedAt), difference, state: difference <= 0 ? "within" : "late" };
+  }
+  const difference = Date.now() - deadline.getTime();
+  return { deadline, finishedAt: null, difference, state: difference > 0 ? "late" : "running" };
+}
 function notifyManagementMaintenanceWatch(issue, overdue) {
   if (returnNotificationPermission() !== "granted") return;
   const maintenance = maintenanceOf(issue); const key = `checkfrota-management-watch-${overdue ? "deadline" : "delivery"}-${issue.id}-${maintenance.deliveryAt}`;
@@ -869,10 +880,19 @@ function notifyManagementMaintenanceWatch(issue, overdue) {
 }
 function renderMaintenanceWatchAlerts() {
   const panel = $("#maintenanceWatchAlerts"); if (!panel) return;
-  const active = data.issues.filter((issue) => { const maintenance = maintenanceOf(issue); return maintenance.deliveryAt && !["Veículo pronto para retirada", "Concluída", "Cancelada"].includes(maintenance.status) && issue.status !== "resolvida"; });
+  const active = data.issues.filter((issue) => { const maintenance = maintenanceOf(issue); return maintenance.deliveryAt && maintenance.status !== "Cancelada"; });
   if (!active.length) { panel.hidden = true; panel.innerHTML = ""; return; }
-  const now = Date.now(); panel.hidden = false;
-  panel.innerHTML = `<div class="section-action"><div><p class="eyebrow">ACOMPANHAMENTO DO FORNECEDOR</p><h3>Veículos em manutenção</h3></div><span class="chip grave">${active.length} em acompanhamento</span></div>${active.map((issue) => { const maintenance = maintenanceOf(issue), deadline = maintenanceDeadline(issue), remaining = deadline.getTime() - now, overdue = remaining <= 0; notifyManagementMaintenanceWatch(issue, overdue); return `<article class="maintenance-watch ${overdue ? "overdue" : ""}"><b>${overdue ? "! Prazo de 6 horas vencido" : "◷ Prazo do fornecedor em andamento"}</b><p><strong>Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate || "—")}</strong><br>Entregue: ${esc(dateTime(maintenance.deliveryAt))} · ${esc(maintenance.provider || "Oficina não informada")}</p><small>${overdue ? `Excedido há ${esc(durationLabel(-remaining))}.` : `Restam ${esc(durationLabel(remaining))} das 6 horas corridas.`} Prazo final: ${esc(dateTime(deadline))}.</small></article>`; }).join("")}`;
+  panel.hidden = false;
+  panel.innerHTML = '<div class="section-action"><div><p class="eyebrow">CONTROLE CONTRATUAL · FORNECEDOR</p><h3>Prazo de atendimento de 6 horas</h3></div><span class="chip grave">' + active.length + ' em acompanhamento</span></div>' + active.map((issue) => {
+    const maintenance = maintenanceOf(issue), sla = supplierSlaResult(issue), overdue = sla && sla.state === "late";
+    if (!sla) return "";
+    notifyManagementMaintenanceWatch(issue, overdue && !sla.finishedAt);
+    const title = sla.state === "within" ? "✓ Atendimento dentro do prazo" : overdue ? "! Prazo contratual vencido" : "◷ Prazo do fornecedor em andamento";
+    const detail = sla.finishedAt ? (sla.state === "within" ? "Finalizado " + durationLabel(-sla.difference) + " antes do limite." : "Finalizado com atraso de " + durationLabel(sla.difference) + ".") : (overdue ? "Veículo ainda não liberado. Excedido há " + durationLabel(sla.difference) + "." : "Restam " + durationLabel(-sla.difference) + " das 6 horas corridas.");
+    const action = overdue ? "Gerar notificação de atraso" : "Gerar comprovação de prazo";
+    const justification = maintenance.slaJustification ? '<p><small><b>Justificativa registrada:</b> ' + esc(maintenance.slaJustification) + '</small></p>' : '';
+    return '<article class="maintenance-watch ' + (overdue ? "overdue" : "") + '"><b>' + title + '</b><p><strong>Prefixo ' + esc(issue.vehiclePrefix || "—") + ' · ' + esc(issue.vehiclePlate || "—") + '</strong><br>Entregue: ' + esc(dateTime(maintenance.deliveryAt)) + ' · ' + esc(maintenance.provider || "Oficina não informada") + '</p><small>' + esc(detail) + ' Prazo final: ' + esc(dateTime(sla.deadline)) + '.</small>' + justification + '<div class="issue-actions"><button type="button" class="small-button" data-copy-sla-notice="' + esc(issue.id) + '">Copiar mensagem formal</button><button type="button" class="small-button ' + (overdue ? "danger-button" : "whatsapp") + '" data-send-sla-notice="' + esc(issue.id) + '">' + action + '</button></div></article>';
+  }).join("");
 }
 function startMaintenanceWatch() { if (maintenanceWatchTimer) return; maintenanceWatchTimer = window.setInterval(() => { renderMaintenanceWatchAlerts(); if (cloudToken()) void loadCloudManager(); }, 60000); }
 function renderControl() {
@@ -1023,7 +1043,7 @@ function bindIssueFilters() {
 }
 function empty() { return $("#emptyStateTemplate").content.cloneNode(true); }
 function maintenanceOf(issue) {
-  const maintenance = { status: "Solicitada", scheduledAt: "", returnAt: "", provider: "", address: "", service: "", feedback: "", readyAt: "", pickupAt: "", pickupBy: "", deliveryAt: "", supplierDeadlineAt: "", ...issue.maintenance };
+  const maintenance = { status: "Solicitada", scheduledAt: "", returnAt: "", provider: "", address: "", service: "", feedback: "", readyAt: "", pickupAt: "", pickupBy: "", deliveryAt: "", supplierDeadlineAt: "", slaNoticeAt: "", slaNoticeType: "", slaJustification: "", ...issue.maintenance };
   const legacy = { "Pendente": "Solicitada", "Aguardando aprovação": "Solicitada", "Em execução": "Em manutenção", "Aguardando peça": "Em manutenção", "Cancelada": "Solicitada" };
   maintenance.status = legacy[maintenance.status] || maintenance.status || "Solicitada";
   return maintenance;
@@ -1272,6 +1292,23 @@ function buildMaintenanceMessage(issue) {
   const maintenance = maintenanceOf(issue);
   return `*RETORNO DE SERVIÇO — ${maintenance.status.toUpperCase()}*\n\nVeículo: Prefixo ${issue.vehiclePrefix || "—"} · ${issue.vehiclePlate} (${issue.vehicleModel || issue.vehicleType})\nQuilometragem: ${issue.odometer ?? "Não informada"} km\nSolicitação: ${issue.itemName}\n${maintenance.scheduledAt ? `Agendamento: ${dateTime(maintenance.scheduledAt)}\n` : ""}${maintenance.returnAt ? `Previsão de retorno: ${dateTime(maintenance.returnAt)}\n` : ""}${maintenance.provider ? `Oficina / responsável: ${maintenance.provider}\n` : ""}${maintenance.service ? `Serviço: ${maintenance.service}\n` : ""}${maintenance.feedback ? `Retorno: ${maintenance.feedback}\n` : ""}\nSolicitação original: ${issue.description}`;
 }
+function buildSupplierSlaMessage(issue) {
+  const maintenance = maintenanceOf(issue); const sla = supplierSlaResult(issue); if (!sla) return "";
+  const late = sla.state === "late";
+  const result = sla.finishedAt ? (late ? "Veículo liberado em: " + dateTime(sla.finishedAt) + "\n*Atraso apurado:* " + durationLabel(sla.difference) : "Veículo liberado em: " + dateTime(sla.finishedAt) + "\n*Resultado:* atendimento concluído " + durationLabel(-sla.difference) + " antes do prazo.") : "*Situação atual:* veículo ainda não liberado\n*Atraso apurado até este momento:* " + durationLabel(Math.max(0, sla.difference));
+  return ["*URBAM FROTAS — " + (late ? "NOTIFICAÇÃO DE ATRASO" : "COMPROVAÇÃO DE ATENDIMENTO NO PRAZO") + "*", "", "Prezados(as),", "", "Referente ao atendimento do veículo abaixo, registramos o acompanhamento do prazo contratual.", "", "*Veículo:* Prefixo " + (issue.vehiclePrefix || "—") + " · Placa " + (issue.vehiclePlate || "—"), "*Ocorrência:* " + (issue.itemName || "—"), "*Oficina / local:* " + (maintenance.provider || "Não informado"), "*Entrega para manutenção:* " + dateTime(maintenance.deliveryAt), "*Prazo contratual de 6 horas:* " + dateTime(sla.deadline), result, late && maintenance.slaJustification ? "*Justificativa registrada:* " + maintenance.slaJustification : "", "", "Solicitamos o registro desta ocorrência e as providências previstas no contrato.", "", "Atenciosamente,", "URBAM Frotas — Gestão de Manutenção"].filter(Boolean).join("\n");
+}
+async function copySupplierSlaNotice(issueId) { const issue = data.issues.find((entry) => entry.id === issueId); const message = issue ? buildSupplierSlaMessage(issue) : ""; if (!message) return alert("O prazo de 6 horas começa somente após a entrega do veículo para manutenção."); try { await navigator.clipboard.writeText(message); alert("Mensagem formal copiada."); } catch { alert("Não foi possível copiar automaticamente. Selecione e copie a mensagem ao abrir o WhatsApp."); } }
+async function sendSupplierSlaNotice(issueId) {
+  const issue = data.issues.find((entry) => entry.id === issueId); if (!issue) return;
+  const maintenance = maintenanceOf(issue); const sla = supplierSlaResult(issue); if (!sla) return alert("Registre primeiro a entrega do veículo para iniciar o prazo contratual.");
+  if (sla.state === "late" && !maintenance.slaJustification) { const justification = prompt("Informe a justificativa do atraso para formalizar a notificação à empresa:"); if (justification === null) return; maintenance.slaJustification = justification.trim() || "Aguardando justificativa do fornecedor."; }
+  const type = sla.state === "late" ? "Notificação de atraso" : "Comprovação de atendimento no prazo";
+  issue.maintenance = { ...maintenance, slaNoticeAt: new Date().toISOString(), slaNoticeType: type, updatedAt: new Date().toISOString() }; saveData(); renderControl();
+  try { await cloudUpdateIssue(issue); await recordAuditEvent(issue, "notificacao_sla_fornecedor", type); } catch (error) { queueCloudWrite("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: issue.vehicleId, status: issue.status, data: issue }); }
+  const target = issue.ownerPhone || ""; if (!target) { await copySupplierSlaNotice(issueId); return alert("A mensagem foi gerada, mas este veículo não possui telefone da empresa cadastrado."); }
+  window.open(whatsappLink(target, buildSupplierSlaMessage(issue)), "_blank", "noopener");
+}
 function buildMaintenanceGroupMessage() {
   const issues = data.issues.filter((issue) => issue.status === "aberta" || maintenanceOf(issue).status !== "Concluída")
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -1317,8 +1354,8 @@ async function saveMaintenance() {
   issue.maintenance = maintenanceFormValues(previousMaintenance);
   if (issue.maintenance.status === "Agendada" && (!issue.maintenance.scheduledAt || !issue.maintenance.provider || !issue.maintenance.address)) { alert("Para agendar ou reagendar, informe data e horário, oficina e endereço do atendimento."); return; }
   if (issue.maintenance.status === "Agendada" && previousMaintenance.deliveryAt) { issue.maintenance.deliveryAt = ""; issue.maintenance.supplierDeadlineAt = ""; issue.maintenance.rescheduledAt = new Date().toISOString(); }
-  if (issue.maintenance.status === "Em manutenção" && !previousMaintenance.deliveryAt) { const deliveredAt = new Date().toISOString(); issue.maintenance.deliveryAt = deliveredAt; issue.maintenance.supplierDeadlineAt = new Date(new Date(deliveredAt).getTime() + 21600000).toISOString(); }
-  if (issue.maintenance.status === "Veículo pronto para retirada" && (!issue.maintenance.provider || !issue.maintenance.service)) { alert("Informe a oficina/local e o serviço executado antes de liberar o veículo."); return; }
+  if (issue.maintenance.status === "Em manutenção" && !previousMaintenance.deliveryAt) { alert("O prazo contratual deve começar somente quando o colaborador confirmar a entrega do veículo no aplicativo dele."); return; }
+  if (issue.maintenance.status === "Veículo pronto para retirada" && (!previousMaintenance.deliveryAt || !issue.maintenance.provider || !issue.maintenance.service)) { alert("Para liberar o veículo, confirme a entrega pelo colaborador e informe oficina/local e serviço executado."); return; }
   if (issue.maintenance.status === "Concluída") { issue.status = "resolvida"; issue.resolvedAt = new Date().toISOString(); }
   else if (issue.status === "resolvida") { issue.status = "aberta"; delete issue.resolvedAt; }
   saveData();
@@ -1429,6 +1466,8 @@ document.addEventListener("click", (event) => {
   if (target.dataset.approvedOwner) sendApprovedOwnerWhatsApp(target.dataset.approvedOwner);
   if (target.dataset.copyOwnerMessage) void copyOwnerMessage(target.dataset.copyOwnerMessage);
   if (target.dataset.copyManagerMessage) void copyManagerMaintenanceMessage(target.dataset.copyManagerMessage);
+  if (target.dataset.copySlaNotice) void copySupplierSlaNotice(target.dataset.copySlaNotice);
+  if (target.dataset.sendSlaNotice) void sendSupplierSlaNotice(target.dataset.sendSlaNotice);
   if (target.dataset.whatsappIssue) sendIssueWhatsApp(target.dataset.whatsappIssue);
   if (target.dataset.maintenanceIssue) openMaintenanceIssue(target.dataset.maintenanceIssue);
   if (target.dataset.maintenanceWhatsapp) sendMaintenanceWhatsApp(target.dataset.maintenanceWhatsapp);
@@ -1456,7 +1495,7 @@ $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").for
 if ("serviceWorker" in navigator) window.addEventListener("load", async () => {
   let refreshedForUpdate = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => { if (!refreshedForUpdate) { refreshedForUpdate = true; location.reload(); } });
-  try { const registration = await navigator.serviceWorker.register("service-worker.js?v=179"); await registration.update(); } catch (_) {}
+  try { const registration = await navigator.serviceWorker.register("service-worker.js?v=180"); await registration.update(); } catch (_) {}
 });
 window.addEventListener("load", () => { void window.URBAMOneSignal?.initialize(); });
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
@@ -1465,7 +1504,7 @@ if (isInstalled()) document.body.classList.add("app-installed"); else window.add
 window.addEventListener("online", () => { void syncCloudOutbox().then((count) => { if (count) console.info(`${count} envio(s) pendente(s) sincronizado(s).`); }); });
 if (new URLSearchParams(location.search).get("gestao") === "1") {
   if (cloudToken()) showScreen("controle");
-  else location.replace("gestao.html?v=179");
+  else location.replace("gestao.html?v=180");
 } else { renderStart(); }
 void syncCloudOutbox();
 window.setInterval(() => { void syncCloudOutbox(); }, 30 * 1000);
