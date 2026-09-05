@@ -1,5 +1,6 @@
 const CACHE = "checkfrota-v179";
-const ASSETS = ["./", "./index.html", "./gestao.html?v=179", "./lider.html?v=179", "./instalar-gestao.html?v=179", "./instalar-lider.html?v=179", "./aprovacao.html?v=179", "./styles.css?v=179", "./supabase-config.js?v=179", "./onesignal.js?v=179", "./app.js?v=179", "./manifest.webmanifest", "./gestao-manifest.webmanifest", "./lider-manifest.webmanifest", "./icons/icon.svg", "./version.json"];
+const ASSETS = ["./", "./index.html", "./gestao.html?v=180", "./lider.html?v=180", "./instalar-gestao.html?v=180", "./instalar-lider.html?v=180", "./aprovacao.html?v=180", "./styles.css?v=180", "./supabase-config.js?v=180", "./onesignal.js?v=180", "./app.js?v=180", "./manifest.webmanifest", "./gestao-manifest.webmanifest", "./lider-manifest.webmanifest", "./icons/icon.svg", "./version.json"];
+
 
 self.addEventListener("install", (event) => event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting())));
 self.addEventListener("activate", (event) => event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)))).then(() => self.clients.claim())));
@@ -16,16 +17,19 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(caches.match(event.request).then((cached) => cached || fetch(event.request)));
 });
 
+
 self.addEventListener("push", (event) => {
   let payload = { title: "URBAM Frotas Líder", body: "Há um novo chamado para aprovação." };
   try { payload = { ...payload, ...event.data.json() }; } catch (_) {}
   event.waitUntil(self.registration.showNotification(payload.title, { body: payload.body, icon: "icons/icon.svg", tag: payload.tag || "urbam-frota-lider" }));
 });
 
+
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   event.waitUntil(clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
     const open = windows.find((client) => client.url.includes("lider.html"));
-    return open ? open.focus() : clients.openWindow("./lider.html?v=179");
+    return open ? open.focus() : clients.openWindow("./lider.html?v=180");
   }));
 });
+
