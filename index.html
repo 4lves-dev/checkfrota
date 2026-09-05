@@ -10,7 +10,7 @@
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="icons/icon.svg">
-    <link rel="stylesheet" href="styles.css?v=176">
+    <link rel="stylesheet" href="styles.css?v=177">
     <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer=""></script>
     <style>#installBanner[hidden] { display: none !important; }</style>
     <title>URBAM Frotas</title>
@@ -24,8 +24,8 @@
           <small class="brand-credit">por <span class="luchti-signature">LUCHTI ME</span></small>
         </a>
         <div class="header-actions">
-          <a class="management-access" href="gestao.html?v=176" title="Acesso à Gestão da Frota" aria-label="Acesso à Gestão da Frota"><span aria-hidden="true">▦</span> Gestão</a>
-          <a class="management-access" href="lider.html?v=176" title="Acesso ao painel da Liderança" aria-label="Acesso ao painel da Liderança"><span aria-hidden="true">✓</span> Liderança</a>
+          <a class="management-access" href="gestao.html?v=177" title="Acesso à Gestão da Frota" aria-label="Acesso à Gestão da Frota"><span aria-hidden="true">▦</span> Gestão</a>
+          <a class="management-access" href="lider.html?v=177" title="Acesso ao painel da Liderança" aria-label="Acesso ao painel da Liderança"><span aria-hidden="true">✓</span> Liderança</a>
           <button class="install-button" id="enablePushNotifications" type="button" title="Ativar avisos no celular">🔔 <span>Avisos</span></button>
           <button class="install-button" id="installApp" title="Instalar no celular">⇩ <span>Instalar</span></button>
         </div><span class="sync-status" id="cloudSyncStatus" aria-live="polite" data-state="ok">✓ Sincronizado</span>
@@ -150,6 +150,7 @@
           <div class="stat-grid"><article><span id="fleetCount">0</span><small>veículos</small></article><article class="alert"><span id="seriousCount">0</span><small>graves</small></article><article><span id="weekChecks">0</span><small>checklists (7 dias)</small></article></div>
           <section class="storage-indicator" id="storageIndicator" aria-live="polite"></section>
           <section class="daily-checklist-alert" id="dailyChecklistAlert" hidden="" aria-live="polite"></section>
+          <section class="maintenance-watch-alerts" id="maintenanceWatchAlerts" hidden aria-live="polite"></section>
           <section class="notification-setting" aria-labelledby="notificationTitle"><div><b id="notificationTitle">Notificação diária no computador</b><p id="notificationStatus">Ative para receber o aviso de veículos sem checklist após as 08h.</p></div><button type="button" class="small-button" id="enableDailyNotifications">🔔 Ativar notificações</button></section>
           <section id="managementCommandCenter" class="management-command-center" aria-label="Central de pendências"></section>
           <div class="tabs" role="tablist"><button class="tab active" data-tab="issues">Ocorrências</button><button class="tab" data-tab="reports">Relatório</button><button class="tab" data-tab="history">Histórico</button><button class="tab" data-tab="vehicles">Veículos</button><button class="tab" data-tab="drivers">Colaboradores</button><button class="tab" data-tab="audit">Auditoria</button></div>
@@ -277,9 +278,9 @@
 
     <template id="emptyStateTemplate"><div class="empty-state"><span>⌁</span><p>Nenhum registro por aqui.</p></div></template>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script src="supabase-config.js?v=176"></script>
-    <script src="onesignal.js?v=176"></script>
-    <script src="app.js?v=176"></script>
+    <script src="supabase-config.js?v=177"></script>
+    <script src="onesignal.js?v=177"></script>
+    <script src="app.js?v=177"></script>
   
 
 
