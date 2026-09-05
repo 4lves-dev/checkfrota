@@ -3,7 +3,7 @@
   "name": "URBAM Frotas",
   "short_name": "URBAM Frotas",
   "description": "Checklist e gestão de ocorrências da frota URBAM.",
-  "start_url": "/checkfrota/?v=171",
+  "start_url": "/checkfrota/?v=176",
   "display": "standalone",
   "background_color": "#eef4f7",
   "theme_color": "#0f2a43",
