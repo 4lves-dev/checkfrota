@@ -1,5 +1,5 @@
 {
-  "version": "175",
-  "released_at": "2026-09-04",
-  "notes": "Restauração completa do painel da Liderança e alerta diário de checklist sempre visível na Gestão."
+  "version": "179",
+  "released_at": "2026-09-05",
+  "notes": "Fluxo de manutenção simplificado, mapa com link direto e custo removido da Gestão."
 }
