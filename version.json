@@ -1,5 +1,5 @@
 {
-  "version": "184",
+  "version": "185",
   "released_at": "2026-09-07",
-  "notes": "Nova aba de acompanhamento da liderança com filtros de agendamento, manutenção, atraso e retirada."
+  "notes": "Correção do mapa para usar o endereço completo da oficina sem misturar o nome do estabelecimento."
 }

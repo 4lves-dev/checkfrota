@@ -1,7 +1,7 @@
 /* URBAM Frota - MVP local-first. Dados ficam neste navegador até uma integração ser configurada. */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "184";
+const APP_VERSION = "185";
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v165";
 const CHECKLIST = [
   ["pneus", "Pneus e estepe", "Rodagem"],
@@ -388,8 +388,10 @@ function notifyReturnedIssue(issue) {
   localStorage.setItem(key, new Date().toISOString());
 }
 function maintenanceMapUrl(maintenance = {}) {
+  const address = String(maintenance.address || "").trim();
+  if (address) return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`;
   if (maintenance.latitude !== "" && maintenance.latitude != null && maintenance.longitude !== "" && maintenance.longitude != null) return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${maintenance.latitude},${maintenance.longitude}`)}`;
-  const query = [maintenance.provider, maintenance.address].filter(Boolean).join(", ");
+  const query = String(maintenance.provider || "").trim();
   return query ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}` : "";
 }
 function appointmentFingerprint(issue) { const maintenance = maintenanceOf(issue); return [maintenance.scheduledAt, maintenance.provider, maintenance.address, maintenance.latitude, maintenance.longitude, maintenance.updatedAt].join("|"); }
@@ -1466,23 +1468,25 @@ async function saveMaintenance() {
 }
 function updateMaintenanceMapLink() {
   const link = $("#maintenanceMapLink"); if (!link) return;
-  const query = [$("#maintenanceProvider")?.value.trim(), $("#maintenanceAddress")?.value.trim()].filter(Boolean).join(", ");
-  const mapUrl = maintenanceMapLocation?.mapUrl || (query ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}` : "");
+  const address = $("#maintenanceAddress")?.value.trim() || "";
+  const mapUrl = address ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}` : (maintenanceMapLocation?.mapUrl || "");
   link.href = mapUrl || "https://www.google.com/maps";
   link.setAttribute("aria-disabled", mapUrl ? "false" : "true");
   link.classList.toggle("is-disabled", !mapUrl);
   const status = $("#maintenanceMapStatus");
-  if (status) status.textContent = maintenanceMapLocation?.mapUrl ? `Localização confirmada: ${maintenanceMapLocation.mapLabel || `${maintenanceMapLocation.latitude}, ${maintenanceMapLocation.longitude}`}` : (query ? "Endereço pronto para abrir no Google Maps. Confirme a localização se desejar gravar as coordenadas." : "Informe o endereço da oficina para abrir no mapa.");
+  if (status) status.textContent = address ? "A rota será aberta usando somente o endereço informado. Confira rua, número, bairro, cidade e estado." : "Informe o endereço completo da oficina para abrir a rota correta.";
 }
 async function locateMaintenanceAddress() {
-  const provider = $("#maintenanceProvider").value.trim(), address = $("#maintenanceAddress").value.trim(), status = $("#maintenanceMapStatus");
-  const query = [provider, address].filter(Boolean).join(", "); if (!address) return alert("Informe o endereço da oficina antes de localizar.");
+  const address = $("#maintenanceAddress").value.trim(), status = $("#maintenanceMapStatus");
+  if (!address) return alert("Informe o endereço completo da oficina antes de localizar.");
+  const hasCity = address.split(",").length >= 3 || /são josé dos campos|sao jose dos campos|\bsp\b/i.test(address);
+  const query = hasCity ? address : `${address}, São José dos Campos, SP, Brasil`;
   status.textContent = "Localizando endereço no mapa...";
   try {
     const response = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(query)}`, { headers: { Accept: "application/json" } });
     if (!response.ok) throw new Error("consulta indisponível"); const found = await response.json(); const place = found?.[0];
     if (!place?.lat || !place?.lon) throw new Error("endereço não encontrado");
-    maintenanceMapLocation = { latitude: Number(place.lat), longitude: Number(place.lon), mapLabel: place.display_name || address, mapUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${place.lat},${place.lon}`)}` };
+    maintenanceMapLocation = { latitude: Number(place.lat), longitude: Number(place.lon), mapLabel: place.display_name || address, mapUrl: `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}` };
     status.textContent = `Local confirmado: ${maintenanceMapLocation.mapLabel}`;
   } catch (error) { maintenanceMapLocation = null; status.textContent = "Não foi possível confirmar automaticamente. Use o botão Google Maps para conferir o endereço."; }
   updateMaintenanceMapLink();
