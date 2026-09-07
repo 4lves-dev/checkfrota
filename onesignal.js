@@ -15,7 +15,7 @@ window.URBAMOneSignal = (() => {
       const modal = document.createElement("div");
       modal.className = "onesignal-verification";
       modal.setAttribute("role", "dialog"); modal.setAttribute("aria-modal", "true");
-      modal.innerHTML = `<section><h2>Your OneSignal SDK integration is complete!</h2><p>You can now send Push Notifications & In-App Messages through OneSignal. Tap below to enable push notifications.</p><button type="button">Got it</button></section>`;
+      modal.innerHTML = `<section><h2>Ativar avisos do URBAM Frotas</h2><p>Você poderá receber avisos sobre novos chamados, agendamentos e veículos liberados para retirada.</p><button type="button">Continuar</button></section>`;
       modal.querySelector("button").onclick = () => { localStorage.setItem(DIALOG_KEY, "1"); modal.remove(); resolve(true); };
       document.body.append(modal);
     });
