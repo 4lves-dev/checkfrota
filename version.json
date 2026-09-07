@@ -1,5 +1,5 @@
 {
-  "version": "185",
+  "version": "186",
   "released_at": "2026-09-07",
-  "notes": "Correção do mapa para usar o endereço completo da oficina sem misturar o nome do estabelecimento."
+  "notes": "Agenda de manutenção, indicadores operacionais, alerta de chamado duplicado, confirmações de etapa e sugestões de oficinas já utilizadas."
 }

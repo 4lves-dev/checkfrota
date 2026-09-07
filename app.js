@@ -1,7 +1,7 @@
 /* URBAM Frota - MVP local-first. Dados ficam neste navegador até uma integração ser configurada. */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "185";
+const APP_VERSION = "186";
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v165";
 const CHECKLIST = [
   ["pneus", "Pneus e estepe", "Rodagem"],
@@ -764,6 +764,11 @@ async function submitChecklist() {
     items: CHECKLIST.map((item) => ({ ...item, ...current.states[item.id] })),
   };
   const currentIssues = [...getCurrentIssues(), ...(current.washRequested ? [{ item: { name: "Solicitação de lavagem", category: "Lavagem" }, severity: "Leve", description: current.washDetails || "Solicitação de lavagem do veículo." }] : [])];
+  const duplicateItems = currentIssues.filter((candidate) => data.issues.some((existing) => existing.status !== "resolvida" && String(existing.vehicleId || existing.vehiclePrefix) === String(vehicle.id || vehicle.prefix) && driverNameKey(existing.itemName) === driverNameKey(candidate.item.name)));
+  if (duplicateItems.length) {
+    const labels = [...new Set(duplicateItems.map((item) => item.item.name))].join(", ");
+    if (!confirm(`Já existe chamado aberto para este veículo em: ${labels}.\n\nDeseja realmente registrar outro chamado?`)) return;
+  }
   inspection.status = currentIssues.length ? "Com ocorrência" : "Concluído sem observação";
   inspection.completedAt = currentIssues.length ? "" : new Date().toISOString();
   const newIssues = currentIssues.map((issue) => ({
@@ -932,7 +937,7 @@ function renderControl() {
   $("#seriousCount").textContent = open.filter((issue) => issue.severity === "Grave").length;
   const since = Date.now() - 7 * 24 * 60 * 60 * 1000;
   $("#weekChecks").textContent = data.inspections.filter((inspection) => new Date(inspection.createdAt).getTime() >= since).length;
-  renderManagementCommandCenter(); renderMaintenanceWatchAlerts(); renderIssues(); renderReports(); renderHistory(); renderVehicles(); renderVehicleTimelines(); renderDrivers(); renderAuditLog();
+  renderManagementCommandCenter(); renderMaintenanceWatchAlerts(); renderIssues(); renderAgenda(); renderReports(); renderHistory(); renderVehicles(); renderVehicleTimelines(); renderDrivers(); renderAuditLog();
   renderLeaderInstallTarget();
   renderDailyChecklistAlert();
   renderStorageIndicator();
@@ -1110,13 +1115,28 @@ function renderIssues() {
   }).join("");
   bindIssueFilters();
 }
+function renderAgenda() {
+  const panel = $("#agendaPanel"); if (!panel) return;
+  const active = data.issues.filter((issue) => issue.status !== "resolvida" && maintenanceOf(issue).scheduledAt).sort((a, b) => new Date(maintenanceOf(a).scheduledAt) - new Date(maintenanceOf(b).scheduledAt));
+  const groups = [
+    ["Atrasados", active.filter((issue) => supplierSlaResult(issue)?.state === "late")],
+    ["Hoje", active.filter((issue) => maintenanceOf(issue).scheduledAt.slice(0, 10) === today())],
+    ["Próximos", active.filter((issue) => maintenanceOf(issue).scheduledAt.slice(0, 10) > today())],
+  ];
+  panel.innerHTML = `<section class="agenda-board"><div class="section-action"><div><h3>Agenda da manutenção</h3><p>Acompanhe horário, oficina, rota e situação de cada veículo.</p></div><span class="chip ok">${active.length} agendado(s)</span></div>${groups.map(([title, entries]) => `<section class="agenda-group"><h4>${title} <span>${entries.length}</span></h4>${entries.length ? entries.map((issue) => { const m = maintenanceOf(issue), map = maintenanceMapUrl(m); return `<article class="agenda-item ${supplierSlaResult(issue)?.state === "late" ? "late" : ""}"><div><b>Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate || "—")}</b><p>${dateTime(m.scheduledAt)} · ${esc(m.status)}<br>${esc(m.provider || "Oficina a confirmar")}${m.address ? ` · ${esc(m.address)}` : ""}</p></div><div class="issue-actions">${map ? `<a class="small-button map-link" href="${esc(map)}" target="_blank" rel="noopener">Abrir rota</a>` : ""}<button class="small-button" data-maintenance-issue="${esc(issue.id)}">Atualizar</button></div></article>`; }).join("") : `<p class="agenda-empty">Nenhum veículo.</p>`}</section>`).join("")}</section>`;
+}
 function renderReports() {
   const panel = $("#reportsPanel");
   const issues = [...data.issues].sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
   const open = issues.filter((issue) => issue.status === "aberta").length;
   const scheduled = issues.filter((issue) => maintenanceOf(issue).status === "Agendada").length;
   const completed = issues.filter((issue) => issue.status === "resolvida" || maintenanceOf(issue).status === "Concluída").length;
-  panel.innerHTML = `<section class="report-summary"><article><span>${issues.length}</span><small>solicitações</small></article><article><span>${open}</span><small>em aberto</small></article><article><span>${scheduled}</span><small>agendadas</small></article><article><span>${completed}</span><small>concluídas</small></article></section><button class="report-download" id="downloadReport">↓ Baixar relatório de solicitações (Excel)</button><div class="report-list">${issues.length ? issues.map((issue) => { const maintenance = maintenanceOf(issue); return `<article class="report-item"><div><b>Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate)} · ${esc(issue.itemName)}</b><p>${esc(issue.description)}</p><small>${dateTime(issue.createdAt)} · ${esc(maintenance.status)}${maintenance.scheduledAt ? ` · ${dateTime(maintenance.scheduledAt)}` : ""}</small></div><span class="chip ${issue.severity.toLowerCase()}">${esc(issue.severity)}</span></article>`; }).join("") : `<div class="empty-state"><span>⌁</span><p>Nenhuma solicitação registrada.</p></div>`}</div>`;
+  const approved = issues.filter((issue) => issue.leaderApproval?.approvedAt);
+  const averageApprovalHours = approved.length ? approved.reduce((sum, issue) => sum + Math.max(0, new Date(issue.leaderApproval.approvedAt) - new Date(issue.createdAt)), 0) / approved.length / 3600000 : 0;
+  const delivered = issues.filter((issue) => maintenanceOf(issue).deliveryAt);
+  const averageStoppedHours = delivered.length ? delivered.reduce((sum, issue) => { const m = maintenanceOf(issue); return sum + Math.max(0, new Date(m.readyAt || Date.now()) - new Date(m.deliveryAt)); }, 0) / delivered.length / 3600000 : 0;
+  const late = issues.filter((issue) => supplierSlaResult(issue)?.state === "late").length;
+  panel.innerHTML = `<section class="report-summary management-kpis"><article><span>${issues.length}</span><small>solicitações</small></article><article><span>${open}</span><small>em aberto</small></article><article><span>${scheduled}</span><small>agendadas</small></article><article><span>${completed}</span><small>concluídas</small></article><article><span>${averageApprovalHours.toFixed(1)}h</span><small>tempo médio para aprovação</small></article><article><span>${averageStoppedHours.toFixed(1)}h</span><small>tempo médio parado</small></article><article class="alert"><span>${late}</span><small>fora do prazo de 6 horas</small></article></section><button class="report-download" id="downloadReport">↓ Baixar relatório de solicitações (Excel)</button><div class="report-list">${issues.length ? issues.map((issue) => { const maintenance = maintenanceOf(issue); return `<article class="report-item"><div><b>Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate)} · ${esc(issue.itemName)}</b><p>${esc(issue.description)}</p><small>${dateTime(issue.createdAt)} · ${esc(maintenance.status)}${maintenance.scheduledAt ? ` · ${dateTime(maintenance.scheduledAt)}` : ""}</small></div><span class="chip ${issue.severity.toLowerCase()}">${esc(issue.severity)}</span></article>`; }).join("") : `<div class="empty-state"><span>⌁</span><p>Nenhuma solicitação registrada.</p></div>`}</div>`;
 }
 function downloadReport() {
   if (!window.XLSX) return alert("Não foi possível carregar o recurso de Excel. Verifique sua conexão e tente novamente.");
@@ -1389,6 +1409,9 @@ function openMaintenanceIssue(issueId) {
   $("#maintenanceStatus").value = ["Solicitada", "Agendada", "Em manutenção", "Veículo pronto para retirada"].includes(maintenance.status) ? maintenance.status : "Solicitada";
   $("#maintenanceScheduledAt").value = maintenance.scheduledAt ? maintenance.scheduledAt.slice(0, 16) : "";
   $("#maintenanceProvider").value = maintenance.provider;
+  const providers = [...new Set(data.issues.map((entry) => maintenanceOf(entry).provider).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const providerOptions = $("#maintenanceProviderOptions");
+  if (providerOptions) providerOptions.innerHTML = providers.map((provider) => `<option value="${esc(provider)}"></option>`).join("");
   $("#maintenanceAddress").value = maintenance.address || "";
   maintenanceMapLocation = { latitude: maintenance.latitude ?? "", longitude: maintenance.longitude ?? "", mapLabel: maintenance.mapLabel || "", mapUrl: maintenance.mapUrl || maintenanceMapUrl(maintenance) || "" };
   updateMaintenanceMapLink();
@@ -1450,7 +1473,9 @@ async function saveMaintenance() {
   const issue = data.issues.find((entry) => entry.id === $("#maintenanceIssueId").value); if (!issue) return;
   if (!canManageMaintenance(issue)) { alert("Este chamado ainda aguarda a aprovação da liderança."); return; }
   const previousMaintenance = maintenanceOf(issue);
-  issue.maintenance = maintenanceFormValues(previousMaintenance);
+  const nextMaintenance = maintenanceFormValues(previousMaintenance);
+  if (nextMaintenance.status !== previousMaintenance.status && !confirm(`Confirma a mudança da manutenção de “${previousMaintenance.status || "Solicitada"}” para “${nextMaintenance.status}”?`)) return;
+  issue.maintenance = nextMaintenance;
   if (issue.maintenance.status === "Agendada" && (!issue.maintenance.scheduledAt || !issue.maintenance.provider || !issue.maintenance.address)) { alert("Para agendar ou reagendar, informe data e horário, oficina e endereço do atendimento."); return; }
   if (issue.maintenance.status === "Agendada" && previousMaintenance.deliveryAt) { issue.maintenance.deliveryAt = ""; issue.maintenance.supplierDeadlineAt = ""; issue.maintenance.readyAt = ""; issue.maintenance.pickupAt = ""; issue.maintenance.pickupBy = ""; issue.maintenance.supplierReplyAt = ""; issue.maintenance.rescheduledAt = new Date().toISOString(); }
   if (issue.maintenance.status === "Em manutenção" && !previousMaintenance.deliveryAt) { alert("O prazo contratual deve começar somente quando o colaborador confirmar a entrega do veículo no aplicativo dele."); return; }
