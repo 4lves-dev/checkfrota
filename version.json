@@ -1,5 +1,5 @@
 {
-  "version": "192",
+  "version": "193",
   "released_at": "2026-09-09",
-  "notes": "Rotas de manutenção corrigidas para sair da localização registrada na abertura do chamado e seguir até a oficina."
+  "notes": "Acompanhamento da Liderança mostra separadamente o ponto de abertura, o destino da manutenção e a rota completa."
 }

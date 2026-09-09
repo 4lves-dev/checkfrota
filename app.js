@@ -5,7 +5,7 @@
  */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "192";
+const APP_VERSION = "193";
 const SOFTWARE_SIGNATURE = Object.freeze({ owner: "LUCHTI ME", product: "URBAM Frotas", fingerprint: "LUCHTI-CHECKFROTA-URBAM-20260909-A7F3", notice: "Todos os direitos reservados" });
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v189";
 const CHECKLIST = [
@@ -750,105 +750,7 @@ async function captureOpeningLocation() {
       clearTimeout(timer);
       const messages = { 1: "Permissão de localização negada. Autorize a localização para registrar o ponto do chamado.", 2: "Localização indisponível. Ative o GPS e tente novamente.", 3: "O GPS demorou para responder. Tente novamente em local aberto." };
       finish(messages[error.code] || "Não foi possível obter a localização.", "warning");
-    }, { enableHighAccuracy: true, maximumAge: 0, timeout: 12000 });
-    const qualityTimer = window.setInterval(() => { if (best?.coords?.accuracy <= 20) { clearInterval(qualityTimer); clearTimeout(timer); finish(); } }, 400);
-    window.setTimeout(() => { clearInterval(qualityTimer); clearTimeout(timer); finish(); }, 12000);
-  });
-}
-
-async function beginChecklist() {
-  const registeredDriver = lookupDriverRegistration();
-  const driver = registeredDriver?.name || "";
-  const driverRegistration = registeredDriver?.registration || "";
-  const driverRole = registeredDriver?.role || "";
-  const driverEmail = EMAIL_COPY_RECIPIENT;
-  const phoneDigits = phoneOnly($("#driverPhone").value);
-  const driverPhone = phoneDigits.length === 10 || phoneDigits.length === 11 ? `55${phoneDigits}` : phoneDigits;
-  const baseName = $("#baseSelect").value;
-  const prefixVehicle = lookupVehiclePrefix();
-  const vehicleId = prefixVehicle?.id || $("#vehicleSelect").value;
-  const odometer = Number($("#odometer").value);
-  const vehicle = vehicleById(vehicleId);
-  const directToManagement = isDirectManagementVehicle(vehicle);
-  const basePhone = directToManagement ? "" : (BASES[baseName] || "");
-  if (!driverRegistration) return alert("Digite uma matrícula cadastrada antes de iniciar.");
-  if (!/^55\d{10,11}$/.test(driverPhone)) return alert("Informe um WhatsApp válido do colaborador, com DDD.");
-  if (!vehicleId) return alert("Digite um prefixo de veículo cadastrado.");
-  if (!baseName) return alert("O veículo não possui uma base cadastrada. Procure a Gestão.");
-  if (!basePhone && !directToManagement) return alert("Selecione a base responsável pela aprovação.");
-  if (!Number.isFinite(odometer) || odometer < 0) return alert("Informe a quilometragem atual do veículo.");
-  if (odometer > 999999) return alert("A quilometragem informada é muito alta. Confira o número antes de continuar.");
-  if (Number(vehicle?.odometer) && odometer < Number(vehicle.odometer)) return alert(`A quilometragem não pode ser menor que o último registro (${vehicle.odometer} km).`);
-  const locationAge = current.openingLocation?.capturedAt ? Date.now() - new Date(current.openingLocation.capturedAt).getTime() : Infinity;
-  const openingLocation = locationAge < 5 * 60 * 1000 ? current.openingLocation : await captureOpeningLocation();
-  current = { driver, driverRegistration, driverRole, driverEmail, driverPhone, baseName, basePhone, vehicleId, odometer, openingLocation, directToManagement, states: Object.fromEntries(CHECKLIST.map((item) => [item.id, { status: "pending" }])), notes: "", washRequested: false, washDetails: "" };
-  void window.URBAMOneSignal?.setContext({ role: "colaborador", base: baseName, area: "checklist" });
-  localStorage.setItem("checkfrota-driver", driver);
-  localStorage.setItem("checkfrota-driver-registration", driverRegistration);
-  localStorage.setItem("checkfrota-driver-phone", driverPhone);
-  localStorage.setItem("checkfrota-base", baseName);
-  $("#checklistVehicle").textContent = `Prefixo ${vehicle.prefix || "—"} · ${vehicle.plate} · ${vehicle.model || vehicle.type}`;
-  renderChecklist();
-  showScreen("checklist");
-}
-function renderChecklist() {
-  const items = $("#checklistItems");
-  items.innerHTML = CHECKLIST.map((item) => {
-    const state = current.states[item.id] || { status: "pending" };
-    const issueClass = state.status === "issue" ? "has-issue" : "";
-    const issueHint = state.status === "issue" ? `<small class="chip ${state.issue.severity.toLowerCase()}">${state.issue.severity}</small>` : "";
-    return `<article class="check-item ${issueClass}">
-      <div><span class="check-name">${esc(item.name)}</span><span class="check-category">${esc(item.category)} ${issueHint}</span></div>
-      <div class="check-controls">
-        <button class="state-button ok ${state.status === "ok" ? "active" : ""}" data-state="ok" data-item="${item.id}" aria-label="${esc(item.name)} está em ordem" title="Em ordem">✓</button>
-        <button class="state-button issue ${state.status === "issue" ? "active" : ""}" data-state="issue" data-item="${item.id}" aria-label="${esc(item.name)} tem problema" title="Registrar problema">!</button>
-      </div>
-    </article>`;
-  }).join("");
-  updateProgress();
-}
-function updateProgress() {
-  const completed = Object.values(current.states).filter((state) => state.status !== "pending").length;
-  $("#progressText").textContent = `${completed} de ${CHECKLIST.length} itens verificados`;
-  $("#progressBar").style.width = `${(completed / CHECKLIST.length) * 100}%`;
-}
-
-function openIssue(itemId) {
-  issueDraft = { itemId, severity: current.states[itemId]?.issue?.severity || "Leve" };
-  const item = checkById(itemId);
-  $("#issueItemName").textContent = item.name;
-  $("#issueDescription").value = current.states[itemId]?.issue?.description || "";
-  $("#issuePhoto").value = "";
-  $$(".severity").forEach((button) => button.classList.toggle("active", button.dataset.severity === issueDraft.severity));
-  $("#issueDialog").showModal();
-}
-function saveIssue() {
-  const description = $("#issueDescription").value.trim();
-  if (!description) { $("#issueDescription").reportValidity(); return; }
-  const photo = $("#issuePhoto").files[0];
-  if (photo && !["image/jpeg", "image/png", "image/webp", "image/heic"].includes(photo.type)) return alert("Envie apenas uma foto JPEG, PNG, WEBP ou HEIC. Vídeos e outros arquivos não são aceitos.");
-  if (photo && photo.size > 20 * 1024 * 1024) return alert("A foto escolhida tem mais de 20 MB. Tire outra foto com menor tamanho antes de enviar.");
-  current.states[issueDraft.itemId] = {
-    status: "issue",
-    issue: { severity: issueDraft.severity, description, photoName: photo?.name || "", photoFile: photo || null },
-  };
-  $("#issueDialog").close();
-  renderChecklist();
-}
-function reviewChecklist() {
-  const pending = CHECKLIST.filter((item) => current.states[item.id]?.status === "pending");
-  if (pending.length) return alert(`Faltam ${pending.length} item(ns) para verificar. Marque ✓ ou ! em todos eles.`);
-  const issues = getCurrentIssues();
-  $("#reviewSummary").innerHTML = `<section class="review-box card">
-    <div class="review-row"><span>Colaborador</span><b>${esc(current.driver)}</b></div>
-    ${current.driverRegistration ? `<div class="review-row"><span>Matrícula</span><b>${esc(current.driverRegistration)}</b></div>` : ""}
-    ${current.driverRole ? `<div class="review-row"><span>Função</span><b>${esc(current.driverRole)}</b></div>` : ""}
-    ${current.driverEmail ? `<div class="review-row"><span>Cópia do formulário</span><b>${esc(current.driverEmail)}</b></div>` : ""}
-    <div class="review-row"><span>Veículo</span><b>Prefixo ${esc(vehicleById(current.vehicleId).prefix || "—")} · ${esc(vehicleById(current.vehicleId).plate)}</b></div>
-    <div class="review-row"><span>Quilometragem</span><b>${esc(current.odometer)} km</b></div>
-    <div class="review-row"><span>Itens em ordem</span><span class="chip ok">${CHECKLIST.length - issues.length} OK</span></div>
-    <div class="review-row"><span>Ocorrências</span>${issues.length ? `<span class="chip ${highestSeverity(issues).toLowerCase()}">${issues.length} encontrada(s)</span>` : `<span class="chip ok">Nenhuma</span>`}</div>
-  </section>${issues.length ? `<section class="review-box card">${issues.map((issue) => `<div class="review-row"><span>${esc(issue.item.name)}</span><span class="chip ${issue.severity.toLowerCase()}">${esc(issue.severity)}</span></div>`).join("")}</section>` : ""}`;
+    }, { enabem.name)}</span><span class="chip ${issue.severity.toLowerCase()}">${esc(issue.severity)}</span></div>`).join("")}</section>` : ""}`;
   $("#generalNotes").value = current.notes;
   $("#requestWash").checked = Boolean(current.washRequested);
   $("#washDetails").value = current.washDetails || "";
@@ -863,180 +765,7 @@ function highestSeverity(issues) { return issues.reduce((highest, issue) => seve
 async function submitChecklist() {
   current.notes = $("#generalNotes").value.trim();
   current.washRequested = $("#requestWash").checked;
-  current.washDetails = $("#washDetails").value.trim();
-  const vehicle = vehicleById(current.vehicleId);
-  const inspection = {
-    id: crypto.randomUUID(), createdAt: new Date().toISOString(), softwareSignature: SOFTWARE_SIGNATURE, driver: current.driver, driverRegistration: current.driverRegistration, driverRole: current.driverRole, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, openingLocation: current.openingLocation, approvalRoute: current.directToManagement ? "gestao" : "lideranca",
-    vehicleId: vehicle.id, vehiclePrefix: vehicle.prefix || "", vehiclePlate: vehicle.plate, vehicleType: vehicle.type, vehicleModel: vehicle.model || "", vehicleBase: vehicle.base || "", odometer: current.odometer, notes: current.notes, washRequested: current.washRequested, washDetails: current.washDetails, correctionOf: current.correctionOf || "",
-    items: CHECKLIST.map((item) => ({ ...item, ...current.states[item.id] })),
-  };
-  const currentIssues = [...getCurrentIssues(), ...(current.washRequested ? [{ item: { name: "Solicitação de lavagem", category: "Lavagem" }, severity: "Leve", description: current.washDetails || "Solicitação de lavagem do veículo." }] : [])];
-  const duplicateItems = currentIssues.filter((candidate) => data.issues.some((existing) => existing.status !== "resolvida" && String(existing.vehicleId || existing.vehiclePrefix) === String(vehicle.id || vehicle.prefix) && driverNameKey(existing.itemName) === driverNameKey(candidate.item.name)));
-  if (duplicateItems.length) {
-    const labels = [...new Set(duplicateItems.map((item) => item.item.name))].join(", ");
-    if (!confirm(`Já existe chamado aberto para este veículo em: ${labels}.\n\nDeseja realmente registrar outro chamado?`)) return;
-  }
-  inspection.status = currentIssues.length ? "Com ocorrência" : "Concluído sem observação";
-  inspection.completedAt = currentIssues.length ? "" : new Date().toISOString();
-  const newIssues = currentIssues.map((issue) => ({
-    id: crypto.randomUUID(), inspectionId: inspection.id, status: "aberta", createdAt: inspection.createdAt,
-    softwareSignature: SOFTWARE_SIGNATURE, driver: current.driver, driverRegistration: current.driverRegistration, driverRole: current.driverRole, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, openingLocation: current.openingLocation, approvalRoute: current.directToManagement ? "gestao" : "lideranca", vehicleId: vehicle.id, vehiclePrefix: vehicle.prefix || "", vehiclePlate: vehicle.plate, vehicleType: vehicle.type, vehicleModel: vehicle.model || "", vehicleBase: BASE_BY_PREFIX[vehicle.prefix] || vehicle.base || "", odometer: current.odometer,
-    ownerName: vehicle.ownerName, ownerPhone: vehicle.ownerPhone, email: vehicle.email,
-    itemName: issue.item.name, severity: issue.severity, description: issue.description, photoName: issue.photoName, _photoFile: issue.photoFile || null,
-    correctionOf: current.correctionOf || "", maintenance: { status: "Solicitada", scheduledAt: "", provider: "", feedback: "", updatedAt: "" },
-  }));
-  try { await Promise.all(newIssues.map(async (issue) => { const compressedPhoto = await compressPhoto(issue._photoFile); issue.photoSize = compressedPhoto?.size || 0; issue.photoPath = await uploadIssuePhoto(issue, compressedPhoto); delete issue._photoFile; })); }
-  catch (error) { alert("Não foi possível preparar a foto. Tente outra imagem em formato JPEG, PNG, WEBP ou HEIC."); return; }
-  vehicle.odometer = current.odometer;
-  data.inspections.unshift(inspection);
-  data.issues.unshift(...newIssues);
-  saveData();
-  let cloudSaved = true;
-  try { cloudSaved = await cloudSyncSubmission(inspection, newIssues); }
-  catch (error) { cloudSaved = false; console.warn("Não foi possível gravar o chamado no banco", error); }
-  if (!cloudSaved) alert("O checklist ficou salvo com segurança neste aparelho e será enviado automaticamente assim que a conexão voltar.");
-  await finishCorrectionRequest(current.correctionOf, inspection, newIssues.length > 0);
-  const sendResult = await sendToIntegration({ inspection, vehicle, issues: newIssues });
-  await showCompletion(inspection, vehicle, newIssues, sendResult);
-  current = { driver: current.driver, driverRegistration: current.driverRegistration, driverRole: current.driverRole, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, vehicleId: vehicle.id, odometer: "", openingLocation: null, states: {}, notes: "" };
-  saveData();
-}
-
-async function sendToIntegration(payload) {
-  if (!data.settings.webhookUrl) return { sent: false, reason: "sem integração" };
-  try {
-    const isGoogleAppsScript = data.settings.webhookUrl.includes("script.google.com/macros/s/");
-    const response = await fetch(data.settings.webhookUrl, isGoogleAppsScript
-      ? { method: "POST", mode: "no-cors", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(payload) }
-      : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-    if (isGoogleAppsScript) return { sent: true, reason: "enviado ao Apps Script" };
-    return { sent: response.ok, reason: response.ok ? "enviado" : "falhou" };
-  } catch { return { sent: false, reason: "falhou" }; }
-}
-function buildWhatsAppMessage(vehicle, issues, inspection) {
-  const createdAt = inspection?.createdAt || issues[0]?.createdAt || new Date();
-  const checklist = (inspection?.items || CHECKLIST.map((item) => ({ ...item, ...current.states[item.id] }))).map((item) => {
-    if (item.status === "issue") {
-      const issue = item.issue || {};
-      return `- ${item.name}: OCORRÊNCIA${issue.description ? ` — ${issue.description}` : ""}`;
-    }
-    return `- ${item.name}: EM ORDEM`;
-  }).join("\n");
-  const wash = issues.find(isWashIssue);
-  const openingLocation = inspection?.openingLocation || issues[0]?.openingLocation;
-  const locationLine = openingLocationMapUrl(openingLocation) ? `\nLocalização do chamado: ${openingLocationMapUrl(openingLocation)} (precisão aproximada: ${Math.round(openingLocation.accuracy || 0)} m)` : "";
-  return `*URBAM FROTAS — FORMULÁRIO DE INSPEÇÃO*\nSolicitação para avaliação da liderança\n\n*Identificação do veículo*\nVeículo: Prefixo ${vehicle.prefix || "—"} · ${vehicle.plate} (${vehicle.model || vehicle.type})\nQuilometragem: ${inspection?.odometer ?? issues[0]?.odometer ?? vehicle.odometer ?? "Não informada"} km\nBase: ${inspection?.baseName || issues[0]?.baseName || current.baseName || "Não informada"}\nData: ${dateTime(createdAt)}${locationLine}\n\n*Checklist completo*\n${checklist}${wash ? `\n\n*Solicitação adicional*\nLavagem do veículo${wash.description && wash.description !== "Solicitação de lavagem do veículo." ? ` — ${wash.description}` : ""}` : ""}\n\nSolicitamos avaliação e providências para o veículo.`;
-}
-function whatsappLink(phone, message) { return `https://wa.me/${phoneOnly(phone)}?text=${encodeURIComponent(message)}`; }
-function leadershipPanelUrl(baseName) {
-  const base = baseName || current.baseName || "Vertical";
-  return `${location.origin}${location.pathname.replace(/[^/]*$/, "lider.html")}?v=${APP_VERSION}&base=${encodeURIComponent(base)}`;
-}
-async function approvalUrl(vehicle, issues) {
-  const first = issues[0] || {};
-  const problem = issues.map((issue) => `${issue.itemName || issue.item?.name}: ${issue.description}`).join(" | ");
-  const params = new URLSearchParams({
-    id: `MAN-${String(first.id || Date.now()).replaceAll("-", "").slice(-8)}`, issueId: first.id || "",
-    prefix: vehicle.prefix || "", type: vehicle.model || vehicle.type, plate: vehicle.plate,
-    driver: first.driver || current.driver || "", driverRegistration: first.driverRegistration || current.driverRegistration || "", driverPhone: first.driverPhone || current.driverPhone || "",
-    leaderPhone: first.basePhone || current.basePhone || data.settings.leaderPhone || "", maintenancePhone: data.settings.maintenancePhone || "", ownerPhone: first.ownerPhone || vehicle.ownerPhone || "", ownerName: first.ownerName || vehicle.ownerName || "",
-    km: String(first.odometer ?? vehicle.odometer ?? ""), baseName: first.baseName || current.baseName || "Não informada", priority: highestSeverity(issues), location: openingLocationMapUrl(first.openingLocation || current.openingLocation), problem,
-  });
-  const photoUrl = await issuePhotoLink(first);
-  if (photoUrl) params.set("photoUrl", photoUrl);
-  if (first.photoName) params.set("photoName", first.photoName);
-  return `${location.origin}${location.pathname.replace(/[^/]*$/, "aprovacao.html")}?v=${APP_VERSION}&${params.toString()}`;
-}
-async function showCompletion(inspection, vehicle, issues, sendResult) {
-  const severe = issues.some((issue) => issue.severity === "Grave");
-  $("#successTitle").textContent = issues.length ? (severe ? "Veículo com bloqueio de deslocamento." : "Ocorrência registrada.") : "Tudo certo para seguir.";
-  $("#successText").textContent = issues.length ? `O formulário foi salvo com ${issues.length} ocorrência(s) e já está disponível para a liderança. Confira o chamado abaixo e conclua para voltar ao início. ${sendResult.sent ? "A integração de e-mail foi acionada." : "Configure a integração para o envio automático por e-mail."}` : "Checklist concluído sem observações. Não é necessária aprovação da liderança.";
-  const form = $("#submittedForm");
-  const protocol = `MAN-${String(inspection.id || Date.now()).replaceAll("-", "").slice(-8).toUpperCase()}`;
-  const occurrenceRows = issues.length ? issues.map((issue) => `<article class="submitted-issue ${esc(issue.severity.toLowerCase())}"><div><b>${esc(issue.itemName)}</b><span class="chip ${esc(issue.severity.toLowerCase())}">${esc(issue.severity)}</span></div><p>${esc(issue.description)}</p>${issue.photoPath ? `<img src="${esc(publicIssuePhotoUrl(issue))}" alt="Foto da ocorrência ${esc(issue.itemName)}" loading="lazy">` : ""}</article>`).join("") : `<p class="form-empty">Nenhuma ocorrência informada.</p>`;
-  form.innerHTML = `<div class="form-top"><span class="form-mark">✓</span><div><small>URBAM FROTAS · RESPOSTA ENVIADA</small><h2>Formulário de inspeção</h2></div></div><div class="form-protocol"><span>Protocolo</span><b>${esc(protocol)}</b></div><div class="form-fields"><div><span>Colaborador</span><b>${esc(inspection.driver)}</b></div>${inspection.driverRegistration ? `<div><span>Matrícula</span><b>${esc(inspection.driverRegistration)}</b></div>` : ""}${inspection.driverRole ? `<div><span>Função</span><b>${esc(inspection.driverRole)}</b></div>` : ""}<div><span>Base</span><b>${esc(inspection.baseName)}</b></div>${inspection.driverEmail ? `<div><span>Cópia para e-mail</span><b>${esc(inspection.driverEmail)}</b></div>` : ""}<div><span>Veículo</span><b>Prefixo ${esc(vehicle.prefix)} · ${esc(vehicle.plate)}</b></div><div><span>Modelo</span><b>${esc(vehicle.model || vehicle.type)}</b></div><div><span>Quilometragem</span><b>${esc(inspection.odometer)} km</b></div><div><span>Data e hora</span><b>${esc(dateTime(inspection.createdAt))}</b></div></div><div class="form-occurrences"><h3>Ocorrências relatadas</h3>${occurrenceRows}</div>${inspection.notes ? `<div class="form-notes"><span>Observação geral</span><p>${esc(inspection.notes)}</p></div>` : ""}`;
-  const actions = $("#dispatchActions");
-  if (!issues.length) { actions.innerHTML = ""; showScreen("success"); return; }
-  const buttons = [];
-  const directToManagement = issues.some((issue) => issue.approvalRoute === "gestao");
-  const approvalTarget = issues[0]?.basePhone || current.basePhone || data.settings.leaderPhone;
-  if (!directToManagement && approvalTarget) {
-    buttons.push(`<button type="button" class="primary-button" data-go="inicio">Concluir envio à liderança</button>`);
-  }
-  actions.innerHTML = buttons.join("");
-  showScreen("success");
-}
-
-function renderManagementCommandCenter() {
-  const panel = $("#managementCommandCenter"); if (!panel) return;
-  const open = data.issues.filter((issue) => issue.status !== "resolvida");
-  const todayValue = today();
-  const count = (predicate) => open.filter(predicate).length;
-  const cards = [
-    ["Aguardando líder", count((issue) => !issue.leaderApproval && issue.approvalRoute !== "gestao"), "approval"],
-    ["Aprovados para gestão", count((issue) => issue.leaderApproval?.status === "Aprovada" && maintenanceOf(issue).status === "Solicitada"), "approved"],
-    ["Agendados hoje", count((issue) => maintenanceOf(issue).scheduledAt?.slice(0, 10) === todayValue), "scheduled"],
-    ["Em manutenção", count((issue) => maintenanceOf(issue).status === "Em manutenção"), "in-maintenance"],
-    ["Prontos para retirada", count((issue) => maintenanceOf(issue).status === "Veículo pronto para retirada"), "ready"],
-    ["Atrasados", count((issue) => supplierSlaResult(issue)?.state === "late" && maintenanceOf(issue).status !== "Concluída"), "late"],
-  ];
-  panel.innerHTML = `<div class="section-action"><div><p class="eyebrow">PRIORIDADES DO DIA</p><h3>Central de pendências</h3><p>Toque em uma opção para abrir os chamados correspondentes.</p></div><span class="chip grave">${open.length} em aberto</span></div><div class="command-center-grid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">${cards.map(([label, value, type]) => `<button type="button" class="command-card ${type} ${managerCommandFilter === type ? "active" : ""}" data-command-filter="${type}" aria-pressed="${managerCommandFilter === type}" style="min-width:0;${type === "late" ? "grid-column:span 2;" : ""}"><b>${value}</b><span>${label}</span><small>Ver chamados</small></button>`).join("")}</div>`;
-}
-function renderVehicleTimelines() {
-  const cards = $$("#vehiclesPanel .vehicle-card");
-  cards.forEach((card, index) => {
-    const vehicle = data.vehicles[index]; if (!vehicle) return;
-    const events = data.issues.filter((issue) => issue.vehicleId === vehicle.id || String(issue.vehiclePrefix) === String(vehicle.prefix)).flatMap((issue) => {
-      const maintenance = maintenanceOf(issue), entries = [{ at: issue.createdAt, label: `Chamado aberto: ${issue.itemName || "manutenção"}` }];
-      if (issue.leaderApproval?.approvedAt) entries.push({ at: issue.leaderApproval.approvedAt, label: `Liderança: ${issue.leaderApproval.status}` });
-      if (maintenance.scheduledAt) entries.push({ at: maintenance.scheduledAt, label: `Agendado${maintenance.provider ? ` — ${maintenance.provider}` : ""}` });
-      if (maintenance.deliveryAt) entries.push({ at: maintenance.deliveryAt, label: "Veículo entregue para manutenção" });
-      if (maintenance.readyAt) entries.push({ at: maintenance.readyAt, label: "Veículo pronto para retirada" });
-      if (issue.resolvedAt) entries.push({ at: issue.resolvedAt, label: "Chamado concluído" });
-      return entries;
-    }).filter((event) => event.at).sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 5);
-    if (!events.length) return;
-    card.insertAdjacentHTML("beforeend", `<section class="vehicle-timeline"><b>Linha do tempo recente</b>${events.map((event) => `<p><span>●</span> ${esc(dateTime(event.at))} · ${esc(event.label)}</p>`).join("")}</section>`);
-  });
-}
-function maintenanceDeadline(issue) { const maintenance = maintenanceOf(issue); return maintenance.deliveryAt ? new Date(maintenance.supplierDeadlineAt || new Date(maintenance.deliveryAt).getTime() + 21600000) : null; }
-function durationLabel(milliseconds) { const minutes = Math.max(0, Math.ceil(milliseconds / 60000)); return minutes >= 60 ? `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, "0")}min` : `${minutes} min`; }
-function supplierSlaResult(issue) {
-  const maintenance = maintenanceOf(issue); const deadline = maintenanceDeadline(issue);
-  if (!deadline) return null;
-  const finishedAt = maintenance.readyAt || maintenance.pickupAt || (maintenance.status === "Concluída" ? issue.resolvedAt : "");
-  if (finishedAt) {
-    const difference = new Date(finishedAt).getTime() - deadline.getTime();
-    return { deadline, finishedAt: new Date(finishedAt), difference, state: difference <= 0 ? "within" : "late" };
-  }
-  const difference = Date.now() - deadline.getTime();
-  return { deadline, finishedAt: null, difference, state: difference > 0 ? "late" : "running" };
-}
-function notifyManagementMaintenanceWatch(issue, overdue) {
-  if (returnNotificationPermission() !== "granted") return;
-  const maintenance = maintenanceOf(issue); const key = `checkfrota-management-watch-${overdue ? "deadline" : "delivery"}-${issue.id}-${maintenance.deliveryAt}`;
-  if (localStorage.getItem(key)) return;
-  const notification = new Notification(overdue ? "URBAM Frotas: prazo de fornecedor vencido" : "URBAM Frotas: veículo entregue para manutenção", { body: overdue ? `Prefixo ${issue.vehiclePrefix || "—"}: ultrapassou as 6 horas corridas.` : `Prefixo ${issue.vehiclePrefix || "—"}: entregue às ${dateTime(maintenance.deliveryAt)}.`, tag: `checkfrota-management-${issue.id}-${overdue ? "deadline" : "delivery"}`, renotify: true });
-  notification.onclick = () => { window.focus(); notification.close(); }; localStorage.setItem(key, new Date().toISOString());
-}
-function renderMaintenanceWatchAlerts() {
-  const panel = $("#maintenanceWatchAlerts"); if (!panel) return;
-  const active = data.issues.filter((issue) => {
-    const maintenance = maintenanceOf(issue);
-    return maintenance.deliveryAt && maintenance.status !== "Cancelada" && maintenance.status !== "Concluída" && issue.status !== "resolvida";
-  });
-  if (!active.length) { panel.hidden = true; panel.innerHTML = ""; return; }
-  const now = Date.now(); panel.hidden = false;
-  panel.innerHTML = `<div class="section-action"><div><p class="eyebrow">CONTROLE CONTRATUAL</p><h3>Prazo de atendimento de 6 horas</h3><p>O fornecedor não acessa o sistema. A Gestão registra o retorno recebido por WhatsApp e prepara o e-mail formal quando houver atraso.</p></div><span class="chip grave">${active.length} em acompanhamento</span></div>${active.map((issue) => {
-    const maintenance = maintenanceOf(issue), sla = supplierSlaResult(issue), overdue = sla?.state === "late";
-    if (!sla) return "";
-    notifyManagementMaintenanceWatch(issue, overdue && !sla.finishedAt);
-    const title = sla.state === "within" ? "✓ Atendimento dentro do prazo" : sla.state === "late" ? "! Prazo contratual vencido" : "◷ Prazo do fornecedor em andamento";
-    const detail = sla.finishedAt
-      ? `${sla.state === "within" ? `Finalizado ${durationLabel(-sla.difference)} antes do limite.` : `Finalizado com atraso de ${durationLabel(sla.difference)}.`} Veículo pronto: ${dateTime(sla.finishedAt)}.`
-      : (overdue ? `Veículo ainda não liberado. Excedido há ${durationLabel(sla.difference)}.` : `Restam ${durationLabel(-sla.difference)} das 6 horas corridas.`);
-    const action = sla.state === "late" ? "Preparar e-mail de notificação" : "Copiar comprovação de prazo";
-    return `<article class="maintenance-watch ${overdue ? "overdue" : ""}"><b>${title}</b><p><strong>Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate || "—")}</strong><br>Entregue: ${esc(dateTime(maintenance.deliveryAt))} · ${esc(maintenance.provider || "Oficina não informada")}</p><small>${esc(detail)} Prazo final: ${esc(dateTime(sla.deadline))}.</small>${maintenance.slaEmailAt ? `<p><small><b>E-mail formal preparado:</b> ${esc(dateTime(maintenance.slaEmailAt))}</small></p>` : ""}<div class="issue-actions"><button type="button" class="small-button" data-copy-sla-notice="${esc(issue.id)}">Copiar texto formal</button><button type="button" class="small-button ${overdue ? "danger-button" : ""}" data-send-sla-notice="${esc(issue.id)}">${action}</button></div></article>`;
+  current.washDetails = $("#washDetails").valu<small>${esc(detail)} Prazo final: ${esc(dateTime(sla.deadline))}.</small>${maintenance.slaEmailAt ? `<p><small><b>E-mail formal preparado:</b> ${esc(dateTime(maintenance.slaEmailAt))}</small></p>` : ""}<div class="issue-actions"><button type="button" class="small-button" data-copy-sla-notice="${esc(issue.id)}">Copiar texto formal</button><button type="button" class="small-button ${overdue ? "danger-button" : ""}" data-send-sla-notice="${esc(issue.id)}">${action}</button></div></article>`;
   }).join("")}`;
 }
 function startMaintenanceWatch() { if (maintenanceWatchTimer) return; maintenanceWatchTimer = window.setInterval(() => { renderMaintenanceWatchAlerts(); if (cloudToken()) void loadCloudManager(); }, 60000); }
@@ -1284,7 +1013,67 @@ function renderVehicles() {
     return `<article class="vehicle-card"><div><h3>Prefixo ${esc(vehicle.prefix || "—")} · ${esc(vehicle.plate)} <span class="vehicle-label">· ${esc(vehicle.model || vehicle.type)}</span></h3><p>${esc(vehicle.ownerName)}${vehicle.manager ? ` · Gestor: ${esc(vehicle.manager)}` : ""}${vehicle.base ? ` · Base: ${esc(vehicle.base)}` : ""}${vehicle.ownerPhone ? ` · Tel.: ${esc(formatPhone(vehicle.ownerPhone))}` : ""}${vehicle.contract ? ` · Contrato: ${esc(vehicle.contract)}` : ""}${vehicle.odometer !== "" ? ` · ${esc(vehicle.odometer)} km` : ""}</p></div><div class="issue-actions"><button class="small-button" data-vehicle-history="${vehicle.id}">${selectedVehicleHistoryId === vehicle.id ? "Fechar ficha" : "Ver ficha"}</button>${masterActions}</div>${selectedVehicleHistoryId === vehicle.id ? vehicleHistoryMarkup(vehicle) : ""}</article>`;
   }).join("");
   const actions = masterAdmin ? `<div class="vehicle-actions"><button class="restore-button" id="restoreFleet">↺ Restaurar frota</button><button class="add-button" id="newVehicle">+ Cadastrar veículo/caminhão</button></div>` : "";
-  panel.innerHTML = `<div ce.trim();
+  panel.innerHTML = `<div class="section-action"><h3>Veículos e caminhões cadastrados</h3>${actions}</div>${cards}`;
+}
+function renderDrivers() {
+  const panel = $("#driversPanel");
+  if (!panel) return;
+  const registered = employeeRoster().sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  const missing = driversMissingRegistration().sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const employeeAction = masterAdmin ? `<button class="add-button" type="button" data-employee-action="new">+ Cadastrar colaborador</button>` : "";
+  const card = (driver) => {
+    const accessLevel = employeeAccessLevel(driver); const base = driver.leader_base || "";
+    const isMaster = MASTER_EMPLOYEE_REGISTRATIONS.has(String(driver.registration || ""));
+    const manage = masterAdmin ? `<div class="issue-actions"><button class="small-button" type="button" data-employee-action="edit" data-registration="${esc(driver.registration)}">Editar</button><button class="small-button danger-button" type="button" data-employee-action="delete" data-registration="${esc(driver.registration)}">Excluir</button></div>` : "";
+    return `<article class="driver-row"><div><b>${esc(driver.name)}</b><span>Matrícula ${esc(driver.registration)}${driver.role ? ` · ${esc(driver.role)}` : ""}${isMaster ? " · <strong>Administrador Master</strong>" : ""}${accessLevel !== "colaborador" ? ` · <strong>${esc(ACCESS_LEVEL_LABELS[accessLevel] || accessLevel)}${accessLevel === "lider" && base ? ` — ${esc(base)}` : ""}</strong>` : ""}</span></div>${manage}</article>`;
+  };
+  panel.innerHTML = `<section class="driver-registry"><div class="section-action"><div><h3>Banco de colaboradores</h3><p>Defina o perfil: Líder aprova a base; Coordenador aprova as bases; Gestor acompanha toda a frota. O acesso inicial usa matrícula como usuário e senha.</p></div><div class="vehicle-actions"><span class="chip ok">${registered.length} cadastrados</span>${employeeAction}</div></div><div class="driver-grid">${registered.map(card).join("")}</div></section><section class="missing-drivers"><div class="section-action"><div><h3>Colaboradores sem matrícula</h3><p>Relação identificada na primeira tabela e ainda sem vínculo na segunda.</p></div><span class="chip grave">${missing.length} pendentes</span></div>${missing.length ? `<ul>${missing.map((name) => `<li>${esc(name)}</li>`).join("")}</ul>` : "<p>Todos os colaboradores possuem matrícula cadastrada.</p>"}</section>`;
+  panel.querySelector('[data-employee-action="new"]')?.addEventListener("click", () => openEmployeeDialog());
+  panel.querySelectorAll('[data-employee-action="edit"]').forEach((button) => button.addEventListener("click", () => {
+    const registration = button.dataset.registration || "";
+    openEmployeeDialog(employeeDatabase.find((employee) => String(employee.registration) === registration) || DRIVER_REGISTRY.find((employee) => String(employee.registration) === registration));
+  }));
+  panel.querySelectorAll('[data-employee-action="delete"]').forEach((button) => button.addEventListener("click", () => { void deactivateEmployee(button.dataset.registration || ""); }));
+  const quickEmployee = $("#quickNewEmployee");
+  if (quickEmployee) quickEmployee.onclick = (event) => { event.stopPropagation(); openEmployeeDialog(); };
+  const employeeForm = $("#employeeForm");
+  if (employeeForm) employeeForm.onsubmit = (event) => { event.preventDefault(); void saveEmployee(); };
+}
+function renderAuditLog() {
+  const panel = $("#auditPanel");
+  if (!panel) return;
+  const logs = data.issues.filter((issue) => issue.leaderApproval).sort((a, b) => new Date(b.leaderApproval?.approvedAt || b.createdAt) - new Date(a.leaderApproval?.approvedAt || a.createdAt));
+  panel.innerHTML = `<section class="audit-log"><div class="section-action"><div><h3>Log de solicitações</h3><p>Registro para auditoria das decisões tomadas pela liderança.</p></div><span class="chip ok">${logs.length} registro(s)</span></div>${logs.length ? logs.map((issue) => { const approval = issue.leaderApproval || {}; const status = approval.status || "Sem decisão"; const statusClass = status === "Aprovada" ? "ok" : status === "Recusada" ? "grave" : "media"; return `<article class="audit-entry"><div class="card-heading"><div><h3>${esc(status)}</h3><p class="vehicle-label">Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate || "—")} · ${esc(issue.itemName || "Ocorrência")}</p></div><span class="chip ${statusClass}">${esc(status)}</span></div><p><b>Colaborador:</b> ${esc(issue.driver || "—")}${issue.driverRegistration ? ` · matrícula ${esc(issue.driverRegistration)}` : ""}</p><p><b>Decisão:</b> ${esc(approval.approvedBy || "Liderança")} · ${dateTime(approval.approvedAt || issue.createdAt)}</p>${approval.note ? `<p><b>Observação:</b> ${esc(approval.note)}</p>` : ""}<p class="audit-status"><b>Fluxo:</b> ${esc(approval.dispatchStatus || "Registrado")}</p></article>`; }).join("") : `<div class="empty-state"><span>⌁</span><p>Nenhuma decisão da liderança registrada ainda.</p></div>`}</section>`;
+}
+function openVehicleDialog(id = "") {
+  if (!requireMasterAccess()) return;
+  const vehicle = vehicleById(id);
+  $("#vehicleDialogTitle").textContent = vehicle ? "Editar veículo" : "Novo veículo";
+  $("#editVehicleId").value = vehicle?.id || "";
+  $("#vehiclePrefix").value = vehicle?.prefix || ""; $("#vehiclePlate").value = vehicle?.plate || ""; $("#vehicleType").value = vehicle?.type || "Caminhão"; $("#vehicleModel").value = vehicle?.model || ""; $("#vehicleContract").value = vehicle?.contract || ""; $("#vehicleUrbamContract").value = vehicle?.urbamContract || ""; $("#vehicleOdometer").value = vehicle?.odometer ?? "";
+  $("#vehicleOwnerName").value = vehicle?.ownerName || ""; $("#vehicleOwnerPhone").value = vehicle?.ownerPhone || ""; $("#vehicleEmail").value = vehicle?.email || "";
+  $("#vehicleDialog").showModal();
+}
+function toggleEmployeeLeaderFields() {
+  const enabled = $("#employeeAccessLevel")?.value === "lider";
+  $("#employeeLeaderBaseField").hidden = !enabled;
+  $("#employeeLeaderBase").hidden = !enabled;
+  $("#employeeLeaderBase").required = enabled;
+}
+function openEmployeeDialog(employee = null) {
+  if (!requireMasterAccess()) return;
+  editingEmployeeRegistration = employee?.registration || "";
+  $("#employeeDialogTitle").textContent = employee ? "Configurar colaborador" : "Novo colaborador";
+  $("#employeeRegistration").value = employee?.registration || ""; $("#employeeRegistration").readOnly = Boolean(employee);
+  $("#employeeName").value = employee?.name || ""; $("#employeeRole").value = employee?.role || "";
+  $("#employeeAccessLevel").value = employeeAccessLevel(employee); $("#employeeLeaderBase").value = employee?.leader_base || ""; toggleEmployeeLeaderFields();
+  $("#employeeDialog").showModal();
+}
+async function saveEmployee() {
+  if (!requireMasterAccess()) return;
+  const registration = $("#employeeRegistration").value.replace(/\D/g, "");
+  const name = $("#employeeName").value.trim().toUpperCase();
+  const role = $("#employeeRole").value.trim();
   const access_level = $("#employeeAccessLevel").value;
   const leader = access_level === "lider";
   const leader_base = leader ? $("#employeeLeaderBase").value : null;
