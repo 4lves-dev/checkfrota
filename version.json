@@ -1,6 +1,5 @@
 {
-  "version": "190",
+  "version": "191",
   "released_at": "2026-09-09",
-  "notes": "Identificação proprietária e limpeza única dos chamados antigos nos aparelhos, preservando cadastros e funções."
+  "notes": "Busca de colaborador reparada e novo fluxo por prefixo, com veículo, placa e base preenchidos automaticamente."
 }
-
