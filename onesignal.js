@@ -1,3 +1,4 @@
+/* LUCHTI ME · URBAM Frotas · LUCHTI-CHECKFROTA-URBAM-20260909-A7F3 · Todos os direitos reservados. */
 /* Integração centralizada de notificações push do URBAM Frotas. */
 window.URBAMOneSignal = (() => {
   const APP_ID = "3d57134c-adf3-4f8f-8ec2-093b1d02f3bf";
@@ -61,4 +62,5 @@ window.URBAMOneSignal = (() => {
   }
   return { initialize, requestPermission, setContext, isEnabled: () => Boolean(sdk?.User?.PushSubscription?.optedIn) };
 })();
+
 
