@@ -1,5 +1,5 @@
 {
-  "version": "193",
+  "version": "194",
   "released_at": "2026-09-09",
-  "notes": "Acompanhamento da Liderança mostra separadamente o ponto de abertura, o destino da manutenção e a rota completa."
+  "notes": "Agendamentos notificam pelo aplicativo a Liderança da base e o colaborador identificado pela matrícula."
 }

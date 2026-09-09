@@ -43,9 +43,13 @@ window.URBAMOneSignal = (() => {
     });
     return initialization;
   }
-  async function setContext({ role = "colaborador", base = "", area = "" } = {}) {
+  async function setContext({ role = "colaborador", base = "", area = "", externalId = "" } = {}) {
     const OneSignal = await initialize(); if (!OneSignal?.User?.addTags) return false;
-    try { await OneSignal.User.addTags({ aplicativo: "urbam-frotas", perfil: role, base: base || "sem-base", area: area || "frota" }); return true; }
+    try {
+      if (externalId && OneSignal.login) await OneSignal.login(externalId);
+      await OneSignal.User.addTags({ aplicativo: "urbam-frotas", perfil: role, base: base || "sem-base", area: area || "frota" });
+      return true;
+    }
     catch (error) { console.warn("Não foi possível identificar o contexto de notificações.", error); return false; }
   }
   async function requestPermission(context = {}) {
@@ -62,5 +66,4 @@ window.URBAMOneSignal = (() => {
   }
   return { initialize, requestPermission, setContext, isEnabled: () => Boolean(sdk?.User?.PushSubscription?.optedIn) };
 })();
-
 
