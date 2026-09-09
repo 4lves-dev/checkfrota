@@ -10,7 +10,7 @@
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="icons/icon.svg">
-    <link rel="stylesheet" href="styles.css?v=186">
+    <link rel="stylesheet" href="styles.css?v=187">
     <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer=""></script>
     <style>#installBanner[hidden] { display: none !important; }</style>
     <title>URBAM Frotas</title>
@@ -24,8 +24,8 @@
           <small class="brand-credit">por <span class="luchti-signature">LUCHTI ME</span></small>
         </a>
         <div class="header-actions">
-          <a class="management-access" href="gestao.html?v=186" title="Acesso à Gestão da Frota" aria-label="Acesso à Gestão da Frota"><span aria-hidden="true">▦</span> Gestão</a>
-          <a class="management-access" href="lider.html?v=186" title="Acesso ao painel da Liderança" aria-label="Acesso ao painel da Liderança"><span aria-hidden="true">✓</span> Liderança</a>
+          <a class="management-access" href="gestao.html?v=187" title="Acesso à Gestão da Frota" aria-label="Acesso à Gestão da Frota"><span aria-hidden="true">▦</span> Gestão</a>
+          <a class="management-access" href="lider.html?v=187" title="Acesso ao painel da Liderança" aria-label="Acesso ao painel da Liderança"><span aria-hidden="true">✓</span> Liderança</a>
           <button class="install-button" id="enablePushNotifications" type="button" title="Ativar avisos no celular">🔔 <span>Avisos</span></button>
           <button class="install-button" id="installApp" title="Instalar no celular">⇩ <span>Instalar</span></button>
         </div><span class="sync-status" id="cloudSyncStatus" aria-live="polite" data-state="ok">✓ Sincronizado</span>
@@ -70,6 +70,7 @@
             <label for="odometer">Quilometragem atual (km)</label>
             <input id="odometer" type="number" min="0" step="1" inputmode="numeric" placeholder="Ex.: 125480">
             <p class="helper" id="vehicleOwner"></p>
+            <section class="opening-location" aria-labelledby="openingLocationTitle"><div><b id="openingLocationTitle">Localização do chamado</b><p id="openingLocationStatus" class="helper">Será solicitada ao iniciar o checklist para registrar o ponto mais preciso possível.</p></div><button type="button" class="small-button" id="captureOpeningLocation">⌖ Capturar localização</button></section>
             <button class="primary-button" id="startChecklist">Iniciar checklist <span>→</span></button>
           </div>
 
@@ -278,9 +279,9 @@
 
     <template id="emptyStateTemplate"><div class="empty-state"><span>⌁</span><p>Nenhum registro por aqui.</p></div></template>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script src="supabase-config.js?v=186"></script>
-    <script src="onesignal.js?v=186"></script>
-    <script src="app.js?v=186"></script>
+    <script src="supabase-config.js?v=187"></script>
+    <script src="onesignal.js?v=187"></script>
+    <script src="app.js?v=187"></script>
   
 
 

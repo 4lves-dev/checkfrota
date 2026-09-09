@@ -1,5 +1,5 @@
 {
-  "version": "186",
+  "version": "187",
   "released_at": "2026-09-07",
-  "notes": "Agenda de manutenção, indicadores operacionais, alerta de chamado duplicado, confirmações de etapa e sugestões de oficinas já utilizadas."
+  "notes": "Localização de alta precisão do celular vinculada ao checklist e ao chamado, com coordenadas, margem de erro e link do mapa."
 }

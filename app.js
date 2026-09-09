@@ -1,7 +1,7 @@
 /* URBAM Frota - MVP local-first. Dados ficam neste navegador até uma integração ser configurada. */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "186";
+const APP_VERSION = "187";
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v165";
 const CHECKLIST = [
   ["pneus", "Pneus e estepe", "Rodagem"],
@@ -128,7 +128,7 @@ const driverByRegistration = (registration = "") => {
 const driversMissingRegistration = () => DRIVER_LIST_SOURCE.filter((name) => !DRIVER_REGISTRY.some((driver) => driverNameKey(driver.name) === driverNameKey(name)));
 
 let data = loadData();
-let current = { driver: "", driverRegistration: "", driverRole: "", driverEmail: EMAIL_COPY_RECIPIENT, driverPhone: DRIVER_NOTIFICATION_PHONE, baseName: "", basePhone: "", vehicleId: "", odometer: "", states: {}, notes: "" };
+let current = { driver: "", driverRegistration: "", driverRole: "", driverEmail: EMAIL_COPY_RECIPIENT, driverPhone: DRIVER_NOTIFICATION_PHONE, baseName: "", basePhone: "", vehicleId: "", odometer: "", openingLocation: null, states: {}, notes: "" };
 let issueDraft = { itemId: null, severity: "Leve" };
 let deferredInstallPrompt = null;
 let managerIssueFilters = { base: "", vehicle: "", date: "", owner: "", type: "" };
@@ -652,7 +652,43 @@ function renderVehicleOwner() {
   $("#vehicleOwner").textContent = vehicle ? `Responsável: ${vehicle.ownerName}${vehicle.email ? ` · ${vehicle.email}` : ""}` : "";
 }
 
-function beginChecklist() {
+function openingLocationMapUrl(locationData) { return locationData?.latitude != null && locationData?.longitude != null ? `https://www.google.com/maps?q=${locationData.latitude},${locationData.longitude}` : ""; }
+function renderOpeningLocationStatus(message = "", state = "") {
+  const status = $("#openingLocationStatus"); if (!status) return;
+  const locationData = current.openingLocation;
+  status.className = `helper ${state || (locationData ? "ok" : "")}`;
+  status.innerHTML = locationData && !message ? `✓ Localização capturada com precisão aproximada de <b>${Math.round(locationData.accuracy)} metros</b>. <a href="${esc(openingLocationMapUrl(locationData))}" target="_blank" rel="noopener">Conferir no mapa</a>` : esc(message || "Será solicitada ao iniciar o checklist para registrar o ponto mais preciso possível.");
+}
+async function captureOpeningLocation() {
+  if (!navigator.geolocation) { renderOpeningLocationStatus("Este aparelho não oferece localização. O checklist poderá continuar sem o ponto.", "warning"); return null; }
+  const button = $("#captureOpeningLocation"); if (button) button.disabled = true;
+  renderOpeningLocationStatus("Obtendo a localização mais precisa do celular… mantenha a localização/GPS ativada.");
+  return new Promise((resolve) => {
+    let best = null, watchId = null, finished = false;
+    const finish = (message = "", state = "") => {
+      if (finished) return; finished = true;
+      if (watchId != null) navigator.geolocation.clearWatch(watchId);
+      if (button) button.disabled = false;
+      if (best) {
+        current.openingLocation = { latitude: Number(best.coords.latitude.toFixed(7)), longitude: Number(best.coords.longitude.toFixed(7)), accuracy: Math.round(best.coords.accuracy), capturedAt: new Date(best.timestamp || Date.now()).toISOString(), mapUrl: `https://www.google.com/maps?q=${best.coords.latitude},${best.coords.longitude}` };
+        renderOpeningLocationStatus(); resolve(current.openingLocation);
+      } else { current.openingLocation = null; renderOpeningLocationStatus(message || "Não foi possível obter a localização. Verifique a permissão e tente novamente.", state || "warning"); resolve(null); }
+    };
+    const timer = window.setTimeout(() => finish("O GPS não respondeu dentro do tempo esperado. Você pode tentar novamente ou continuar sem localização.", "warning"), 12000);
+    watchId = navigator.geolocation.watchPosition((position) => {
+      if (!best || position.coords.accuracy < best.coords.accuracy) best = position;
+      if (position.coords.accuracy <= 20) { clearTimeout(timer); finish(); }
+    }, (error) => {
+      clearTimeout(timer);
+      const messages = { 1: "Permissão de localização negada. Autorize a localização para registrar o ponto do chamado.", 2: "Localização indisponível. Ative o GPS e tente novamente.", 3: "O GPS demorou para responder. Tente novamente em local aberto." };
+      finish(messages[error.code] || "Não foi possível obter a localização.", "warning");
+    }, { enableHighAccuracy: true, maximumAge: 0, timeout: 12000 });
+    const qualityTimer = window.setInterval(() => { if (best?.coords?.accuracy <= 20) { clearInterval(qualityTimer); clearTimeout(timer); finish(); } }, 400);
+    window.setTimeout(() => { clearInterval(qualityTimer); clearTimeout(timer); finish(); }, 12000);
+  });
+}
+
+async function beginChecklist() {
   const registeredDriver = lookupDriverRegistration();
   const driver = registeredDriver?.name || "";
   const driverRegistration = registeredDriver?.registration || "";
@@ -674,7 +710,9 @@ function beginChecklist() {
   if (!Number.isFinite(odometer) || odometer < 0) return alert("Informe a quilometragem atual do veículo.");
   if (odometer > 999999) return alert("A quilometragem informada é muito alta. Confira o número antes de continuar.");
   if (Number(vehicle?.odometer) && odometer < Number(vehicle.odometer)) return alert(`A quilometragem não pode ser menor que o último registro (${vehicle.odometer} km).`);
-  current = { driver, driverRegistration, driverRole, driverEmail, driverPhone, baseName, basePhone, vehicleId, odometer, directToManagement, states: Object.fromEntries(CHECKLIST.map((item) => [item.id, { status: "pending" }])), notes: "", washRequested: false, washDetails: "" };
+  const locationAge = current.openingLocation?.capturedAt ? Date.now() - new Date(current.openingLocation.capturedAt).getTime() : Infinity;
+  const openingLocation = locationAge < 5 * 60 * 1000 ? current.openingLocation : await captureOpeningLocation();
+  current = { driver, driverRegistration, driverRole, driverEmail, driverPhone, baseName, basePhone, vehicleId, odometer, openingLocation, directToManagement, states: Object.fromEntries(CHECKLIST.map((item) => [item.id, { status: "pending" }])), notes: "", washRequested: false, washDetails: "" };
   void window.URBAMOneSignal?.setContext({ role: "colaborador", base: baseName, area: "checklist" });
   localStorage.setItem("checkfrota-driver", driver);
   localStorage.setItem("checkfrota-driver-registration", driverRegistration);
@@ -759,7 +797,7 @@ async function submitChecklist() {
   current.washDetails = $("#washDetails").value.trim();
   const vehicle = vehicleById(current.vehicleId);
   const inspection = {
-    id: crypto.randomUUID(), createdAt: new Date().toISOString(), driver: current.driver, driverRegistration: current.driverRegistration, driverRole: current.driverRole, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, approvalRoute: current.directToManagement ? "gestao" : "lideranca",
+    id: crypto.randomUUID(), createdAt: new Date().toISOString(), driver: current.driver, driverRegistration: current.driverRegistration, driverRole: current.driverRole, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, openingLocation: current.openingLocation, approvalRoute: current.directToManagement ? "gestao" : "lideranca",
     vehicleId: vehicle.id, vehiclePrefix: vehicle.prefix || "", vehiclePlate: vehicle.plate, vehicleType: vehicle.type, vehicleModel: vehicle.model || "", vehicleBase: vehicle.base || "", odometer: current.odometer, notes: current.notes, washRequested: current.washRequested, washDetails: current.washDetails, correctionOf: current.correctionOf || "",
     items: CHECKLIST.map((item) => ({ ...item, ...current.states[item.id] })),
   };
@@ -773,7 +811,7 @@ async function submitChecklist() {
   inspection.completedAt = currentIssues.length ? "" : new Date().toISOString();
   const newIssues = currentIssues.map((issue) => ({
     id: crypto.randomUUID(), inspectionId: inspection.id, status: "aberta", createdAt: inspection.createdAt,
-    driver: current.driver, driverRegistration: current.driverRegistration, driverRole: current.driverRole, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, approvalRoute: current.directToManagement ? "gestao" : "lideranca", vehicleId: vehicle.id, vehiclePrefix: vehicle.prefix || "", vehiclePlate: vehicle.plate, vehicleType: vehicle.type, vehicleModel: vehicle.model || "", vehicleBase: BASE_BY_PREFIX[vehicle.prefix] || vehicle.base || "", odometer: current.odometer,
+    driver: current.driver, driverRegistration: current.driverRegistration, driverRole: current.driverRole, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, openingLocation: current.openingLocation, approvalRoute: current.directToManagement ? "gestao" : "lideranca", vehicleId: vehicle.id, vehiclePrefix: vehicle.prefix || "", vehiclePlate: vehicle.plate, vehicleType: vehicle.type, vehicleModel: vehicle.model || "", vehicleBase: BASE_BY_PREFIX[vehicle.prefix] || vehicle.base || "", odometer: current.odometer,
     ownerName: vehicle.ownerName, ownerPhone: vehicle.ownerPhone, email: vehicle.email,
     itemName: issue.item.name, severity: issue.severity, description: issue.description, photoName: issue.photoName, _photoFile: issue.photoFile || null,
     correctionOf: current.correctionOf || "", maintenance: { status: "Solicitada", scheduledAt: "", provider: "", feedback: "", updatedAt: "" },
@@ -791,7 +829,7 @@ async function submitChecklist() {
   await finishCorrectionRequest(current.correctionOf, inspection, newIssues.length > 0);
   const sendResult = await sendToIntegration({ inspection, vehicle, issues: newIssues });
   await showCompletion(inspection, vehicle, newIssues, sendResult);
-  current = { driver: current.driver, driverRegistration: current.driverRegistration, driverRole: current.driverRole, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, vehicleId: vehicle.id, odometer: "", states: {}, notes: "" };
+  current = { driver: current.driver, driverRegistration: current.driverRegistration, driverRole: current.driverRole, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, vehicleId: vehicle.id, odometer: "", openingLocation: null, states: {}, notes: "" };
   saveData();
 }
 
@@ -816,7 +854,9 @@ function buildWhatsAppMessage(vehicle, issues, inspection) {
     return `- ${item.name}: EM ORDEM`;
   }).join("\n");
   const wash = issues.find(isWashIssue);
-  return `*URBAM FROTAS — FORMULÁRIO DE INSPEÇÃO*\nSolicitação para avaliação da liderança\n\n*Identificação do veículo*\nVeículo: Prefixo ${vehicle.prefix || "—"} · ${vehicle.plate} (${vehicle.model || vehicle.type})\nQuilometragem: ${inspection?.odometer ?? issues[0]?.odometer ?? vehicle.odometer ?? "Não informada"} km\nBase: ${inspection?.baseName || issues[0]?.baseName || current.baseName || "Não informada"}\nData: ${dateTime(createdAt)}\n\n*Checklist completo*\n${checklist}${wash ? `\n\n*Solicitação adicional*\nLavagem do veículo${wash.description && wash.description !== "Solicitação de lavagem do veículo." ? ` — ${wash.description}` : ""}` : ""}\n\nSolicitamos avaliação e providências para o veículo.`;
+  const openingLocation = inspection?.openingLocation || issues[0]?.openingLocation;
+  const locationLine = openingLocationMapUrl(openingLocation) ? `\nLocalização do chamado: ${openingLocationMapUrl(openingLocation)} (precisão aproximada: ${Math.round(openingLocation.accuracy || 0)} m)` : "";
+  return `*URBAM FROTAS — FORMULÁRIO DE INSPEÇÃO*\nSolicitação para avaliação da liderança\n\n*Identificação do veículo*\nVeículo: Prefixo ${vehicle.prefix || "—"} · ${vehicle.plate} (${vehicle.model || vehicle.type})\nQuilometragem: ${inspection?.odometer ?? issues[0]?.odometer ?? vehicle.odometer ?? "Não informada"} km\nBase: ${inspection?.baseName || issues[0]?.baseName || current.baseName || "Não informada"}\nData: ${dateTime(createdAt)}${locationLine}\n\n*Checklist completo*\n${checklist}${wash ? `\n\n*Solicitação adicional*\nLavagem do veículo${wash.description && wash.description !== "Solicitação de lavagem do veículo." ? ` — ${wash.description}` : ""}` : ""}\n\nSolicitamos avaliação e providências para o veículo.`;
 }
 function whatsappLink(phone, message) { return `https://wa.me/${phoneOnly(phone)}?text=${encodeURIComponent(message)}`; }
 function leadershipPanelUrl(baseName) {
@@ -831,7 +871,7 @@ async function approvalUrl(vehicle, issues) {
     prefix: vehicle.prefix || "", type: vehicle.model || vehicle.type, plate: vehicle.plate,
     driver: first.driver || current.driver || "", driverRegistration: first.driverRegistration || current.driverRegistration || "", driverPhone: first.driverPhone || current.driverPhone || "",
     leaderPhone: first.basePhone || current.basePhone || data.settings.leaderPhone || "", maintenancePhone: data.settings.maintenancePhone || "", ownerPhone: first.ownerPhone || vehicle.ownerPhone || "", ownerName: first.ownerName || vehicle.ownerName || "",
-    km: String(first.odometer ?? vehicle.odometer ?? ""), baseName: first.baseName || current.baseName || "Não informada", priority: highestSeverity(issues), location: "", problem,
+    km: String(first.odometer ?? vehicle.odometer ?? ""), baseName: first.baseName || current.baseName || "Não informada", priority: highestSeverity(issues), location: openingLocationMapUrl(first.openingLocation || current.openingLocation), problem,
   });
   const photoUrl = await issuePhotoLink(first);
   if (photoUrl) params.set("photoUrl", photoUrl);
@@ -1105,7 +1145,7 @@ function renderIssues() {
     return `<article class="issue-card ${issue.severity.toLowerCase()}">
       <div class="card-heading"><div><h3>${esc(issue.itemName)}</h3><p class="vehicle-label">Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate)} · ${esc(issue.vehicleModel || issue.vehicleType)}${issue.vehicleBase ? ` · ${esc(issue.vehicleBase)}` : ""} · ${esc(issue.odometer ?? "—")} km</p></div><span class="chip ${issue.severity.toLowerCase()}">${esc(issueType(issue))}</span></div>
       <p class="issue-desc">${esc(issue.description)}</p>
-      <p class="meta">${esc(issue.driver)} · matrícula ${esc(issue.driverRegistration || "—")} · ${esc(formatPhone(issue.driverPhone || "") || "sem telefone")} · ${dateTime(issue.createdAt)}${issue.photoName ? ` · 📷 ${esc(issue.photoName)}` : ""}</p>
+      <p class="meta">${esc(issue.driver)} · matrícula ${esc(issue.driverRegistration || "—")} · ${esc(formatPhone(issue.driverPhone || "") || "sem telefone")} · ${dateTime(issue.createdAt)}${issue.photoName ? ` · 📷 ${esc(issue.photoName)}` : ""}${openingLocationMapUrl(issue.openingLocation) ? ` · <a href="${esc(openingLocationMapUrl(issue.openingLocation))}" target="_blank" rel="noopener">📍 Local do chamado (${Math.round(issue.openingLocation.accuracy || 0)} m)</a>` : ""}</p>
       ${gallery}
       ${approvalBox}
       <p class="maintenance-meta"><b>Manutenção:</b> ${esc(maintenance.status)}${schedule}${maintenance.returnAt ? ` · retorno: ${dateTime(maintenance.returnAt)}` : ""}${maintenance.provider ? ` · ${esc(maintenance.provider)}` : ""}${maintenance.service ? ` · ${esc(maintenance.service)}` : ""}${maintenance.supplierReplyAt ? ` · retorno do fornecedor registrado: ${dateTime(maintenance.supplierReplyAt)}` : ""}${maintenance.driverNotifiedAt ? ` · retorno ao colaborador: ${dateTime(maintenance.driverNotifiedAt)}` : ""}</p>
@@ -1552,6 +1592,7 @@ document.addEventListener("click", (event) => {
   const target = event.target.closest("button, [data-go]"); if (!target) return;
   if (target.dataset.go) showScreen(target.dataset.go);
   if (target.id === "startChecklist") beginChecklist();
+  if (target.id === "captureOpeningLocation") void captureOpeningLocation();
   if (target.dataset.state === "ok") { current.states[target.dataset.item] = { status: "ok" }; renderChecklist(); }
   if (target.dataset.state === "issue") openIssue(target.dataset.item);
   if (target.id === "reviewChecklist") reviewChecklist();
