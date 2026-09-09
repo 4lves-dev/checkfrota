@@ -5,7 +5,7 @@
  */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "194";
+const APP_VERSION = "195";
 const SOFTWARE_SIGNATURE = Object.freeze({ owner: "LUCHTI ME", product: "URBAM Frotas", fingerprint: "LUCHTI-CHECKFROTA-URBAM-20260909-A7F3", notice: "Todos os direitos reservados" });
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v189";
 const CHECKLIST = [
@@ -445,7 +445,7 @@ function renderScheduledAppointments() {
   const panel = $("#scheduleNotifications"); if (!panel) return;
   if (!scheduledAppointments.length) { panel.hidden = true; panel.innerHTML = ""; return; }
   panel.hidden = false;
-  panel.innerHTML = scheduledAppointments.map((issue) => { const maintenance = maintenanceOf(issue); const mapUrl = maintenanceMapUrl(maintenance, issue); const delivered = maintenance.deliveryAt; return `<article class="return-notice schedule"><h2>${delivered ? "✓ Veículo em manutenção" : "⌖ Manutenção agendada"}</h2><p><b>Chamado:</b> ${esc(appointmentReference(issue))}</p><p><b>Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate || "—")}</b></p><p><b>Data e horário:</b> ${esc(maintenance.scheduledAt ? dateTime(maintenance.scheduledAt) : "A confirmar")}</p><p><b>Local:</b> ${esc(maintenance.provider || "Oficina a confirmar")}${maintenance.address ? `<br>${esc(maintenance.address)}` : ""}</p><p><b>Colaborador vinculado:</b><br>${esc(driverContactSummary(issue))}</p><p>${esc(issue.itemName || "Manutenção")} · ${esc(issue.description || "")}</p>${delivered ? `<p class="delivery-confirmed"><b>Entregue para manutenção:</b> ${esc(dateTime(delivered))}<br><small>A Gestão foi avisada. O prazo termina em ${esc(dateTime(maintenance.supplierDeadlineAt || new Date(new Date(delivered).getTime() + 21600000).toISOString()))}.</small></p>` : `<button type="button" class="small-button delivery-button" data-mark-maintenance-delivery="${esc(issue.id)}">✓ Marcar veículo entregue para manutenção</button>`}${mapUrl ? `<a class="small-button" href="${esc(mapUrl)}" target="_blank" rel="noopener">Abrir rota desde o local do chamado</a>` : ""}</article>`; }).join("");
+  panel.innerHTML = scheduledAppointments.map((issue) => { const maintenance = maintenanceOf(issue); const mapUrl = maintenanceMapUrl(maintenance, issue); const delivered = maintenance.deliveryAt; return `<article class="return-notice schedule"><h2>${delivered ? "✓ Veículo em manutenção" : "⌖ Manutenção agendada"}</h2><p><b>Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate || "—")}</b></p><p><b>Data e horário:</b> ${esc(maintenance.scheduledAt ? dateTime(maintenance.scheduledAt) : "A confirmar")}</p><p><b>Local:</b> ${esc(maintenance.provider || "Oficina a confirmar")}${maintenance.address ? `<br>${esc(maintenance.address)}` : ""}</p><p><b>Colaborador vinculado:</b><br>${esc(driverContactSummary(issue))}</p><p>${esc(issue.itemName || "Manutenção")} · ${esc(issue.description || "")}</p>${delivered ? `<p class="delivery-confirmed"><b>Entregue para manutenção:</b> ${esc(dateTime(delivered))}<br><small>A Gestão foi avisada. O prazo termina em ${esc(dateTime(maintenance.supplierDeadlineAt || new Date(new Date(delivered).getTime() + 21600000).toISOString()))}.</small></p>` : `<button type="button" class="small-button delivery-button" data-mark-maintenance-delivery="${esc(issue.id)}">✓ Marcar veículo entregue para manutenção</button>`}${mapUrl ? `<a class="small-button" href="${esc(mapUrl)}" target="_blank" rel="noopener">Abrir rota desde o local do chamado</a>` : ""}</article>`; }).join("");
 }
 async function markVehicleDeliveredForMaintenance(issueId) {
   const issue = scheduledAppointments.find((entry) => entry.id === issueId); if (!issue) return;
@@ -746,17 +746,17 @@ async function captureOpeningLocation() {
         renderOpeningLocationStatus(); resolve(current.openingLocation);
       } else { current.openingLocation = null; renderOpeningLocationStatus(message || "Não foi possível obter a localização. Verifique a permissão e tente novamente.", state || "warning"); resolve(null); }
     };
-    const timer = window.setTimeout(() => finish("O GPS não respondeu dentro do tempo esperado. Você pode tentar novamente ou continuar sem localização.", "warning"), 12000);
+    const timer = window.setTimeout(() => finish("O GPS não respondeu dentro do tempo esperado. Ative a localização precisa e tente novamente.", "warning"), 20000);
     watchId = navigator.geolocation.watchPosition((position) => {
       if (!best || position.coords.accuracy < best.coords.accuracy) best = position;
-      if (position.coords.accuracy <= 20) { clearTimeout(timer); finish(); }
+      if (position.coords.accuracy <= 10) { clearTimeout(timer); finish(); }
     }, (error) => {
       clearTimeout(timer);
       const messages = { 1: "Permissão de localização negada. Autorize a localização para registrar o ponto do chamado.", 2: "Localização indisponível. Ative o GPS e tente novamente.", 3: "O GPS demorou para responder. Tente novamente em local aberto." };
       finish(messages[error.code] || "Não foi possível obter a localização.", "warning");
-    }, { enableHighAccuracy: true, maximumAge: 0, timeout: 12000 });
-    const qualityTimer = window.setInterval(() => { if (best?.coords?.accuracy <= 20) { clearInterval(qualityTimer); clearTimeout(timer); finish(); } }, 400);
-    window.setTimeout(() => { clearInterval(qualityTimer); clearTimeout(timer); finish(); }, 12000);
+    }, { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
+    const qualityTimer = window.setInterval(() => { if (best?.coords?.accuracy <= 10) { clearInterval(qualityTimer); clearTimeout(timer); finish(); } }, 400);
+    window.setTimeout(() => { clearInterval(qualityTimer); clearTimeout(timer); finish(); }, 20000);
   });
 }
 
@@ -868,6 +868,10 @@ async function submitChecklist() {
   current.notes = $("#generalNotes").value.trim();
   current.washRequested = $("#requestWash").checked;
   current.washDetails = $("#washDetails").value.trim();
+  const finalOpeningLocation = await captureOpeningLocation();
+  if (!finalOpeningLocation) return alert("Não foi possível registrar o local de abertura. Ative a localização precisa do celular e tente enviar novamente.");
+  if (Number(finalOpeningLocation.accuracy) > 100) return alert(`A precisão atual é de aproximadamente ${Math.round(finalOpeningLocation.accuracy)} metros. Vá para um local com melhor sinal de GPS e tente enviar novamente.`);
+  current.openingLocation = finalOpeningLocation;
   const vehicle = vehicleById(current.vehicleId);
   const inspection = {
     id: crypto.randomUUID(), createdAt: new Date().toISOString(), softwareSignature: SOFTWARE_SIGNATURE, driver: current.driver, driverRegistration: current.driverRegistration, driverRole: current.driverRole, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, openingLocation: current.openingLocation, approvalRoute: current.directToManagement ? "gestao" : "lideranca",
@@ -972,9 +976,8 @@ async function showCompletion(inspection, vehicle, issues, sendResult) {
   $("#successTitle").textContent = issues.length ? (severe ? "Veículo com bloqueio de deslocamento." : "Ocorrência registrada.") : "Tudo certo para seguir.";
   $("#successText").textContent = issues.length ? `O formulário foi salvo com ${issues.length} ocorrência(s) e já está disponível para a liderança. Confira o chamado abaixo e conclua para voltar ao início. ${sendResult.sent ? "A integração de e-mail foi acionada." : "Configure a integração para o envio automático por e-mail."}` : "Checklist concluído sem observações. Não é necessária aprovação da liderança.";
   const form = $("#submittedForm");
-  const protocol = `MAN-${String(inspection.id || Date.now()).replaceAll("-", "").slice(-8).toUpperCase()}`;
   const occurrenceRows = issues.length ? issues.map((issue) => `<article class="submitted-issue ${esc(issue.severity.toLowerCase())}"><div><b>${esc(issue.itemName)}</b><span class="chip ${esc(issue.severity.toLowerCase())}">${esc(issue.severity)}</span></div><p>${esc(issue.description)}</p>${issue.photoPath ? `<img src="${esc(publicIssuePhotoUrl(issue))}" alt="Foto da ocorrência ${esc(issue.itemName)}" loading="lazy">` : ""}</article>`).join("") : `<p class="form-empty">Nenhuma ocorrência informada.</p>`;
-  form.innerHTML = `<div class="form-top"><span class="form-mark">✓</span><div><small>URBAM FROTAS · RESPOSTA ENVIADA</small><h2>Formulário de inspeção</h2></div></div><div class="form-protocol"><span>Protocolo</span><b>${esc(protocol)}</b></div><div class="form-fields"><div><span>Colaborador</span><b>${esc(inspection.driver)}</b></div>${inspection.driverRegistration ? `<div><span>Matrícula</span><b>${esc(inspection.driverRegistration)}</b></div>` : ""}${inspection.driverRole ? `<div><span>Função</span><b>${esc(inspection.driverRole)}</b></div>` : ""}<div><span>Base</span><b>${esc(inspection.baseName)}</b></div>${inspection.driverEmail ? `<div><span>Cópia para e-mail</span><b>${esc(inspection.driverEmail)}</b></div>` : ""}<div><span>Veículo</span><b>Prefixo ${esc(vehicle.prefix)} · ${esc(vehicle.plate)}</b></div><div><span>Modelo</span><b>${esc(vehicle.model || vehicle.type)}</b></div><div><span>Quilometragem</span><b>${esc(inspection.odometer)} km</b></div><div><span>Data e hora</span><b>${esc(dateTime(inspection.createdAt))}</b></div></div><div class="form-occurrences"><h3>Ocorrências relatadas</h3>${occurrenceRows}</div>${inspection.notes ? `<div class="form-notes"><span>Observação geral</span><p>${esc(inspection.notes)}</p></div>` : ""}`;
+  form.innerHTML = `<div class="form-top"><span class="form-mark">✓</span><div><small>URBAM FROTAS · RESPOSTA ENVIADA</small><h2>Formulário de inspeção</h2></div></div><div class="form-fields"><div><span>Colaborador</span><b>${esc(inspection.driver)}</b></div>${inspection.driverRegistration ? `<div><span>Matrícula</span><b>${esc(inspection.driverRegistration)}</b></div>` : ""}${inspection.driverRole ? `<div><span>Função</span><b>${esc(inspection.driverRole)}</b></div>` : ""}<div><span>Base</span><b>${esc(inspection.baseName)}</b></div>${inspection.driverEmail ? `<div><span>Cópia para e-mail</span><b>${esc(inspection.driverEmail)}</b></div>` : ""}<div><span>Veículo</span><b>Prefixo ${esc(vehicle.prefix)} · ${esc(vehicle.plate)}</b></div><div><span>Modelo</span><b>${esc(vehicle.model || vehicle.type)}</b></div><div><span>Quilometragem</span><b>${esc(inspection.odometer)} km</b></div><div><span>Data e hora</span><b>${esc(dateTime(inspection.createdAt))}</b></div></div><div class="form-occurrences"><h3>Ocorrências relatadas</h3>${occurrenceRows}</div>${inspection.notes ? `<div class="form-notes"><span>Observação geral</span><p>${esc(inspection.notes)}</p></div>` : ""}`;
   const actions = $("#dispatchActions");
   if (!issues.length) { actions.innerHTML = ""; showScreen("success"); return; }
   const buttons = [];
@@ -1823,7 +1826,7 @@ function renderScheduledAppointments() {
     const map = maintenanceMapUrl(m, issue);
     const delivered = m.deliveryAt;
     return "<article class=\"return-notice schedule\"><h2>" + (delivered ? '✓ Veículo em manutenção' : '⌖ Manutenção agendada') + "</h2>" +
-      "<p><b>Chamado:</b> " + esc(appointmentReference(issue)) + "</p>" +
+      
       "<p><b>Prefixo " + esc(issue.vehiclePrefix || '—') + " · " + esc(issue.vehiclePlate || '—') + "</b></p>" +
       "<p><b>Data e horário:</b> " + esc(m.scheduledAt ? dateTime(m.scheduledAt) : 'A confirmar') + "</p>" +
       "<p><b>Local:</b> " + esc(m.provider || 'Oficina a confirmar') + (m.address ? "<br>" + esc(m.address) : '') + "</p>" +

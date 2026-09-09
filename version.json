@@ -1,5 +1,5 @@
 {
-  "version": "194",
+  "version": "195",
   "released_at": "2026-09-09",
-  "notes": "Agendamentos notificam pelo aplicativo a Liderança da base e o colaborador identificado pela matrícula."
+  "notes": "Localização recapturada no envio com alta precisão e protocolos internos ocultados das telas do colaborador."
 }
