@@ -5,7 +5,7 @@
  */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "191";
+const APP_VERSION = "192";
 const SOFTWARE_SIGNATURE = Object.freeze({ owner: "LUCHTI ME", product: "URBAM Frotas", fingerprint: "LUCHTI-CHECKFROTA-URBAM-20260909-A7F3", notice: "Todos os direitos reservados" });
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v189";
 const CHECKLIST = [
@@ -411,10 +411,14 @@ function notifyReturnedIssue(issue) {
   notification.onclick = () => { window.focus(); notification.close(); };
   localStorage.setItem(key, new Date().toISOString());
 }
-function maintenanceMapUrl(maintenance = {}) {
+function maintenanceMapUrl(maintenance = {}, issue = {}) {
+  const opening = issue.openingLocation || {};
+  const hasOrigin = opening.latitude != null && opening.longitude != null;
+  const origin = hasOrigin ? `${opening.latitude},${opening.longitude}` : "";
   const address = String(maintenance.address || "").trim();
-  if (address) return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`;
-  if (maintenance.latitude !== "" && maintenance.latitude != null && maintenance.longitude !== "" && maintenance.longitude != null) return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${maintenance.latitude},${maintenance.longitude}`)}`;
+  const hasDestinationCoordinates = maintenance.latitude !== "" && maintenance.latitude != null && maintenance.longitude !== "" && maintenance.longitude != null;
+  const destination = hasDestinationCoordinates ? `${maintenance.latitude},${maintenance.longitude}` : address;
+  if (destination) return `https://www.google.com/maps/dir/?api=1${origin ? `&origin=${encodeURIComponent(origin)}` : ""}&destination=${encodeURIComponent(destination)}`;
   const query = String(maintenance.provider || "").trim();
   return query ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}` : "";
 }
@@ -438,7 +442,7 @@ function renderScheduledAppointments() {
   const panel = $("#scheduleNotifications"); if (!panel) return;
   if (!scheduledAppointments.length) { panel.hidden = true; panel.innerHTML = ""; return; }
   panel.hidden = false;
-  panel.innerHTML = scheduledAppointments.map((issue) => { const maintenance = maintenanceOf(issue); const mapUrl = maintenanceMapUrl(maintenance); const delivered = maintenance.deliveryAt; return `<article class="return-notice schedule"><h2>${delivered ? "✓ Veículo em manutenção" : "⌖ Manutenção agendada"}</h2><p><b>Chamado:</b> ${esc(appointmentReference(issue))}</p><p><b>Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate || "—")}</b></p><p><b>Data e horário:</b> ${esc(maintenance.scheduledAt ? dateTime(maintenance.scheduledAt) : "A confirmar")}</p><p><b>Local:</b> ${esc(maintenance.provider || "Oficina a confirmar")}${maintenance.address ? `<br>${esc(maintenance.address)}` : ""}</p><p><b>Colaborador vinculado:</b><br>${esc(driverContactSummary(issue))}</p><p>${esc(issue.itemName || "Manutenção")} · ${esc(issue.description || "")}</p>${delivered ? `<p class="delivery-confirmed"><b>Entregue para manutenção:</b> ${esc(dateTime(delivered))}<br><small>A Gestão foi avisada. O prazo termina em ${esc(dateTime(maintenance.supplierDeadlineAt || new Date(new Date(delivered).getTime() + 21600000).toISOString()))}.</small></p>` : `<button type="button" class="small-button delivery-button" data-mark-maintenance-delivery="${esc(issue.id)}">✓ Marcar veículo entregue para manutenção</button>`}${mapUrl ? `<a class="small-button" href="${esc(mapUrl)}" target="_blank" rel="noopener">Abrir rota no mapa</a>` : ""}</article>`; }).join("");
+  panel.innerHTML = scheduledAppointments.map((issue) => { const maintenance = maintenanceOf(issue); const mapUrl = maintenanceMapUrl(maintenance, issue); const delivered = maintenance.deliveryAt; return `<article class="return-notice schedule"><h2>${delivered ? "✓ Veículo em manutenção" : "⌖ Manutenção agendada"}</h2><p><b>Chamado:</b> ${esc(appointmentReference(issue))}</p><p><b>Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate || "—")}</b></p><p><b>Data e horário:</b> ${esc(maintenance.scheduledAt ? dateTime(maintenance.scheduledAt) : "A confirmar")}</p><p><b>Local:</b> ${esc(maintenance.provider || "Oficina a confirmar")}${maintenance.address ? `<br>${esc(maintenance.address)}` : ""}</p><p><b>Colaborador vinculado:</b><br>${esc(driverContactSummary(issue))}</p><p>${esc(issue.itemName || "Manutenção")} · ${esc(issue.description || "")}</p>${delivered ? `<p class="delivery-confirmed"><b>Entregue para manutenção:</b> ${esc(dateTime(delivered))}<br><small>A Gestão foi avisada. O prazo termina em ${esc(dateTime(maintenance.supplierDeadlineAt || new Date(new Date(delivered).getTime() + 21600000).toISOString()))}.</small></p>` : `<button type="button" class="small-button delivery-button" data-mark-maintenance-delivery="${esc(issue.id)}">✓ Marcar veículo entregue para manutenção</button>`}${mapUrl ? `<a class="small-button" href="${esc(mapUrl)}" target="_blank" rel="noopener">Abrir rota desde o local do chamado</a>` : ""}</article>`; }).join("");
 }
 async function markVehicleDeliveredForMaintenance(issueId) {
   const issue = scheduledAppointments.find((entry) => entry.id === issueId); if (!issue) return;
@@ -1228,7 +1232,7 @@ function renderAgenda() {
     ["Hoje", active.filter((issue) => maintenanceOf(issue).scheduledAt.slice(0, 10) === today())],
     ["Próximos", active.filter((issue) => maintenanceOf(issue).scheduledAt.slice(0, 10) > today())],
   ];
-  panel.innerHTML = `<section class="agenda-board"><div class="section-action"><div><h3>Agenda da manutenção</h3><p>Acompanhe horário, oficina, rota e situação de cada veículo.</p></div><span class="chip ok">${active.length} agendado(s)</span></div>${groups.map(([title, entries]) => `<section class="agenda-group"><h4>${title} <span>${entries.length}</span></h4>${entries.length ? entries.map((issue) => { const m = maintenanceOf(issue), map = maintenanceMapUrl(m); return `<article class="agenda-item ${supplierSlaResult(issue)?.state === "late" ? "late" : ""}"><div><b>Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate || "—")}</b><p>${dateTime(m.scheduledAt)} · ${esc(m.status)}<br>${esc(m.provider || "Oficina a confirmar")}${m.address ? ` · ${esc(m.address)}` : ""}</p></div><div class="issue-actions">${map ? `<a class="small-button map-link" href="${esc(map)}" target="_blank" rel="noopener">Abrir rota</a>` : ""}<button class="small-button" data-maintenance-issue="${esc(issue.id)}">Atualizar</button></div></article>`; }).join("") : `<p class="agenda-empty">Nenhum veículo.</p>`}</section>`).join("")}</section>`;
+  panel.innerHTML = `<section class="agenda-board"><div class="section-action"><div><h3>Agenda da manutenção</h3><p>Acompanhe horário, oficina, rota e situação de cada veículo.</p></div><span class="chip ok">${active.length} agendado(s)</span></div>${groups.map(([title, entries]) => `<section class="agenda-group"><h4>${title} <span>${entries.length}</span></h4>${entries.length ? entries.map((issue) => { const m = maintenanceOf(issue), map = maintenanceMapUrl(m, issue); return `<article class="agenda-item ${supplierSlaResult(issue)?.state === "late" ? "late" : ""}"><div><b>Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate || "—")}</b><p>${dateTime(m.scheduledAt)} · ${esc(m.status)}<br>${esc(m.provider || "Oficina a confirmar")}${m.address ? ` · ${esc(m.address)}` : ""}</p></div><div class="issue-actions">${map ? `<a class="small-button map-link" href="${esc(map)}" target="_blank" rel="noopener">Abrir rota</a>` : ""}<button class="small-button" data-maintenance-issue="${esc(issue.id)}">Atualizar</button></div></article>`; }).join("") : `<p class="agenda-empty">Nenhum veículo.</p>`}</section>`).join("")}</section>`;
 }
 function renderReports() {
   const panel = $("#reportsPanel");
@@ -1280,67 +1284,7 @@ function renderVehicles() {
     return `<article class="vehicle-card"><div><h3>Prefixo ${esc(vehicle.prefix || "—")} · ${esc(vehicle.plate)} <span class="vehicle-label">· ${esc(vehicle.model || vehicle.type)}</span></h3><p>${esc(vehicle.ownerName)}${vehicle.manager ? ` · Gestor: ${esc(vehicle.manager)}` : ""}${vehicle.base ? ` · Base: ${esc(vehicle.base)}` : ""}${vehicle.ownerPhone ? ` · Tel.: ${esc(formatPhone(vehicle.ownerPhone))}` : ""}${vehicle.contract ? ` · Contrato: ${esc(vehicle.contract)}` : ""}${vehicle.odometer !== "" ? ` · ${esc(vehicle.odometer)} km` : ""}</p></div><div class="issue-actions"><button class="small-button" data-vehicle-history="${vehicle.id}">${selectedVehicleHistoryId === vehicle.id ? "Fechar ficha" : "Ver ficha"}</button>${masterActions}</div>${selectedVehicleHistoryId === vehicle.id ? vehicleHistoryMarkup(vehicle) : ""}</article>`;
   }).join("");
   const actions = masterAdmin ? `<div class="vehicle-actions"><button class="restore-button" id="restoreFleet">↺ Restaurar frota</button><button class="add-button" id="newVehicle">+ Cadastrar veículo/caminhão</button></div>` : "";
-  panel.innerHTML = `<div class="section-action"><h3>Veículos e caminhões cadastrados</h3>${actions}</div>${cards}`;
-}
-function renderDrivers() {
-  const panel = $("#driversPanel");
-  if (!panel) return;
-  const registered = employeeRoster().sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
-  const missing = driversMissingRegistration().sort((a, b) => a.localeCompare(b, "pt-BR"));
-  const employeeAction = masterAdmin ? `<button class="add-button" type="button" data-employee-action="new">+ Cadastrar colaborador</button>` : "";
-  const card = (driver) => {
-    const accessLevel = employeeAccessLevel(driver); const base = driver.leader_base || "";
-    const isMaster = MASTER_EMPLOYEE_REGISTRATIONS.has(String(driver.registration || ""));
-    const manage = masterAdmin ? `<div class="issue-actions"><button class="small-button" type="button" data-employee-action="edit" data-registration="${esc(driver.registration)}">Editar</button><button class="small-button danger-button" type="button" data-employee-action="delete" data-registration="${esc(driver.registration)}">Excluir</button></div>` : "";
-    return `<article class="driver-row"><div><b>${esc(driver.name)}</b><span>Matrícula ${esc(driver.registration)}${driver.role ? ` · ${esc(driver.role)}` : ""}${isMaster ? " · <strong>Administrador Master</strong>" : ""}${accessLevel !== "colaborador" ? ` · <strong>${esc(ACCESS_LEVEL_LABELS[accessLevel] || accessLevel)}${accessLevel === "lider" && base ? ` — ${esc(base)}` : ""}</strong>` : ""}</span></div>${manage}</article>`;
-  };
-  panel.innerHTML = `<section class="driver-registry"><div class="section-action"><div><h3>Banco de colaboradores</h3><p>Defina o perfil: Líder aprova a base; Coordenador aprova as bases; Gestor acompanha toda a frota. O acesso inicial usa matrícula como usuário e senha.</p></div><div class="vehicle-actions"><span class="chip ok">${registered.length} cadastrados</span>${employeeAction}</div></div><div class="driver-grid">${registered.map(card).join("")}</div></section><section class="missing-drivers"><div class="section-action"><div><h3>Colaboradores sem matrícula</h3><p>Relação identificada na primeira tabela e ainda sem vínculo na segunda.</p></div><span class="chip grave">${missing.length} pendentes</span></div>${missing.length ? `<ul>${missing.map((name) => `<li>${esc(name)}</li>`).join("")}</ul>` : "<p>Todos os colaboradores possuem matrícula cadastrada.</p>"}</section>`;
-  panel.querySelector('[data-employee-action="new"]')?.addEventListener("click", () => openEmployeeDialog());
-  panel.querySelectorAll('[data-employee-action="edit"]').forEach((button) => button.addEventListener("click", () => {
-    const registration = button.dataset.registration || "";
-    openEmployeeDialog(employeeDatabase.find((employee) => String(employee.registration) === registration) || DRIVER_REGISTRY.find((employee) => String(employee.registration) === registration));
-  }));
-  panel.querySelectorAll('[data-employee-action="delete"]').forEach((button) => button.addEventListener("click", () => { void deactivateEmployee(button.dataset.registration || ""); }));
-  const quickEmployee = $("#quickNewEmployee");
-  if (quickEmployee) quickEmployee.onclick = (event) => { event.stopPropagation(); openEmployeeDialog(); };
-  const employeeForm = $("#employeeForm");
-  if (employeeForm) employeeForm.onsubmit = (event) => { event.preventDefault(); void saveEmployee(); };
-}
-function renderAuditLog() {
-  const panel = $("#auditPanel");
-  if (!panel) return;
-  const logs = data.issues.filter((issue) => issue.leaderApproval).sort((a, b) => new Date(b.leaderApproval?.approvedAt || b.createdAt) - new Date(a.leaderApproval?.approvedAt || a.createdAt));
-  panel.innerHTML = `<section class="audit-log"><div class="section-action"><div><h3>Log de solicitações</h3><p>Registro para auditoria das decisões tomadas pela liderança.</p></div><span class="chip ok">${logs.length} registro(s)</span></div>${logs.length ? logs.map((issue) => { const approval = issue.leaderApproval || {}; const status = approval.status || "Sem decisão"; const statusClass = status === "Aprovada" ? "ok" : status === "Recusada" ? "grave" : "media"; return `<article class="audit-entry"><div class="card-heading"><div><h3>${esc(status)}</h3><p class="vehicle-label">Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate || "—")} · ${esc(issue.itemName || "Ocorrência")}</p></div><span class="chip ${statusClass}">${esc(status)}</span></div><p><b>Colaborador:</b> ${esc(issue.driver || "—")}${issue.driverRegistration ? ` · matrícula ${esc(issue.driverRegistration)}` : ""}</p><p><b>Decisão:</b> ${esc(approval.approvedBy || "Liderança")} · ${dateTime(approval.approvedAt || issue.createdAt)}</p>${approval.note ? `<p><b>Observação:</b> ${esc(approval.note)}</p>` : ""}<p class="audit-status"><b>Fluxo:</b> ${esc(approval.dispatchStatus || "Registrado")}</p></article>`; }).join("") : `<div class="empty-state"><span>⌁</span><p>Nenhuma decisão da liderança registrada ainda.</p></div>`}</section>`;
-}
-function openVehicleDialog(id = "") {
-  if (!requireMasterAccess()) return;
-  const vehicle = vehicleById(id);
-  $("#vehicleDialogTitle").textContent = vehicle ? "Editar veículo" : "Novo veículo";
-  $("#editVehicleId").value = vehicle?.id || "";
-  $("#vehiclePrefix").value = vehicle?.prefix || ""; $("#vehiclePlate").value = vehicle?.plate || ""; $("#vehicleType").value = vehicle?.type || "Caminhão"; $("#vehicleModel").value = vehicle?.model || ""; $("#vehicleContract").value = vehicle?.contract || ""; $("#vehicleUrbamContract").value = vehicle?.urbamContract || ""; $("#vehicleOdometer").value = vehicle?.odometer ?? "";
-  $("#vehicleOwnerName").value = vehicle?.ownerName || ""; $("#vehicleOwnerPhone").value = vehicle?.ownerPhone || ""; $("#vehicleEmail").value = vehicle?.email || "";
-  $("#vehicleDialog").showModal();
-}
-function toggleEmployeeLeaderFields() {
-  const enabled = $("#employeeAccessLevel")?.value === "lider";
-  $("#employeeLeaderBaseField").hidden = !enabled;
-  $("#employeeLeaderBase").hidden = !enabled;
-  $("#employeeLeaderBase").required = enabled;
-}
-function openEmployeeDialog(employee = null) {
-  if (!requireMasterAccess()) return;
-  editingEmployeeRegistration = employee?.registration || "";
-  $("#employeeDialogTitle").textContent = employee ? "Configurar colaborador" : "Novo colaborador";
-  $("#employeeRegistration").value = employee?.registration || ""; $("#employeeRegistration").readOnly = Boolean(employee);
-  $("#employeeName").value = employee?.name || ""; $("#employeeRole").value = employee?.role || "";
-  $("#employeeAccessLevel").value = employeeAccessLevel(employee); $("#employeeLeaderBase").value = employee?.leader_base || ""; toggleEmployeeLeaderFields();
-  $("#employeeDialog").showModal();
-}
-async function saveEmployee() {
-  if (!requireMasterAccess()) return;
-  const registration = $("#employeeRegistration").value.replace(/\D/g, "");
-  const name = $("#employeeName").value.trim().toUpperCase();
-  const role = $("#employeeRole").value.trim();
+  panel.innerHTML = `<div ce.trim();
   const access_level = $("#employeeAccessLevel").value;
   const leader = access_level === "lider";
   const leader_base = leader ? $("#employeeLeaderBase").value : null;
@@ -1419,7 +1363,7 @@ function sendApprovedOwnerWhatsApp(issueId) {
 async function copyOwnerMessage(issueId) { const issue = data.issues.find((entry) => entry.id === issueId); if (!issue) return; try { await navigator.clipboard.writeText(buildApprovedOwnerMessage(issue)); alert("Mensagem para o proprietário copiada."); } catch { alert("Não foi possível copiar automaticamente. Selecione a mensagem e copie."); } }
 function buildSchedulingReturn(issue, maintenance = maintenanceOf(issue)) {
   const schedule = maintenance.scheduledAt ? dateTime(maintenance.scheduledAt) : "A confirmar";
-  return `*RETORNO DE AGENDAMENTO — MANUTENÇÃO*\n\n*Veículo:* Prefixo ${issue.vehiclePrefix || "—"} · ${issue.vehiclePlate || "—"}\n*Ocorrência:* ${issue.itemName || "—"}\n*Situação:* ${maintenance.status || "Pendente"}\n*Agendamento:* ${schedule}\n${maintenance.provider ? `*Oficina / responsável:* ${maintenance.provider}\n` : ""}${maintenance.address ? `*Endereço:* ${maintenance.address}\n` : ""}${maintenanceMapUrl(maintenance) ? `*Mapa / rota:* ${maintenanceMapUrl(maintenance)}\n` : ""}${maintenance.feedback ? `*Retorno:* ${maintenance.feedback}\n` : ""}\nEsta atualização foi registrada pela Gestão de Frota para ciência da equipe de manutenção.`;
+  return `*RETORNO DE AGENDAMENTO — MANUTENÇÃO*\n\n*Veículo:* Prefixo ${issue.vehiclePrefix || "—"} · ${issue.vehiclePlate || "—"}\n*Ocorrência:* ${issue.itemName || "—"}\n*Situação:* ${maintenance.status || "Pendente"}\n*Agendamento:* ${schedule}\n${maintenance.provider ? `*Oficina / responsável:* ${maintenance.provider}\n` : ""}${maintenance.address ? `*Endereço:* ${maintenance.address}\n` : ""}${maintenanceMapUrl(maintenance, issue) ? `*Mapa / rota desde o chamado:* ${maintenanceMapUrl(maintenance, issue)}\n` : ""}${maintenance.feedback ? `*Retorno:* ${maintenance.feedback}\n` : ""}\nEsta atualização foi registrada pela Gestão de Frota para ciência da equipe de manutenção.`;
 }
 function sendSchedulingReturn(issue, maintenance = maintenanceOf(issue)) {
   const target = data.settings.maintenanceGroupPhone || MAINTENANCE_GROUP_PHONE;
@@ -1454,7 +1398,7 @@ function buildMaintenanceMessage(issue) {
   return `*RETORNO DE SERVIÇO — ${maintenance.status.toUpperCase()}*\n\nVeículo: Prefixo ${issue.vehiclePrefix || "—"} · ${issue.vehiclePlate} (${issue.vehicleModel || issue.vehicleType})\nQuilometragem: ${issue.odometer ?? "Não informada"} km\nSolicitação: ${issue.itemName}\n${maintenance.scheduledAt ? `Agendamento: ${dateTime(maintenance.scheduledAt)}\n` : ""}${maintenance.returnAt ? `Previsão de retorno: ${dateTime(maintenance.returnAt)}\n` : ""}${maintenance.provider ? `Oficina / responsável: ${maintenance.provider}\n` : ""}${maintenance.service ? `Serviço: ${maintenance.service}\n` : ""}${maintenance.feedback ? `Retorno: ${maintenance.feedback}\n` : ""}\nSolicitação original: ${issue.description}`;
 }
 function buildDriverAppointmentMessage(issue, maintenance = maintenanceOf(issue)) {
-  const map = maintenanceMapUrl(maintenance);
+  const map = maintenanceMapUrl(maintenance, issue);
   return `*URBAM FROTAS — AGENDAMENTO DE MANUTENÇÃO*\n\nOlá, ${issue.driver || "colaborador"}.\n\n*Chamado:* ${appointmentReference(issue)}\n*Veículo:* Prefixo ${issue.vehiclePrefix || "—"} · Placa ${issue.vehiclePlate || "—"}\n*Ocorrência:* ${issue.itemName || "Manutenção"}\n*Agendamento:* ${maintenance.scheduledAt ? dateTime(maintenance.scheduledAt) : "A confirmar"}\n*Local:* ${maintenance.provider || "Oficina a confirmar"}${maintenance.address ? `\n*Endereço:* ${maintenance.address}` : ""}${map ? `\n*Rota no mapa:* ${map}` : ""}\n\nAbra o aplicativo URBAM Frotas para consultar este agendamento e, quando entregar o veículo, clique em *Marcar veículo entregue para manutenção*.\n\nMatrícula vinculada: ${issue.driverRegistration || "—"}\n\nURBAM Frotas — Gestão de Manutenção`;
 }
 function slaEmailSubject(issue) {
@@ -1518,7 +1462,7 @@ function openMaintenanceIssue(issueId) {
   const providerOptions = $("#maintenanceProviderOptions");
   if (providerOptions) providerOptions.innerHTML = providers.map((provider) => `<option value="${esc(provider)}"></option>`).join("");
   $("#maintenanceAddress").value = maintenance.address || "";
-  maintenanceMapLocation = { latitude: maintenance.latitude ?? "", longitude: maintenance.longitude ?? "", mapLabel: maintenance.mapLabel || "", mapUrl: maintenance.mapUrl || maintenanceMapUrl(maintenance) || "" };
+  maintenanceMapLocation = { latitude: maintenance.latitude ?? "", longitude: maintenance.longitude ?? "", mapLabel: maintenance.mapLabel || "", mapUrl: maintenance.mapUrl || maintenanceMapUrl(maintenance, issue) || "" };
   updateMaintenanceMapLink();
   $("#maintenanceService").value = maintenance.service || "";
   $("#maintenanceReturnAt").value = maintenance.returnAt ? maintenance.returnAt.slice(0, 16) : "";
@@ -1599,12 +1543,14 @@ async function saveMaintenance() {
 function updateMaintenanceMapLink() {
   const link = $("#maintenanceMapLink"); if (!link) return;
   const address = $("#maintenanceAddress")?.value.trim() || "";
-  const mapUrl = address ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}` : (maintenanceMapLocation?.mapUrl || "");
+  const issue = data.issues.find((entry) => entry.id === $("#maintenanceIssueId")?.value) || {};
+  const draft = { address, latitude: maintenanceMapLocation?.latitude ?? "", longitude: maintenanceMapLocation?.longitude ?? "", provider: $("#maintenanceProvider")?.value.trim() || "" };
+  const mapUrl = maintenanceMapUrl(draft, issue);
   link.href = mapUrl || "https://www.google.com/maps";
   link.setAttribute("aria-disabled", mapUrl ? "false" : "true");
   link.classList.toggle("is-disabled", !mapUrl);
   const status = $("#maintenanceMapStatus");
-  if (status) status.textContent = address ? "A rota será aberta usando somente o endereço informado. Confira rua, número, bairro, cidade e estado." : "Informe o endereço completo da oficina para abrir a rota correta.";
+  if (status) status.textContent = address ? (issue.openingLocation ? "Rota pronta: saída no local registrado na abertura do chamado e destino na oficina." : "Chamado antigo sem localização de abertura: a rota usará a posição atual do aparelho.") : "Informe o endereço completo da oficina para abrir a rota correta.";
 }
 async function locateMaintenanceAddress() {
   const address = $("#maintenanceAddress").value.trim(), status = $("#maintenanceMapStatus");
@@ -1794,7 +1740,7 @@ function renderScheduledAppointments() {
   panel.hidden = false;
   panel.innerHTML = scheduledAppointments.map((issue) => {
     const m = maintenanceOf(issue);
-    const map = maintenanceMapUrl(m);
+    const map = maintenanceMapUrl(m, issue);
     const delivered = m.deliveryAt;
     return "<article class=\"return-notice schedule\"><h2>" + (delivered ? '✓ Veículo em manutenção' : '⌖ Manutenção agendada') + "</h2>" +
       "<p><b>Chamado:</b> " + esc(appointmentReference(issue)) + "</p>" +
@@ -1809,7 +1755,7 @@ function renderScheduledAppointments() {
   }).join('');
 }
 function buildDriverAppointmentMessage(issue, m = maintenanceOf(issue)) {
-  const map = maintenanceMapUrl(m);
+  const map = maintenanceMapUrl(m, issue);
   return ['*URBAM FROTAS — AGENDAMENTO DE MANUTENÇÃO*', '', 'Olá, ' + (issue.driver || 'colaborador') + '.', '', '*Chamado:* ' + appointmentReference(issue), '*Veículo:* Prefixo ' + (issue.vehiclePrefix || '—') + ' · Placa ' + (issue.vehiclePlate || '—'), '*Ocorrência:* ' + (issue.itemName || 'Manutenção'), '*Agendamento:* ' + (m.scheduledAt ? dateTime(m.scheduledAt) : 'A confirmar'), '*Local:* ' + (m.provider || 'Oficina a confirmar'), m.address ? '*Endereço:* ' + m.address : '', map ? '*Rota no mapa:* ' + map : '', '', 'Abra o aplicativo URBAM Frotas e, quando entregar o veículo, clique em *Marcar veículo entregue para manutenção*.', '', 'Matrícula vinculada: ' + (issue.driverRegistration || '—'), '', 'URBAM Frotas — Gestão de Manutenção'].filter(Boolean).join('\n');
 }
 async function sendDriverMaintenanceWhatsApp(issue) {

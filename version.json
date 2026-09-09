@@ -1,5 +1,5 @@
 {
-  "version": "191",
+  "version": "192",
   "released_at": "2026-09-09",
-  "notes": "Busca de colaborador reparada e novo fluxo por prefixo, com veículo, placa e base preenchidos automaticamente."
+  "notes": "Rotas de manutenção corrigidas para sair da localização registrada na abertura do chamado e seguir até a oficina."
 }
