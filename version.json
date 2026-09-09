@@ -1,5 +1,6 @@
 {
-  "version": "187",
-  "released_at": "2026-09-07",
-  "notes": "Localização de alta precisão do celular vinculada ao checklist e ao chamado, com coordenadas, margem de erro e link do mapa."
+  "version": "188",
+  "released_at": "2026-09-09",
+  "notes": "Atualização automática reforçada para aplicativos instalados, com verificação ao abrir, retornar à tela, reconectar e a cada cinco minutos."
 }
+

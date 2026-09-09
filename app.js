@@ -1,7 +1,7 @@
 /* URBAM Frota - MVP local-first. Dados ficam neste navegador até uma integração ser configurada. */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "187";
+const APP_VERSION = "188";
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v165";
 const CHECKLIST = [
   ["pneus", "Pneus e estepe", "Rodagem"],
@@ -1659,11 +1659,52 @@ $("#maintenanceAddress")?.addEventListener("input", () => { maintenanceMapLocati
 $("#maintenanceProvider")?.addEventListener("input", updateMaintenanceMapLink);
 $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").forEach((button) => button.classList.toggle("active", button === tab)); $$(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab.dataset.tab}Panel`)); }));
 
-if ("serviceWorker" in navigator) window.addEventListener("load", async () => {
+if ("serviceWorker" in navigator) {
   let refreshedForUpdate = false;
-  navigator.serviceWorker.addEventListener("controllerchange", () => { if (!refreshedForUpdate) { refreshedForUpdate = true; location.reload(); } });
-  try { const registration = await navigator.serviceWorker.register(`service-worker.js?v=${APP_VERSION}`); await registration.update(); } catch (_) {}
-});
+  let checkingVersion = false;
+  let targetVersion = APP_VERSION;
+  const reloadOnUpdate = () => {
+    if (refreshedForUpdate) return;
+    refreshedForUpdate = true;
+    const url = new URL(location.href);
+    url.searchParams.set("v", targetVersion);
+    location.replace(url.toString());
+  };
+  const activateWaitingWorker = (registration) => registration.waiting?.postMessage({ type: "SKIP_WAITING" });
+  const checkAppVersion = async () => {
+    if (checkingVersion || !navigator.onLine) return;
+    checkingVersion = true;
+    try {
+      const response = await fetch(`version.json?t=${Date.now()}`, { cache: "no-store" });
+      if (!response.ok) return;
+      const remote = String((await response.json()).version || "");
+      if (remote && remote !== APP_VERSION) {
+        targetVersion = remote;
+        const registration = await navigator.serviceWorker.getRegistration();
+        await registration?.update();
+        activateWaitingWorker(registration);
+        window.setTimeout(reloadOnUpdate, 1200);
+      }
+    } catch (_) {
+      // Sem conexão: mantém a versão disponível no aparelho.
+    } finally {
+      checkingVersion = false;
+    }
+  };
+  navigator.serviceWorker.addEventListener("controllerchange", reloadOnUpdate);
+  window.addEventListener("load", async () => {
+    try {
+      const registration = await navigator.serviceWorker.register(`service-worker.js?v=${APP_VERSION}`);
+      registration.addEventListener("updatefound", () => registration.installing?.addEventListener("statechange", () => activateWaitingWorker(registration)));
+      await registration.update();
+      activateWaitingWorker(registration);
+    } catch (_) {}
+    void checkAppVersion();
+  });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) void checkAppVersion(); });
+  window.addEventListener("online", () => void checkAppVersion());
+  window.setInterval(() => void checkAppVersion(), 5 * 60 * 1000);
+}
 window.addEventListener("load", () => { void window.URBAMOneSignal?.initialize(); });
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
 window.addEventListener("appinstalled", () => { document.body.classList.add("app-installed"); $("#installBanner").hidden = true; });
@@ -1714,3 +1755,4 @@ async function sendDriverMaintenanceWhatsApp(issue) {
   catch (error) { queueCloudWrite('fleet_issues', { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: issue.vehicleId, status: issue.status, data: issue }); }
   window.open(whatsappLink(target, buildDriverAppointmentMessage(issue)), '_blank', 'noopener');
 }
+
