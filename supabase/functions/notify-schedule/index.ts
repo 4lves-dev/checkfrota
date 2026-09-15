@@ -25,10 +25,11 @@ Deno.serve(async (request) => {
   const url = Deno.env.get("SUPABASE_URL") || "";
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-  const oneSignalKey = Deno.env.get("ONESIGNAL_REST_API_KEY") || "";
+  const oneSignalKey = Deno.env.get("ONESIGNAL_REST_API_KEY") || Deno.env.get("ONESIGNAL_API_KEY") || "";
   const appId = Deno.env.get("ONESIGNAL_APP_ID") || "3d57134c-adf3-4f8f-8ec2-093b1d02f3bf";
   const authorization = request.headers.get("Authorization") || "";
-  if (!authorization || !oneSignalKey) return json({ error: "Notificações não configuradas" }, 503);
+  if (!oneSignalKey) return json({ error: "Notificações não configuradas" }, 503);
+  if (!authorization) return json({ error: "Autenticação obrigatória" }, 401);
 
   const userClient = createClient(url, anonKey, { global: { headers: { Authorization: authorization } } });
   const { data: userData, error: userError } = await userClient.auth.getUser(authorization.replace(/^Bearer\s+/i, ""));
@@ -49,7 +50,7 @@ Deno.serve(async (request) => {
   const title = "Manutenção agendada";
   const body = `Prefixo ${issue.vehiclePrefix || "—"}: ${when} · ${maintenance.provider || maintenance.address || "local informado"}`;
   const base = String(issue.baseName || "sem-base");
-  const common = { app_id: appId, headings: { en: title, pt: title }, contents: { en: body, pt: body }, url: `https://4lves-dev.github.io/checkfrota/?v=195&matricula=${encodeURIComponent(issue.driverRegistration || "")}` };
+  const common = { app_id: appId, headings: { en: title, pt: title }, contents: { en: body, pt: body }, url: `https://4lves-dev.github.io/checkfrota/?v=196&matricula=${encodeURIComponent(issue.driverRegistration || "")}` };
 
   const messages = [
     issue.driverRegistration ? { ...common, include_aliases: { external_id: [`colaborador:${issue.driverRegistration}`] }, target_channel: "push" } : null,
