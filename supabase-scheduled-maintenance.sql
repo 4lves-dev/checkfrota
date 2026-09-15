@@ -1,6 +1,6 @@
 -- AGENDAMENTOS PARA COLABORADOR — URBAM FROTAS
 -- Execute uma única vez no SQL Editor do Supabase.
--- Permite ao colaborador consultar somente os próprios chamados agendados.
+-- Permite ao colaborador acompanhar os próprios chamados desde a abertura.
 
 create or replace function public.fleet_driver_appointments(p_registration text, p_phone text)
 returns table (data jsonb)
@@ -20,9 +20,8 @@ begin
   from public.fleet_issues as issue
   where coalesce(issue.data ->> 'driverRegistration', '') = p_registration
     and regexp_replace(coalesce(issue.data ->> 'driverPhone', ''), '\D', '', 'g') = normalized_phone
-    and coalesce(issue.data -> 'maintenance' ->> 'status', '') in ('Agendada', 'Em manutenção')
     and coalesce(issue.status, '') <> 'resolvida'
-  order by coalesce(issue.data -> 'maintenance' ->> 'scheduledAt', '') asc;
+  order by issue.created_at desc;
 end;
 $$;
 

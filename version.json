@@ -1,5 +1,5 @@
 {
-  "version": "196",
+  "version": "197",
   "released_at": "2026-09-15",
-  "notes": "Validação final dos fluxos, avisos de agendamento corrigidos, mensagens de acesso em português e proteção de tamanho e formato das fotos."
+  "notes": "Acompanhamento completo do chamado no celular do colaborador, confirmação de abertura e entrega do veículo vinculada à matrícula e ao WhatsApp."
 }
