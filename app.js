@@ -5,7 +5,7 @@
  */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "198";
+const APP_VERSION = "199";
 const SOFTWARE_SIGNATURE = Object.freeze({ owner: "LUCHTI ME", product: "URBAM Frotas", fingerprint: "LUCHTI-CHECKFROTA-URBAM-20260909-A7F3", notice: "Todos os direitos reservados" });
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v189";
 const CHECKLIST = [
@@ -39,6 +39,7 @@ let myCallsFilter = "pending";
 let maintenanceMapLocation = null;
 let maintenanceWatchTimer = null;
 let managementRole = "";
+let submissionInProgress = false;
 
 const initialData = {
   settings: { maintenancePhone: "5512988400316", maintenanceGroupPhone: MAINTENANCE_GROUP_PHONE, leaderPhone: "", fleetManagerPhone: "", webhookUrl: EMAIL_AUTOMATION_URL },
@@ -907,6 +908,10 @@ function severityRank(severity) { return ({ Leve: 1, "Média": 2, Grave: 3 }[sev
 function highestSeverity(issues) { return issues.reduce((highest, issue) => severityRank(issue.severity) > severityRank(highest) ? issue.severity : highest, "Leve"); }
 
 async function submitChecklist() {
+  if (submissionInProgress) return;
+  submissionInProgress = true;
+  setSubmissionBusy(true);
+  try {
   current.notes = $("#generalNotes").value.trim();
   current.washRequested = $("#requestWash").checked;
   current.washDetails = $("#washDetails").value.trim();
@@ -955,6 +960,19 @@ async function submitChecklist() {
   await showCompletion(inspection, vehicle, newIssues, sendResult);
   current = { driver: current.driver, driverRegistration: current.driverRegistration, driverRole: current.driverRole, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, vehicleId: vehicle.id, odometer: "", openingLocation: null, states: {}, notes: "" };
   saveData();
+  } finally {
+    submissionInProgress = false;
+    setSubmissionBusy(false);
+  }
+}
+
+function setSubmissionBusy(busy) {
+  const button = $("#submitChecklist");
+  document.body.classList.toggle("submission-busy", busy);
+  document.body.setAttribute("aria-busy", String(busy));
+  if (!button) return;
+  button.disabled = busy;
+  button.innerHTML = busy ? `Enviando formulário… <span class="submit-spinner" aria-hidden="true"></span>` : `Concluir e gerar formulário <span>✓</span>`;
 }
 
 async function sendToIntegration(payload) {
