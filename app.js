@@ -5,7 +5,7 @@
  */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "197";
+const APP_VERSION = "198";
 const SOFTWARE_SIGNATURE = Object.freeze({ owner: "LUCHTI ME", product: "URBAM Frotas", fingerprint: "LUCHTI-CHECKFROTA-URBAM-20260909-A7F3", notice: "Todos os direitos reservados" });
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v189";
 const CHECKLIST = [
@@ -35,6 +35,7 @@ let returnedIssues = [];
 let returnedIssuesTimer = null;
 let scheduledAppointments = [];
 let scheduledAppointmentsTimer = null;
+let myCallsFilter = "pending";
 let maintenanceMapLocation = null;
 let maintenanceWatchTimer = null;
 let managementRole = "";
@@ -435,6 +436,17 @@ function notifyScheduledAppointment(issue) {
   notification.onclick = () => { window.focus(); notification.close(); };
   localStorage.setItem(key, new Date().toISOString());
 }
+function notifyAppointmentReminder(issue) {
+  const maintenance = maintenanceOf(issue);
+  if (returnNotificationPermission() !== "granted" || !maintenance.scheduledAt || maintenance.deliveryAt) return;
+  const distance = new Date(maintenance.scheduledAt).getTime() - Date.now();
+  if (distance < 0 || distance > 2 * 60 * 60 * 1000) return;
+  const key = `checkfrota-schedule-reminder-${issue.id}-${maintenance.scheduledAt}`;
+  if (localStorage.getItem(key)) return;
+  const notification = new Notification("URBAM Frotas: manutenção em até 2 horas", { body: `Prefixo ${issue.vehiclePrefix || "—"}: ${dateTime(maintenance.scheduledAt)} · ${maintenance.provider || "consulte o local no aplicativo"}`, tag: `checkfrota-reminder-${issue.id}` });
+  notification.onclick = () => { window.focus(); notification.close(); };
+  localStorage.setItem(key, new Date().toISOString());
+}
 function appointmentReference(issue) { return String(issue.inspectionId || issue.id || "").toUpperCase(); }
 function driverContactSummary(issue) {
   const registration = String(issue.driverRegistration || "Não informada");
@@ -443,6 +455,8 @@ function driverContactSummary(issue) {
 }
 function collaboratorCallStatus(issue) {
   const maintenance = maintenanceOf(issue);
+  if (issue.status === "resolvida" || maintenance.status === "Concluída") return "Chamado concluído";
+  if (maintenance.status === "Veículo pronto para retirada") return "Veículo pronto para retirada";
   if (maintenance.deliveryAt || maintenance.status === "Em manutenção") return "Veículo entregue — em manutenção";
   if (maintenance.status === "Agendada") return "Manutenção agendada";
   if (issue.leaderApproval?.status === "Aprovada") return "Aprovado — aguardando agendamento";
@@ -463,10 +477,17 @@ function notifyCallOpened(issue) {
   localStorage.setItem(key, new Date().toISOString());
 }
 function renderScheduledAppointments() {
-  const panel = $("#scheduleNotifications"); if (!panel) return;
-  if (!scheduledAppointments.length) { panel.hidden = true; panel.innerHTML = ""; return; }
-  panel.hidden = false;
-  panel.innerHTML = scheduledAppointments.map((issue) => { const maintenance = maintenanceOf(issue); const mapUrl = maintenanceMapUrl(maintenance, issue); const delivered = maintenance.deliveryAt; const scheduled = maintenance.status === "Agendada"; return `<article class="return-notice schedule"><h2>${esc(collaboratorCallStatus(issue))}</h2><p><b>Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate || "—")}</b></p>${scheduled || delivered ? `<p><b>Data e horário:</b> ${esc(maintenance.scheduledAt ? dateTime(maintenance.scheduledAt) : "A confirmar")}</p><p><b>Local:</b> ${esc(maintenance.provider || "Oficina a confirmar")}${maintenance.address ? `<br>${esc(maintenance.address)}` : ""}</p>` : ""}<p><b>Colaborador vinculado:</b><br>${esc(driverContactSummary(issue))}</p><p>${esc(issue.itemName || "Manutenção")} · ${esc(issue.description || "")}</p>${delivered ? `<p class="delivery-confirmed"><b>Entregue para manutenção:</b> ${esc(dateTime(delivered))}<br><small>A Gestão e a Liderança foram avisadas. O prazo termina em ${esc(dateTime(maintenance.supplierDeadlineAt || new Date(new Date(delivered).getTime() + 21600000).toISOString()))}.</small></p>` : scheduled ? `<button type="button" class="small-button delivery-button" data-mark-maintenance-delivery="${esc(issue.id)}">✓ Marcar veículo entregue para manutenção</button>` : `<p><small>Você receberá um aviso quando a Gestão informar data, horário e local.</small></p>`}${mapUrl && (scheduled || delivered) ? `<a class="small-button" href="${esc(mapUrl)}" target="_blank" rel="noopener">Abrir rota desde o local do chamado</a>` : ""}</article>`; }).join("");
+  const panel = $("#scheduleNotifications"), shell = $("#myCallsPanel"); if (!panel || !shell) return;
+  const visible = scheduledAppointments.filter((issue) => { const maintenance = maintenanceOf(issue); const completed = issue.status === "resolvida" || maintenance.status === "Concluída"; const scheduled = ["Agendada", "Em manutenção", "Veículo pronto para retirada"].includes(maintenance.status); return myCallsFilter === "completed" ? completed : myCallsFilter === "scheduled" ? scheduled && !completed : !scheduled && !completed; });
+  shell.hidden = !scheduledAppointments.length;
+  $("#myCallsBadge").textContent = String(scheduledAppointments.filter((issue) => issue.status !== "resolvida").length);
+  panel.innerHTML = visible.length ? visible.map((issue) => { const maintenance = maintenanceOf(issue); const mapUrl = maintenanceMapUrl(maintenance, issue); const delivered = maintenance.deliveryAt; const scheduled = maintenance.status === "Agendada"; const acknowledged = maintenance.driverAcknowledgedAt; return `<article class="return-notice schedule"><h2>${esc(collaboratorCallStatus(issue))}</h2><p><b>Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate || "—")}</b></p>${scheduled || delivered ? `<p><b>Data e horário:</b> ${esc(maintenance.scheduledAt ? dateTime(maintenance.scheduledAt) : "A confirmar")}</p><p><b>Local:</b> ${esc(maintenance.provider || "Oficina a confirmar")}${maintenance.address ? `<br>${esc(maintenance.address)}` : ""}</p>` : ""}<p>${esc(issue.itemName || "Manutenção")} · ${esc(issue.description || "")}</p>${scheduled && !acknowledged ? `<button type="button" class="small-button acknowledge-button" data-acknowledge-schedule="${esc(issue.id)}">Confirmar ciência do agendamento</button>` : acknowledged ? `<p class="schedule-acknowledged">✓ Ciência confirmada em ${esc(dateTime(acknowledged))}</p>` : ""}${delivered ? `<p class="delivery-confirmed"><b>Entregue para manutenção:</b> ${esc(dateTime(delivered))}<br><small>A Gestão e a Liderança foram avisadas. O prazo termina em ${esc(dateTime(maintenance.supplierDeadlineAt || new Date(new Date(delivered).getTime() + 21600000).toISOString()))}.</small></p>` : scheduled ? `<button type="button" class="small-button delivery-button" data-mark-maintenance-delivery="${esc(issue.id)}">✓ Marcar veículo entregue para manutenção</button>` : `<p><small>Você receberá um aviso quando a Gestão informar data, horário e local.</small></p>`}${mapUrl && (scheduled || delivered) ? `<a class="small-button" href="${esc(mapUrl)}" target="_blank" rel="noopener">Abrir rota desde o local do chamado</a>` : ""}</article>`; }).join("") : `<p class="schedule-empty">Nenhum chamado nesta categoria.</p>`;
+}
+async function acknowledgeSchedule(issueId) {
+  const registration = $("#driverRegistration")?.value.replace(/\D/g, "") || localStorage.getItem("checkfrota-driver-registration") || "";
+  const phone = phoneOnly($("#driverPhone")?.value || localStorage.getItem("checkfrota-driver-phone") || "");
+  try { const rows = await cloudRpc("fleet_driver_acknowledge_schedule", { p_registration: registration, p_phone: phone, p_issue_id: issueId }); const updated = rows?.[0]?.data; const issue = scheduledAppointments.find((entry) => entry.id === issueId); if (issue && updated) Object.assign(issue, updated); renderScheduledAppointments(); }
+  catch (error) { console.warn("Ciência não registrada", error); alert("Não foi possível confirmar a ciência. Verifique a internet e tente novamente."); }
 }
 async function markVehicleDeliveredForMaintenance(issueId) {
   const issue = scheduledAppointments.find((entry) => entry.id === issueId); if (!issue) return;
@@ -488,8 +509,8 @@ async function loadScheduledAppointmentsForCollaborator() {
   if (!CLOUD?.url || !registration || !phone) return;
   try {
     const rows = await cloudRpc("fleet_driver_appointments", { p_registration: registration, p_phone: phone });
-    scheduledAppointments = (rows || []).map((row) => row.data || row).filter((issue) => issue && issue.status !== "resolvida");
-    scheduledAppointments.filter((issue) => ["Agendada", "Em manutenção"].includes(maintenanceOf(issue).status)).forEach(notifyScheduledAppointment); renderScheduledAppointments();
+    scheduledAppointments = (rows || []).map((row) => row.data || row).filter(Boolean);
+    scheduledAppointments.filter((issue) => ["Agendada", "Em manutenção"].includes(maintenanceOf(issue).status)).forEach((issue) => { notifyScheduledAppointment(issue); notifyAppointmentReminder(issue); }); renderScheduledAppointments();
   } catch (error) { console.warn("Não foi possível buscar agendamentos do colaborador", error); }
 }
 function startScheduledAppointmentsPolling() { if (scheduledAppointmentsTimer) return; scheduledAppointmentsTimer = window.setInterval(() => void loadScheduledAppointmentsForCollaborator(), 60 * 1000); }
@@ -1747,6 +1768,8 @@ document.addEventListener("click", (event) => {
   }
   if (target.dataset.reopenReturn) reopenReturnedIssue(target.dataset.reopenReturn);
   if (target.dataset.markMaintenanceDelivery) void markVehicleDeliveredForMaintenance(target.dataset.markMaintenanceDelivery);
+  if (target.dataset.acknowledgeSchedule) void acknowledgeSchedule(target.dataset.acknowledgeSchedule);
+  if (target.dataset.myCallsFilter) { myCallsFilter = target.dataset.myCallsFilter; $$("[data-my-calls-filter]").forEach((button) => button.classList.toggle("active", button === target)); renderScheduledAppointments(); }
   if (target.id === "clearIssueFilters") { managerIssueFilters = { base: "", vehicle: "", date: "", owner: "", type: "" }; managerCommandFilter = ""; renderManagementCommandCenter(); renderIssues(); }
   if (target.dataset.viewPhoto) void openIssuePhoto(target.dataset.viewPhoto);
   if (target.dataset.managerDispatch) void dispatchManagerMaintenance(target.dataset.managerDispatch);
