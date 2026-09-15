@@ -1,5 +1,5 @@
 {
   "version": "196",
-  "released_at": "2026-09-09",
-  "notes": "Localização recapturada no envio com alta precisão e protocolos internos ocultados das telas do colaborador."
+  "released_at": "2026-09-15",
+  "notes": "Validação final dos fluxos, avisos de agendamento corrigidos, mensagens de acesso em português e proteção de tamanho e formato das fotos."
 }
