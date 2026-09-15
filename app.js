@@ -5,7 +5,7 @@
  */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "199";
+const APP_VERSION = "200";
 const SOFTWARE_SIGNATURE = Object.freeze({ owner: "LUCHTI ME", product: "URBAM Frotas", fingerprint: "LUCHTI-CHECKFROTA-URBAM-20260909-A7F3", notice: "Todos os direitos reservados" });
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v189";
 const CHECKLIST = [
@@ -179,7 +179,7 @@ const phoneOnly = (phone = "") => phone.replace(/\D/g, "");
 const CLOUD = window.CHECKFROTA_SUPABASE;
 function cloudToken() { return sessionStorage.getItem("checkfrota-supabase-token") || ""; }
 function cloudHeaders(json = true) { const token = cloudToken(); return { apikey: CLOUD?.publishableKey || "", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(json ? { "Content-Type": "application/json" } : {}) }; }
-async function cloudRequest(path, options = {}) { if (!CLOUD?.url) return null; const response = await fetch(`${CLOUD.url}${path}`, { ...options, headers: { ...cloudHeaders(options.json !== false), ...(options.headers || {}) } }); if (!response.ok) throw new Error(`Supabase: ${response.status}`); return response.status === 204 ? null : response.json(); }
+async function cloudRequest(path, options = {}) { if (!CLOUD?.url) return null; const response = await fetch(`${CLOUD.url}${path}`, { ...options, signal: options.signal || AbortSignal.timeout(15000), headers: { ...cloudHeaders(options.json !== false), ...(options.headers || {}) } }); if (!response.ok) throw new Error(`Supabase: ${response.status}`); return response.status === 204 ? null : response.json(); }
 async function cloudRpc(functionName, payload = {}) {
   return cloudRequest(`/rest/v1/rpc/${functionName}`, { method: "POST", body: JSON.stringify(payload) });
 }
@@ -246,6 +246,7 @@ async function cloudSave(table, row) {
   const prefer = authenticatedWrite ? "resolution=merge-duplicates,return=minimal" : "resolution=ignore-duplicates,return=minimal";
   const response = await fetch(endpoint, {
     method: "POST",
+    signal: AbortSignal.timeout(15000),
     headers: { ...cloudHeaders(), Prefer: prefer },
     body: JSON.stringify(row),
   });
@@ -1615,7 +1616,10 @@ function openMaintenanceIssue(issueId) {
   $("#maintenanceService").value = maintenance.service || "";
   $("#maintenanceReturnAt").value = maintenance.returnAt ? maintenance.returnAt.slice(0, 16) : "";
   $("#maintenanceFeedback").value = maintenance.feedback;
-  $("#maintenanceDialog").showModal();
+  const dialog = $("#maintenanceDialog");
+  if (!dialog) return alert("Não foi possível abrir o agendamento. Atualize o aplicativo e tente novamente.");
+  if (!dialog.open) dialog.showModal();
+  $("#maintenanceStatus")?.focus();
 }
 function sendMaintenanceWhatsApp() {
   const target = data.settings.maintenanceGroupPhone || data.settings.maintenancePhone;
@@ -1672,21 +1676,27 @@ async function saveMaintenance() {
   const previousMaintenance = maintenanceOf(issue);
   const nextMaintenance = maintenanceFormValues(previousMaintenance);
   if (nextMaintenance.status !== previousMaintenance.status && !confirm(`Confirma a mudança da manutenção de “${previousMaintenance.status || "Solicitada"}” para “${nextMaintenance.status}”?`)) return;
+  if (nextMaintenance.status === "Agendada" && (!nextMaintenance.scheduledAt || !nextMaintenance.provider || !nextMaintenance.address)) { alert("Para agendar ou reagendar, informe data e horário, oficina e endereço do atendimento."); return; }
+  if (nextMaintenance.status === "Em manutenção" && !previousMaintenance.deliveryAt) { alert("O prazo contratual deve começar somente quando o colaborador confirmar a entrega do veículo no aplicativo dele."); return; }
+  if (nextMaintenance.status === "Veículo pronto para retirada" && (!previousMaintenance.deliveryAt || !nextMaintenance.provider || !nextMaintenance.service)) { alert("Para liberar o veículo, confirme a entrega pelo colaborador e informe oficina/local e serviço executado."); return; }
+  const saveButton = $("#saveMaintenanceButton");
+  saveButton.disabled = true; saveButton.textContent = "Salvando agendamento…";
   issue.maintenance = nextMaintenance;
-  if (issue.maintenance.status === "Agendada" && (!issue.maintenance.scheduledAt || !issue.maintenance.provider || !issue.maintenance.address)) { alert("Para agendar ou reagendar, informe data e horário, oficina e endereço do atendimento."); return; }
   if (issue.maintenance.status === "Agendada" && previousMaintenance.deliveryAt) { issue.maintenance.deliveryAt = ""; issue.maintenance.supplierDeadlineAt = ""; issue.maintenance.readyAt = ""; issue.maintenance.pickupAt = ""; issue.maintenance.pickupBy = ""; issue.maintenance.supplierReplyAt = ""; issue.maintenance.rescheduledAt = new Date().toISOString(); }
-  if (issue.maintenance.status === "Em manutenção" && !previousMaintenance.deliveryAt) { alert("O prazo contratual deve começar somente quando o colaborador confirmar a entrega do veículo no aplicativo dele."); return; }
-  if (issue.maintenance.status === "Veículo pronto para retirada" && (!previousMaintenance.deliveryAt || !issue.maintenance.provider || !issue.maintenance.service)) { alert("Para liberar o veículo, confirme a entrega pelo colaborador e informe oficina/local e serviço executado."); return; }
   if (issue.maintenance.status === "Concluída") { issue.status = "resolvida"; issue.resolvedAt = new Date().toISOString(); }
   else if (issue.status === "resolvida") { issue.status = "aberta"; delete issue.resolvedAt; }
-  saveData();
-  try { await cloudSave("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: issue.vehicleId, status: issue.status, data: issue }); }
-  catch (error) { queueCloudWrite("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: issue.vehicleId, status: issue.status, data: issue }); alert("A atualização foi guardada neste aparelho e será sincronizada quando a internet voltar."); }
-  await recordAuditEvent(issue, "manutencao_atualizada", `Situação: ${issue.maintenance.status}`);
-  if (data.settings.webhookUrl) void sendToIntegration({ type: issue.maintenance.status === "Agendada" ? "maintenance-scheduled" : "maintenance-update", issue, maintenance: issue.maintenance });
-  $("#maintenanceDialog").close(); renderControl();
-  if (issue.maintenance.status === "Agendada") { await sendSchedulePush(issue); await sendDriverMaintenanceWhatsApp(issue); sendSchedulingReturn(issue, issue.maintenance); }
-  if (issue.maintenance.status === "Veículo pronto para retirada") { const leader = issue.basePhone || data.settings.leaderPhone; if (leader) window.open(whatsappLink(leader, `*VEÍCULO PRONTO PARA RETIRADA*\n\nPrefixo ${issue.vehiclePrefix || "—"} · ${issue.vehiclePlate || "—"}\nLocal: ${issue.maintenance.provider}\nServiço executado: ${issue.maintenance.service}\nLiberado em: ${dateTime(issue.maintenance.readyAt)}\n\nO aviso também está disponível no painel da Liderança.`), "_blank", "noopener"); }
+  try {
+    saveData();
+    try { await cloudSave("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: issue.vehicleId, status: issue.status, data: issue }); }
+    catch (error) { queueCloudWrite("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: issue.vehicleId, status: issue.status, data: issue }); alert("A atualização foi guardada neste aparelho e será sincronizada quando a internet voltar."); }
+    void recordAuditEvent(issue, "manutencao_atualizada", `Situação: ${issue.maintenance.status}`);
+    if (data.settings.webhookUrl) void sendToIntegration({ type: issue.maintenance.status === "Agendada" ? "maintenance-scheduled" : "maintenance-update", issue, maintenance: issue.maintenance });
+    $("#maintenanceDialog").close(); renderControl();
+    if (issue.maintenance.status === "Agendada") { void sendSchedulePush(issue); void sendDriverMaintenanceWhatsApp(issue); sendSchedulingReturn(issue, issue.maintenance); }
+    if (issue.maintenance.status === "Veículo pronto para retirada") { const leader = issue.basePhone || data.settings.leaderPhone; if (leader) window.open(whatsappLink(leader, `*VEÍCULO PRONTO PARA RETIRADA*\n\nPrefixo ${issue.vehiclePrefix || "—"} · ${issue.vehiclePlate || "—"}\nLocal: ${issue.maintenance.provider}\nServiço executado: ${issue.maintenance.service}\nLiberado em: ${dateTime(issue.maintenance.readyAt)}\n\nO aviso também está disponível no painel da Liderança.`), "_blank", "noopener"); }
+  } finally {
+    saveButton.disabled = false; saveButton.textContent = "Salvar agendamento / retorno";
+  }
 }
 function updateMaintenanceMapLink() {
   const link = $("#maintenanceMapLink"); if (!link) return;

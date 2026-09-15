@@ -1,5 +1,5 @@
 {
-  "version": "199",
+  "version": "200",
   "released_at": "2026-09-15",
-  "notes": "Envio protegido contra cliques duplicados, com tela de processamento e desbloqueio automático em caso de erro."
+  "notes": "Correção do Agendar / retorno: salvamento com indicação visual, campos obrigatórios claros, limite de espera da conexão e notificações sem bloquear o registro."
 }
