@@ -50,7 +50,7 @@ Deno.serve(async (request) => {
   const title = "Manutenção agendada";
   const body = `Prefixo ${issue.vehiclePrefix || "—"}: ${when} · ${maintenance.provider || maintenance.address || "local informado"}`;
   const base = String(issue.baseName || "sem-base");
-  const common = { app_id: appId, headings: { en: title, pt: title }, contents: { en: body, pt: body }, url: `https://4lves-dev.github.io/checkfrota/?v=198&matricula=${encodeURIComponent(issue.driverRegistration || "")}` };
+  const common = { app_id: appId, headings: { en: title, pt: title }, contents: { en: body, pt: body }, url: `https://4lves-dev.github.io/checkfrota/?v=199&matricula=${encodeURIComponent(issue.driverRegistration || "")}` };
 
   const messages = [
     issue.driverRegistration ? { ...common, include_aliases: { external_id: [`colaborador:${issue.driverRegistration}`] }, target_channel: "push" } : null,
