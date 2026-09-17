@@ -5,7 +5,7 @@
  */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "204";
+const APP_VERSION = "205";
 const SOFTWARE_SIGNATURE = Object.freeze({ owner: "LUCHTI ME", product: "URBAM Frotas", fingerprint: "LUCHTI-CHECKFROTA-URBAM-20260909-A7F3", notice: "Todos os direitos reservados" });
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v201";
 const CHECKLIST = [
@@ -271,11 +271,15 @@ function setCloudSyncStatus(message, state = "") {
   element.textContent = message;
   element.dataset.state = state;
 }
+function syncTimeText() {
+  const value = localStorage.getItem("checkfrota-last-sync");
+  return value ? new Date(value).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "ainda não realizada";
+}
 async function syncCloudOutbox() {
   const queue = readCloudOutbox();
   if (!CLOUD?.url) { setCloudSyncStatus("Banco não configurado", "error"); return 0; }
-  if (!queue.length) { setCloudSyncStatus("✓ Sincronizado", "ok"); return 0; }
-  if (!navigator.onLine) { setCloudSyncStatus(`${queue.length} envio(s) aguardando internet`, "pending"); return 0; }
+  if (!navigator.onLine) { setCloudSyncStatus(`⚠ Offline · última sincronização ${syncTimeText()}${queue.length ? ` · ${queue.length} pendente(s)` : ""}`, "error"); return 0; }
+  if (!queue.length) { if (!localStorage.getItem("checkfrota-last-sync")) localStorage.setItem("checkfrota-last-sync", new Date().toISOString()); setCloudSyncStatus(`✓ Sincronizado às ${syncTimeText()}`, "ok"); return 0; }
   setCloudSyncStatus(`Sincronizando ${queue.length} envio(s)...`, "pending");
   const remaining = [];
   for (const entry of queue) {
@@ -284,7 +288,7 @@ async function syncCloudOutbox() {
   }
   localStorage.setItem(OUTBOX_KEY, JSON.stringify(remaining));
   if (remaining.length) setCloudSyncStatus(`${remaining.length} envio(s) aguardando nova tentativa`, "pending");
-  else setCloudSyncStatus("✓ Sincronizado", "ok");
+  else { localStorage.setItem("checkfrota-last-sync", new Date().toISOString()); setCloudSyncStatus(`✓ Sincronizado às ${syncTimeText()}`, "ok"); }
   return queue.length - remaining.length;
 }
 async function saveSubmissionWithOutbox(table, row) {
@@ -1953,7 +1957,8 @@ window.addEventListener("load", () => { void window.URBAMOneSignal?.initialize()
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
 window.addEventListener("appinstalled", () => { document.body.classList.add("app-installed"); $("#installBanner").hidden = true; });
 if (isInstalled()) document.body.classList.add("app-installed"); else window.addEventListener("load", showInstallBanner);
-window.addEventListener("online", () => { void syncCloudOutbox().then((count) => { if (count) console.info(`${count} envio(s) pendente(s) sincronizado(s).`); }); });
+window.addEventListener("online", () => { localStorage.setItem("checkfrota-last-sync", new Date().toISOString()); void syncCloudOutbox().then((count) => { if (count) console.info(`${count} envio(s) pendente(s) sincronizado(s).`); }); });
+window.addEventListener("offline", () => void syncCloudOutbox());
 if (new URLSearchParams(location.search).get("gestao") === "1") {
   if (cloudToken()) showScreen("controle");
   else location.replace(`gestao.html?v=${APP_VERSION}`);

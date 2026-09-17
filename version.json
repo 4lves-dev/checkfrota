@@ -1,5 +1,5 @@
 {
-  "version": "204",
+  "version": "205",
   "released_at": "2026-09-17",
-  "notes": "Aprimora o acompanhamento: lavagem pendente, agendamentos vencidos, validação de horário, retirada segura pela Liderança e painéis sem chamados concluídos."
+  "notes": "Adiciona histórico da Liderança, estado online/offline, horário de sincronização, alertas automáticos de atraso e instalador único do banco."
 }

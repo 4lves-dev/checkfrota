@@ -70,3 +70,8 @@ e abra `http://localhost:4173`.
 - `manifest.webmanifest` e `service-worker.js` — comportamento de aplicativo instalável/offline.
 
 
+# Banco e alertas automáticos
+
+Para instalar ou atualizar o banco, execute somente `supabase-install-all.sql` no SQL Editor do Supabase. O arquivo é cumulativo, preserva os dados existentes e evita aplicar atualizações em ordem incompatível.
+
+Os alertas de atraso com o aplicativo fechado são enviados pela Edge Function `maintenance-alerts`. Após publicá-la, configure os segredos `ONESIGNAL_REST_API_KEY`, `ONESIGNAL_APP_ID` e `MAINTENANCE_ALERTS_CRON_SECRET`. No painel do Supabase, agende a função a cada 10 minutos e envie o cabeçalho `x-cron-secret` com o mesmo valor do segredo. A tabela `fleet_server_notifications` impede notificações duplicadas.
