@@ -1,0 +1,5 @@
+[functions.maintenance-alerts]
+verify_jwt = false
+
+[functions.notify-schedule]
+verify_jwt = true
