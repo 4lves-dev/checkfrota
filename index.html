@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="icons/icon.svg">
-    <link rel="stylesheet" href="styles.css?v=200">
+    <link rel="stylesheet" href="styles.css?v=201">
     <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer=""></script>
     <style>#installBanner[hidden] { display: none !important; }</style>
     <title>URBAM Frotas</title>
@@ -25,8 +25,8 @@
           <small class="brand-credit">por <span class="luchti-signature">LUCHTI ME</span></small>
         </a>
         <div class="header-actions">
-          <a class="management-access" href="gestao.html?v=200" title="Acesso à Gestão da Frota" aria-label="Acesso à Gestão da Frota"><span aria-hidden="true">▦</span> Gestão</a>
-          <a class="management-access" href="lider.html?v=200" title="Acesso ao painel da Liderança" aria-label="Acesso ao painel da Liderança"><span aria-hidden="true">✓</span> Liderança</a>
+          <a class="management-access" href="gestao.html?v=201" title="Acesso à Gestão da Frota" aria-label="Acesso à Gestão da Frota"><span aria-hidden="true">▦</span> Gestão</a>
+          <a class="management-access" href="lider.html?v=201" title="Acesso ao painel da Liderança" aria-label="Acesso ao painel da Liderança"><span aria-hidden="true">✓</span> Liderança</a>
           <button class="install-button" id="enablePushNotifications" type="button" title="Ativar avisos no celular">🔔 <span>Avisos</span></button>
           <button class="install-button" id="installApp" title="Instalar no celular">⇩ <span>Instalar</span></button>
         </div><span class="sync-status" id="cloudSyncStatus" aria-live="polite" data-state="ok">✓ Sincronizado</span>
@@ -257,7 +257,7 @@
 
     <dialog id="maintenanceDialog" class="issue-dialog">
       <form id="maintenanceForm">
-        <div class="dialog-head"><div><p class="eyebrow">MANUTENÇÃO</p><h2 id="maintenanceDialogTitle">Retorno da manutenção</h2></div><button class="icon-button" value="cancel" formnovalidate="" aria-label="Fechar">×</button></div>
+        <div class="dialog-head"><div><p class="eyebrow">MANUTENÇÃO</p><h2 id="maintenanceDialogTitle">Retorno da manutenção</h2></div><button type="button" class="icon-button" id="closeMaintenanceDialog" aria-label="Fechar">×</button></div>
         <input type="hidden" id="maintenanceIssueId">
         <p class="dialog-copy" id="maintenanceIssueSummary"></p>
         <label for="maintenanceStatus">Etapa da manutenção</label>
@@ -270,7 +270,7 @@
         <label for="maintenanceAddress">Endereço da oficina <em>obrigatório para agendar</em></label>
         <input id="maintenanceAddress" placeholder="Rua, número, bairro, cidade - SP">
           <p class="helper" id="maintenanceMapStatus">Informe o endereço e localize para gravar a rota do atendimento.</p>
-          <div class="issue-actions"><button type="button" class="secondary-button" id="locateMaintenanceAddress">⌖ Confirmar localização</button><a class="secondary-button map-link is-disabled" id="maintenanceMapLink" href="https://www.google.com/maps" target="_blank" rel="noopener" aria-disabled="true">📍 Abrir no Google Maps</a></div>
+          <div class="issue-actions"><button type="button" class="secondary-button" id="locateMaintenanceAddress">⌖ Confirmar localização</button><a class="secondary-button map-link is-disabled" id="maintenanceMapLink" href="https://www.google.com/maps" target="_blank" rel="noopener" aria-disabled="true">📍 Google Maps</a><a class="secondary-button map-link is-disabled" id="maintenanceWazeLink" href="https://www.waze.com" target="_blank" rel="noopener" aria-disabled="true">🚙 Waze</a></div>
         <label for="maintenanceService">Serviço executado / previsto <em>obrigatório ao liberar veículo</em></label>
         <textarea id="maintenanceService" placeholder="Ex.: troca de pneu dianteiro e alinhamento."></textarea>
         <label for="maintenanceReturnAt">Previsão de retorno <em>opcional</em></label>
@@ -292,9 +292,9 @@
 
     <template id="emptyStateTemplate"><div class="empty-state"><span>⌁</span><p>Nenhum registro por aqui.</p></div></template>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script src="supabase-config.js?v=200"></script>
-    <script src="onesignal.js?v=200"></script>
-    <script src="app.js?v=200"></script>
+    <script src="supabase-config.js?v=201"></script>
+    <script src="onesignal.js?v=201"></script>
+    <script src="app.js?v=201"></script>
 
 
 

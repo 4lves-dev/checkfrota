@@ -1,5 +1,5 @@
 {
-  "version": "200",
-  "released_at": "2026-09-15",
-  "notes": "Correção do Agendar / retorno: salvamento com indicação visual, campos obrigatórios claros, limite de espera da conexão e notificações sem bloquear o registro."
+  "version": "201",
+  "released_at": "2026-09-17",
+  "notes": "Corrige os controles de manutenção, impede reenvio duplicado, retorna automaticamente ao início e mostra ao colaborador o agendamento com rotas pelo Google Maps e Waze."
 }

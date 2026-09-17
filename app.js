@@ -5,9 +5,9 @@
  */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "200";
+const APP_VERSION = "201";
 const SOFTWARE_SIGNATURE = Object.freeze({ owner: "LUCHTI ME", product: "URBAM Frotas", fingerprint: "LUCHTI-CHECKFROTA-URBAM-20260909-A7F3", notice: "Todos os direitos reservados" });
-const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v189";
+const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v201";
 const CHECKLIST = [
   ["pneus", "Pneus e estepe", "Rodagem"],
   ["luzes", "Faróis, lanternas e setas", "Elétrica"],
@@ -40,6 +40,8 @@ let maintenanceMapLocation = null;
 let maintenanceWatchTimer = null;
 let managementRole = "";
 let submissionInProgress = false;
+let submissionCompleted = false;
+let completionReturnTimer = null;
 
 const initialData = {
   settings: { maintenancePhone: "5512988400316", maintenanceGroupPhone: MAINTENANCE_GROUP_PHONE, leaderPhone: "", fleetManagerPhone: "", webhookUrl: EMAIL_AUTOMATION_URL },
@@ -428,6 +430,20 @@ function maintenanceMapUrl(maintenance = {}, issue = {}) {
   const query = String(maintenance.provider || "").trim();
   return query ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}` : "";
 }
+function maintenanceDestination(maintenance = {}) {
+  const hasCoordinates = maintenance.latitude !== "" && maintenance.latitude != null && maintenance.longitude !== "" && maintenance.longitude != null;
+  return hasCoordinates ? `${maintenance.latitude},${maintenance.longitude}` : String(maintenance.address || maintenance.provider || "").trim();
+}
+function maintenanceGoogleNavigationUrl(maintenance = {}) {
+  const destination = maintenanceDestination(maintenance);
+  return destination ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&travelmode=driving&dir_action=navigate` : "";
+}
+function maintenanceWazeNavigationUrl(maintenance = {}) {
+  const destination = maintenanceDestination(maintenance);
+  if (!destination) return "";
+  const hasCoordinates = maintenance.latitude !== "" && maintenance.latitude != null && maintenance.longitude !== "" && maintenance.longitude != null;
+  return hasCoordinates ? `https://www.waze.com/ul?ll=${encodeURIComponent(destination)}&navigate=yes` : `https://www.waze.com/ul?q=${encodeURIComponent(destination)}&navigate=yes`;
+}
 function appointmentFingerprint(issue) { const maintenance = maintenanceOf(issue); return [maintenance.scheduledAt, maintenance.provider, maintenance.address, maintenance.latitude, maintenance.longitude, maintenance.updatedAt].join("|"); }
 function notifyScheduledAppointment(issue) {
   const maintenance = maintenanceOf(issue); const key = `checkfrota-schedule-notification-${issue.id}-${appointmentFingerprint(issue)}`;
@@ -481,9 +497,10 @@ function notifyCallOpened(issue) {
 function renderScheduledAppointments() {
   const panel = $("#scheduleNotifications"), shell = $("#myCallsPanel"); if (!panel || !shell) return;
   const visible = scheduledAppointments.filter((issue) => { const maintenance = maintenanceOf(issue); const completed = issue.status === "resolvida" || maintenance.status === "Concluída"; const scheduled = ["Agendada", "Em manutenção", "Veículo pronto para retirada"].includes(maintenance.status); return myCallsFilter === "completed" ? completed : myCallsFilter === "scheduled" ? scheduled && !completed : !scheduled && !completed; });
-  shell.hidden = !scheduledAppointments.length;
+  const identifiedCollaborator = Boolean($("#driverRegistration")?.value.trim() || localStorage.getItem("checkfrota-driver-registration"));
+  shell.hidden = !identifiedCollaborator;
   $("#myCallsBadge").textContent = String(scheduledAppointments.filter((issue) => issue.status !== "resolvida").length);
-  panel.innerHTML = visible.length ? visible.map((issue) => { const maintenance = maintenanceOf(issue); const mapUrl = maintenanceMapUrl(maintenance, issue); const delivered = maintenance.deliveryAt; const scheduled = maintenance.status === "Agendada"; const acknowledged = maintenance.driverAcknowledgedAt; return `<article class="return-notice schedule"><h2>${esc(collaboratorCallStatus(issue))}</h2><p><b>Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate || "—")}</b></p>${scheduled || delivered ? `<p><b>Data e horário:</b> ${esc(maintenance.scheduledAt ? dateTime(maintenance.scheduledAt) : "A confirmar")}</p><p><b>Local:</b> ${esc(maintenance.provider || "Oficina a confirmar")}${maintenance.address ? `<br>${esc(maintenance.address)}` : ""}</p>` : ""}<p>${esc(issue.itemName || "Manutenção")} · ${esc(issue.description || "")}</p>${scheduled && !acknowledged ? `<button type="button" class="small-button acknowledge-button" data-acknowledge-schedule="${esc(issue.id)}">Confirmar ciência do agendamento</button>` : acknowledged ? `<p class="schedule-acknowledged">✓ Ciência confirmada em ${esc(dateTime(acknowledged))}</p>` : ""}${delivered ? `<p class="delivery-confirmed"><b>Entregue para manutenção:</b> ${esc(dateTime(delivered))}<br><small>A Gestão e a Liderança foram avisadas. O prazo termina em ${esc(dateTime(maintenance.supplierDeadlineAt || new Date(new Date(delivered).getTime() + 21600000).toISOString()))}.</small></p>` : scheduled ? `<button type="button" class="small-button delivery-button" data-mark-maintenance-delivery="${esc(issue.id)}">✓ Marcar veículo entregue para manutenção</button>` : `<p><small>Você receberá um aviso quando a Gestão informar data, horário e local.</small></p>`}${mapUrl && (scheduled || delivered) ? `<a class="small-button" href="${esc(mapUrl)}" target="_blank" rel="noopener">Abrir rota desde o local do chamado</a>` : ""}</article>`; }).join("") : `<p class="schedule-empty">Nenhum chamado nesta categoria.</p>`;
+  panel.innerHTML = visible.length ? visible.map((issue) => { const maintenance = maintenanceOf(issue); const googleUrl = maintenanceGoogleNavigationUrl(maintenance); const wazeUrl = maintenanceWazeNavigationUrl(maintenance); const delivered = maintenance.deliveryAt; const scheduled = maintenance.status === "Agendada"; const acknowledged = maintenance.driverAcknowledgedAt; return `<article class="return-notice schedule"><h2>${esc(collaboratorCallStatus(issue))}</h2><p><b>Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate || "—")}</b></p>${scheduled || delivered ? `<p><b>Data e horário:</b> ${esc(maintenance.scheduledAt ? dateTime(maintenance.scheduledAt) : "A confirmar")}</p><p><b>Local da manutenção:</b> ${esc(maintenance.provider || "Oficina a confirmar")}${maintenance.address ? `<br>${esc(maintenance.address)}` : ""}</p>` : ""}<p>${esc(issue.itemName || "Manutenção")} · ${esc(issue.description || "")}</p>${scheduled && !acknowledged ? `<button type="button" class="small-button acknowledge-button" data-acknowledge-schedule="${esc(issue.id)}">Confirmar ciência do agendamento</button>` : acknowledged ? `<p class="schedule-acknowledged">✓ Ciência confirmada em ${esc(dateTime(acknowledged))}</p>` : ""}${delivered ? `<p class="delivery-confirmed"><b>Entregue para manutenção:</b> ${esc(dateTime(delivered))}<br><small>A Gestão e a Liderança foram avisadas. O prazo termina em ${esc(dateTime(maintenance.supplierDeadlineAt || new Date(new Date(delivered).getTime() + 21600000).toISOString()))}.</small></p>` : scheduled ? `<button type="button" class="small-button delivery-button" data-mark-maintenance-delivery="${esc(issue.id)}">✓ Marcar veículo entregue para manutenção</button>` : `<p><small>O agendamento ficará visível aqui quando a Gestão informar data, horário e local.</small></p>`}${googleUrl && (scheduled || delivered) ? `<div class="navigation-actions"><a class="small-button map-link" href="${esc(googleUrl)}" target="_blank" rel="noopener">Google Maps</a><a class="small-button waze-link" href="${esc(wazeUrl)}" target="_blank" rel="noopener">Waze</a></div>` : ""}</article>`; }).join("") : `<p class="schedule-empty">Nenhum chamado nesta categoria.</p>`;
 }
 async function acknowledgeSchedule(issueId) {
   const registration = $("#driverRegistration")?.value.replace(/\D/g, "") || localStorage.getItem("checkfrota-driver-registration") || "";
@@ -619,11 +636,11 @@ function loadData() {
     if (!stored) { const initial = structuredClone(initialData); initial.vehicles = initial.vehicles.map(withFleetResponsible); return initial; }
     // Limpeza solicitada para reiniciar os testes: registros e fila antigos não podem
     // reaparecer no banco ao abrir outro celular.
-    if (localStorage.getItem(LOCAL_DATA_RESET_KEY) !== "v189") {
+    if (localStorage.getItem(LOCAL_DATA_RESET_KEY) !== "v201") {
       stored.issues = [];
       stored.inspections = [];
       localStorage.setItem(OUTBOX_KEY, "[]");
-      localStorage.setItem(LOCAL_DATA_RESET_KEY, "v189");
+      localStorage.setItem(LOCAL_DATA_RESET_KEY, "v201");
     }
     // Atualiza aparelhos que ainda guardam os três veículos de demonstração,
     // preservando veículos reais já cadastrados manualmente pela base.
@@ -711,6 +728,8 @@ function lookupDriverRegistration() {
   if (roleInput) roleInput.value = driver.role;
   hint.textContent = `Colaborador localizado: ${driver.name}.`;
   hint.className = "helper ok";
+  renderScheduledAppointments();
+  void loadScheduledAppointmentsForCollaborator();
   void window.URBAMOneSignal?.setContext({ role: "colaborador", base: $("#baseSelect")?.value || current.baseName, area: "checklist", externalId: `colaborador:${driver.registration}` });
   return driver;
 }
@@ -805,6 +824,8 @@ async function captureOpeningLocation() {
 }
 
 async function beginChecklist() {
+  submissionCompleted = false;
+  if (completionReturnTimer) { clearTimeout(completionReturnTimer); completionReturnTimer = null; }
   const registeredDriver = lookupDriverRegistration();
   const driver = registeredDriver?.name || "";
   const driverRegistration = registeredDriver?.registration || "";
@@ -909,7 +930,7 @@ function severityRank(severity) { return ({ Leve: 1, "Média": 2, Grave: 3 }[sev
 function highestSeverity(issues) { return issues.reduce((highest, issue) => severityRank(issue.severity) > severityRank(highest) ? issue.severity : highest, "Leve"); }
 
 async function submitChecklist() {
-  if (submissionInProgress) return;
+  if (submissionInProgress || submissionCompleted) return;
   submissionInProgress = true;
   setSubmissionBusy(true);
   try {
@@ -959,6 +980,7 @@ async function submitChecklist() {
   await finishCorrectionRequest(current.correctionOf, inspection, newIssues.length > 0);
   const sendResult = await sendToIntegration({ inspection, vehicle, issues: newIssues });
   await showCompletion(inspection, vehicle, newIssues, sendResult);
+  submissionCompleted = true;
   current = { driver: current.driver, driverRegistration: current.driverRegistration, driverRole: current.driverRole, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, vehicleId: vehicle.id, odometer: "", openingLocation: null, states: {}, notes: "" };
   saveData();
   } finally {
@@ -972,8 +994,8 @@ function setSubmissionBusy(busy) {
   document.body.classList.toggle("submission-busy", busy);
   document.body.setAttribute("aria-busy", String(busy));
   if (!button) return;
-  button.disabled = busy;
-  button.innerHTML = busy ? `Enviando formulário… <span class="submit-spinner" aria-hidden="true"></span>` : `Concluir e gerar formulário <span>✓</span>`;
+  button.disabled = busy || submissionCompleted;
+  button.innerHTML = busy ? `Enviando formulário… <span class="submit-spinner" aria-hidden="true"></span>` : submissionCompleted ? `Formulário enviado <span>✓</span>` : `Concluir e gerar formulário <span>✓</span>`;
 }
 
 async function sendToIntegration(payload) {
@@ -1045,7 +1067,13 @@ async function showCompletion(inspection, vehicle, issues, sendResult) {
   const occurrenceRows = issues.length ? issues.map((issue) => `<article class="submitted-issue ${esc(issue.severity.toLowerCase())}"><div><b>${esc(issue.itemName)}</b><span class="chip ${esc(issue.severity.toLowerCase())}">${esc(issue.severity)}</span></div><p>${esc(issue.description)}</p>${issue.photoPath ? `<img src="${esc(publicIssuePhotoUrl(issue))}" alt="Foto da ocorrência ${esc(issue.itemName)}" loading="lazy">` : ""}</article>`).join("") : `<p class="form-empty">Nenhuma ocorrência informada.</p>`;
   form.innerHTML = `<div class="form-top"><span class="form-mark">✓</span><div><small>URBAM FROTAS · RESPOSTA ENVIADA</small><h2>Formulário de inspeção</h2></div></div><div class="form-fields"><div><span>Colaborador</span><b>${esc(inspection.driver)}</b></div>${inspection.driverRegistration ? `<div><span>Matrícula</span><b>${esc(inspection.driverRegistration)}</b></div>` : ""}${inspection.driverRole ? `<div><span>Função</span><b>${esc(inspection.driverRole)}</b></div>` : ""}<div><span>Base</span><b>${esc(inspection.baseName)}</b></div>${inspection.driverEmail ? `<div><span>Cópia para e-mail</span><b>${esc(inspection.driverEmail)}</b></div>` : ""}<div><span>Veículo</span><b>Prefixo ${esc(vehicle.prefix)} · ${esc(vehicle.plate)}</b></div><div><span>Modelo</span><b>${esc(vehicle.model || vehicle.type)}</b></div><div><span>Quilometragem</span><b>${esc(inspection.odometer)} km</b></div><div><span>Data e hora</span><b>${esc(dateTime(inspection.createdAt))}</b></div></div><div class="form-occurrences"><h3>Ocorrências relatadas</h3>${occurrenceRows}</div>${inspection.notes ? `<div class="form-notes"><span>Observação geral</span><p>${esc(inspection.notes)}</p></div>` : ""}`;
   const actions = $("#dispatchActions");
-  if (!issues.length) { actions.innerHTML = ""; showScreen("success"); return; }
+  if (!issues.length) {
+    actions.innerHTML = "";
+    showScreen("success");
+    if (completionReturnTimer) clearTimeout(completionReturnTimer);
+    completionReturnTimer = window.setTimeout(() => { completionReturnTimer = null; showScreen("inicio"); }, 6000);
+    return;
+  }
   const buttons = [];
   const directToManagement = issues.some((issue) => issue.approvalRoute === "gestao");
   const approvalTarget = issues[0]?.basePhone || current.basePhone || data.settings.leaderPhone;
@@ -1054,6 +1082,11 @@ async function showCompletion(inspection, vehicle, issues, sendResult) {
   }
   actions.innerHTML = buttons.join("");
   showScreen("success");
+  if (completionReturnTimer) clearTimeout(completionReturnTimer);
+  completionReturnTimer = window.setTimeout(() => {
+    completionReturnTimer = null;
+    showScreen("inicio");
+  }, 6000);
 }
 
 function renderManagementCommandCenter() {
@@ -1321,7 +1354,7 @@ function renderAgenda() {
     ["Hoje", active.filter((issue) => maintenanceOf(issue).scheduledAt.slice(0, 10) === today())],
     ["Próximos", active.filter((issue) => maintenanceOf(issue).scheduledAt.slice(0, 10) > today())],
   ];
-  panel.innerHTML = `<section class="agenda-board"><div class="section-action"><div><h3>Agenda da manutenção</h3><p>Acompanhe horário, oficina, rota e situação de cada veículo.</p></div><span class="chip ok">${active.length} agendado(s)</span></div>${groups.map(([title, entries]) => `<section class="agenda-group"><h4>${title} <span>${entries.length}</span></h4>${entries.length ? entries.map((issue) => { const m = maintenanceOf(issue), map = maintenanceMapUrl(m, issue); return `<article class="agenda-item ${supplierSlaResult(issue)?.state === "late" ? "late" : ""}"><div><b>Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate || "—")}</b><p>${dateTime(m.scheduledAt)} · ${esc(m.status)}<br>${esc(m.provider || "Oficina a confirmar")}${m.address ? ` · ${esc(m.address)}` : ""}</p></div><div class="issue-actions">${map ? `<a class="small-button map-link" href="${esc(map)}" target="_blank" rel="noopener">Abrir rota</a>` : ""}<button class="small-button" data-maintenance-issue="${esc(issue.id)}">Atualizar</button></div></article>`; }).join("") : `<p class="agenda-empty">Nenhum veículo.</p>`}</section>`).join("")}</section>`;
+  panel.innerHTML = `<section class="agenda-board"><div class="section-action"><div><h3>Agenda da manutenção</h3><p>Acompanhe horário, oficina, rota e situação de cada veículo.</p></div><span class="chip ok">${active.length} agendado(s)</span></div>${groups.map(([title, entries]) => `<section class="agenda-group"><h4>${title} <span>${entries.length}</span></h4>${entries.length ? entries.map((issue) => { const m = maintenanceOf(issue), google = maintenanceGoogleNavigationUrl(m), waze = maintenanceWazeNavigationUrl(m); return `<article class="agenda-item ${supplierSlaResult(issue)?.state === "late" ? "late" : ""}"><div><b>Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate || "—")}</b><p>${dateTime(m.scheduledAt)} · ${esc(m.status)}<br>${esc(m.provider || "Oficina a confirmar")}${m.address ? ` · ${esc(m.address)}` : ""}</p></div><div class="issue-actions">${google ? `<a class="small-button map-link" href="${esc(google)}" target="_blank" rel="noopener">Google Maps</a><a class="small-button waze-link" href="${esc(waze)}" target="_blank" rel="noopener">Waze</a>` : ""}<button class="small-button" data-maintenance-issue="${esc(issue.id)}">Atualizar</button></div></article>`; }).join("") : `<p class="agenda-empty">Nenhum veículo.</p>`}</section>`).join("")}</section>`;
 }
 function renderReports() {
   const panel = $("#reportsPanel");
@@ -1699,7 +1732,7 @@ async function saveMaintenance() {
   }
 }
 function updateMaintenanceMapLink() {
-  const link = $("#maintenanceMapLink"); if (!link) return;
+  const link = $("#maintenanceMapLink"), wazeLink = $("#maintenanceWazeLink"); if (!link) return;
   const address = $("#maintenanceAddress")?.value.trim() || "";
   const issue = data.issues.find((entry) => entry.id === $("#maintenanceIssueId")?.value) || {};
   const draft = { address, latitude: maintenanceMapLocation?.latitude ?? "", longitude: maintenanceMapLocation?.longitude ?? "", provider: $("#maintenanceProvider")?.value.trim() || "" };
@@ -1707,6 +1740,12 @@ function updateMaintenanceMapLink() {
   link.href = mapUrl || "https://www.google.com/maps";
   link.setAttribute("aria-disabled", mapUrl ? "false" : "true");
   link.classList.toggle("is-disabled", !mapUrl);
+  const wazeUrl = maintenanceWazeNavigationUrl(draft);
+  if (wazeLink) {
+    wazeLink.href = wazeUrl || "https://www.waze.com";
+    wazeLink.setAttribute("aria-disabled", wazeUrl ? "false" : "true");
+    wazeLink.classList.toggle("is-disabled", !wazeUrl);
+  }
   const status = $("#maintenanceMapStatus");
   if (status) status.textContent = address ? (issue.openingLocation ? "Rota pronta: saída no local registrado na abertura do chamado e destino na oficina." : "Chamado antigo sem localização de abertura: a rota usará a posição atual do aparelho.") : "Informe o endereço completo da oficina para abrir a rota correta.";
 }
@@ -1807,17 +1846,19 @@ document.addEventListener("click", (event) => {
   if (target.dataset.copySlaNotice) void copySupplierSlaNotice(target.dataset.copySlaNotice);
   if (target.dataset.sendSlaNotice) void sendSupplierSlaNotice(target.dataset.sendSlaNotice);
   if (target.dataset.whatsappIssue) sendIssueWhatsApp(target.dataset.whatsappIssue);
-  if (target.dataset.maintenanceIssue) openMaintenanceIssue(target.dataset.maintenanceIssue);
+  if (target.dataset.maintenanceIssue) { event.preventDefault(); try { openMaintenanceIssue(target.dataset.maintenanceIssue); } catch (error) { console.error("Falha ao abrir manutenção", error); alert("Não foi possível abrir o agendamento. Atualize o aplicativo e tente novamente."); } }
   if (target.dataset.maintenanceWhatsapp) sendMaintenanceWhatsApp(target.dataset.maintenanceWhatsapp);
   if (target.dataset.closeIssue) void closeIssue(target.dataset.closeIssue);
   if (target.id === "sendMaintenanceUpdate") { const issue = data.issues.find((entry) => entry.id === $("#maintenanceIssueId").value); if (issue) void saveAndSendInternalMaintenanceUpdate(issue); }
   if (target.id === "locateMaintenanceAddress") void locateMaintenanceAddress();
   if (target.id === "rescheduleMaintenance") prepareReschedule();
+  if (target.id === "closeMaintenanceDialog") { event.preventDefault(); $("#maintenanceDialog")?.close(); }
   if (target.id === "downloadReport") downloadReport();
 });
 $("#vehicleSelect").addEventListener("change", renderVehicleOwner);
 $("#baseSelect").addEventListener("change", () => { renderBasePhone(); renderVehicleOptions(); });
 $("#driverRegistration")?.addEventListener("input", lookupDriverRegistration);
+$("#driverPhone")?.addEventListener("change", () => { localStorage.setItem("checkfrota-driver-phone", phoneOnly($("#driverPhone").value)); void loadScheduledAppointmentsForCollaborator(); });
 $("#vehiclePrefixLookup")?.addEventListener("input", lookupVehiclePrefix);
 $("#employeeAccessLevel")?.addEventListener("change", toggleEmployeeLeaderFields);
 $("#leaderInstallBase")?.addEventListener("change", renderLeaderInstallTarget);
