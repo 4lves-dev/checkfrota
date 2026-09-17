@@ -1,5 +1,5 @@
 {
-  "version": "202",
+  "version": "203",
   "released_at": "2026-09-17",
-  "notes": "Bloqueia o botão após o envio, simplifica o painel do colaborador para agendamentos e destaca veículo pronto para retirada para colaborador e liderança."
+  "notes": "Mostra solicitações de lavagem no painel do colaborador enquanto aguardam agendamento, preservando ciência, rotas e liberação para retirada."
 }
