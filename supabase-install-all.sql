@@ -915,7 +915,7 @@ begin
   where coalesce(issue.data ->> 'driverRegistration', '') = p_registration
     and regexp_replace(coalesce(issue.data ->> 'driverPhone', ''), '\D', '', 'g') = normalized_phone
     and issue.created_at >= now() - interval '120 days'
-  order by issue.created_at desc;
+  order by issue.created_at desc
   limit 100;
 end;
 $$;
