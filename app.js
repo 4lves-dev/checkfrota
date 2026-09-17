@@ -5,7 +5,7 @@
  */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "203";
+const APP_VERSION = "204";
 const SOFTWARE_SIGNATURE = Object.freeze({ owner: "LUCHTI ME", product: "URBAM Frotas", fingerprint: "LUCHTI-CHECKFROTA-URBAM-20260909-A7F3", notice: "Todos os direitos reservados" });
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v201";
 const CHECKLIST = [
@@ -1116,7 +1116,7 @@ function renderManagementCommandCenter() {
     ["Agendados hoje", count((issue) => maintenanceOf(issue).scheduledAt?.slice(0, 10) === todayValue), "scheduled"],
     ["Em manutenção", count((issue) => maintenanceOf(issue).status === "Em manutenção"), "in-maintenance"],
     ["Prontos para retirada", count((issue) => maintenanceOf(issue).status === "Veículo pronto para retirada"), "ready"],
-    ["Atrasados", count((issue) => supplierSlaResult(issue)?.state === "late" && maintenanceOf(issue).status !== "Concluída"), "late"],
+    ["Atrasados / vencidos", count((issue) => isManagementOverdue(issue)), "late"],
   ];
   panel.innerHTML = `<div class="section-action"><div><p class="eyebrow">PRIORIDADES DO DIA</p><h3>Central de pendências</h3><p>Toque em uma opção para abrir os chamados correspondentes.</p></div><span class="chip grave">${open.length} em aberto</span></div><div class="command-center-grid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">${cards.map(([label, value, type]) => `<button type="button" class="command-card ${type} ${managerCommandFilter === type ? "active" : ""}" data-command-filter="${type}" aria-pressed="${managerCommandFilter === type}" style="min-width:0;${type === "late" ? "grid-column:span 2;" : ""}"><b>${value}</b><span>${label}</span><small>Ver chamados</small></button>`).join("")}</div>`;
 }
@@ -1149,6 +1149,16 @@ function supplierSlaResult(issue) {
   }
   const difference = Date.now() - deadline.getTime();
   return { deadline, finishedAt: null, difference, state: difference > 0 ? "late" : "running" };
+}
+function isMissedAppointment(issue) {
+  const maintenance = maintenanceOf(issue);
+  if (maintenance.status !== "Agendada" || !maintenance.scheduledAt || maintenance.deliveryAt) return false;
+  const scheduledAt = new Date(maintenance.scheduledAt).getTime();
+  return Number.isFinite(scheduledAt) && scheduledAt < Date.now();
+}
+function isManagementOverdue(issue) {
+  const maintenance = maintenanceOf(issue);
+  return maintenance.status !== "Concluída" && (supplierSlaResult(issue)?.state === "late" || isMissedAppointment(issue));
 }
 function notifyManagementMaintenanceWatch(issue, overdue) {
   if (returnNotificationPermission() !== "granted") return;
@@ -1310,7 +1320,7 @@ function issueType(issue) { if (isWashIssue(issue)) return "Lavagem"; if (/pneus
 function issueMatchesManagerFilters(issue) {
   const filter = managerIssueFilters;
   const maintenance = maintenanceOf(issue), todayValue = today();
-  const commandMatch = !managerCommandFilter || (managerCommandFilter === "approval" && !issue.leaderApproval && issue.approvalRoute !== "gestao") || (managerCommandFilter === "approved" && issue.leaderApproval?.status === "Aprovada" && maintenance.status === "Solicitada") || (managerCommandFilter === "scheduled" && maintenance.scheduledAt?.slice(0, 10) === todayValue) || (managerCommandFilter === "in-maintenance" && maintenance.status === "Em manutenção") || (managerCommandFilter === "ready" && maintenance.status === "Veículo pronto para retirada") || (managerCommandFilter === "late" && supplierSlaResult(issue)?.state === "late" && maintenance.status !== "Concluída");
+  const commandMatch = !managerCommandFilter || (managerCommandFilter === "approval" && !issue.leaderApproval && issue.approvalRoute !== "gestao") || (managerCommandFilter === "approved" && issue.leaderApproval?.status === "Aprovada" && maintenance.status === "Solicitada") || (managerCommandFilter === "scheduled" && maintenance.scheduledAt?.slice(0, 10) === todayValue) || (managerCommandFilter === "in-maintenance" && maintenance.status === "Em manutenção") || (managerCommandFilter === "ready" && maintenance.status === "Veículo pronto para retirada") || (managerCommandFilter === "late" && isManagementOverdue(issue));
   return commandMatch && (!filter.base || issue.baseName === filter.base) && (!filter.vehicle || issue.vehicleId === filter.vehicle) && (!filter.date || localDateValue(issue.createdAt) === filter.date) && (!filter.owner || normalizeOwnerName(issue.ownerName) === filter.owner) && (!filter.type || issueType(issue) === filter.type);
 }
 function renderIssueFilters(issues) {
@@ -1365,12 +1375,16 @@ function renderIssues() {
 function renderAgenda() {
   const panel = $("#agendaPanel"); if (!panel) return;
   const active = data.issues.filter((issue) => issue.status !== "resolvida" && maintenanceOf(issue).scheduledAt).sort((a, b) => new Date(maintenanceOf(a).scheduledAt) - new Date(maintenanceOf(b).scheduledAt));
+  const supplierLate = active.filter((issue) => supplierSlaResult(issue)?.state === "late");
+  const missed = active.filter((issue) => isMissedAppointment(issue));
+  const exceptionalIds = new Set([...supplierLate, ...missed].map((issue) => issue.id));
   const groups = [
-    ["Atrasados", active.filter((issue) => supplierSlaResult(issue)?.state === "late")],
-    ["Hoje", active.filter((issue) => maintenanceOf(issue).scheduledAt.slice(0, 10) === today())],
-    ["Próximos", active.filter((issue) => maintenanceOf(issue).scheduledAt.slice(0, 10) > today())],
+    ["Prazo do fornecedor vencido", supplierLate],
+    ["Agendamento vencido sem entrega", missed],
+    ["Hoje", active.filter((issue) => !exceptionalIds.has(issue.id) && maintenanceOf(issue).scheduledAt.slice(0, 10) === today())],
+    ["Próximos", active.filter((issue) => !exceptionalIds.has(issue.id) && maintenanceOf(issue).scheduledAt.slice(0, 10) > today())],
   ];
-  panel.innerHTML = `<section class="agenda-board"><div class="section-action"><div><h3>Agenda da manutenção</h3><p>Acompanhe horário, oficina, rota e situação de cada veículo.</p></div><span class="chip ok">${active.length} agendado(s)</span></div>${groups.map(([title, entries]) => `<section class="agenda-group"><h4>${title} <span>${entries.length}</span></h4>${entries.length ? entries.map((issue) => { const m = maintenanceOf(issue), google = maintenanceGoogleNavigationUrl(m), waze = maintenanceWazeNavigationUrl(m); return `<article class="agenda-item ${supplierSlaResult(issue)?.state === "late" ? "late" : ""}"><div><b>Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate || "—")}</b><p>${dateTime(m.scheduledAt)} · ${esc(m.status)}<br>${esc(m.provider || "Oficina a confirmar")}${m.address ? ` · ${esc(m.address)}` : ""}</p></div><div class="issue-actions">${google ? `<a class="small-button map-link" href="${esc(google)}" target="_blank" rel="noopener">Google Maps</a><a class="small-button waze-link" href="${esc(waze)}" target="_blank" rel="noopener">Waze</a>` : ""}<button class="small-button" data-maintenance-issue="${esc(issue.id)}">Atualizar</button></div></article>`; }).join("") : `<p class="agenda-empty">Nenhum veículo.</p>`}</section>`).join("")}</section>`;
+  panel.innerHTML = `<section class="agenda-board"><div class="section-action"><div><h3>Agenda da manutenção</h3><p>Acompanhe horário, oficina, rota e situação de cada veículo.</p></div><span class="chip ok">${active.length} agendado(s)</span></div>${groups.map(([title, entries]) => `<section class="agenda-group"><h4>${title} <span>${entries.length}</span></h4>${entries.length ? entries.map((issue) => { const m = maintenanceOf(issue), google = maintenanceGoogleNavigationUrl(m), waze = maintenanceWazeNavigationUrl(m); return `<article class="agenda-item ${isManagementOverdue(issue) ? "late" : ""}"><div><b>Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate || "—")}</b><p>${dateTime(m.scheduledAt)} · ${esc(m.status)}<br>${esc(m.provider || "Oficina a confirmar")}${m.address ? ` · ${esc(m.address)}` : ""}</p></div><div class="issue-actions">${google ? `<a class="small-button map-link" href="${esc(google)}" target="_blank" rel="noopener">Google Maps</a><a class="small-button waze-link" href="${esc(waze)}" target="_blank" rel="noopener">Waze</a>` : ""}<button class="small-button" data-maintenance-issue="${esc(issue.id)}">Atualizar</button></div></article>`; }).join("") : `<p class="agenda-empty">Nenhum veículo.</p>`}</section>`).join("")}</section>`;
 }
 function renderReports() {
   const panel = $("#reportsPanel");
@@ -1726,6 +1740,7 @@ async function saveMaintenance() {
   const nextMaintenance = maintenanceFormValues(previousMaintenance);
   if (nextMaintenance.status !== previousMaintenance.status && !confirm(`Confirma a mudança da manutenção de “${previousMaintenance.status || "Solicitada"}” para “${nextMaintenance.status}”?`)) return;
   if (nextMaintenance.status === "Agendada" && (!nextMaintenance.scheduledAt || !nextMaintenance.provider || !nextMaintenance.address)) { alert("Para agendar ou reagendar, informe data e horário, oficina e endereço do atendimento."); return; }
+  if (nextMaintenance.status === "Agendada" && new Date(nextMaintenance.scheduledAt).getTime() < Date.now() - 5 * 60 * 1000) { alert("A data do agendamento não pode estar no passado. Confira data e horário ou use Reagendar."); return; }
   if (nextMaintenance.status === "Em manutenção" && !previousMaintenance.deliveryAt) { alert("O prazo contratual deve começar somente quando o colaborador confirmar a entrega do veículo no aplicativo dele."); return; }
   if (nextMaintenance.status === "Veículo pronto para retirada" && (!previousMaintenance.deliveryAt || !nextMaintenance.provider || !nextMaintenance.service)) { alert("Para liberar o veículo, confirme a entrega pelo colaborador e informe oficina/local e serviço executado."); return; }
   const saveButton = $("#saveMaintenanceButton");
