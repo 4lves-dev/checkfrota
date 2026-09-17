@@ -392,7 +392,7 @@ revoke all on function public.fleet_record_leader_decision(text,text,text,text,t
 grant execute on function public.fleet_record_leader_decision(text,text,text,text,text) to anon, authenticated;
 
 -- A função antiga não pode permanecer acessível, pois não pedia a senha.
-revoke all on function public.fleet_record_leader_decision(text,text,text,text) from public;
+drop function if exists public.fleet_record_leader_decision(text,text,text,text);
 
 -- Limites complementares para o banco: campos de situação conhecidos e trilha de data.
 alter table public.fleet_issues
