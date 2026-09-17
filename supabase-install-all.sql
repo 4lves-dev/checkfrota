@@ -489,7 +489,8 @@ drop policy if exists "Gestão registra auditoria" on public.fleet_audit_events;
 create policy "Gestão consulta auditoria" on public.fleet_audit_events for select to authenticated using (public.fleet_is_manager());
 create policy "Gestão registra auditoria" on public.fleet_audit_events for insert to authenticated with check (public.fleet_is_manager());
 
-create or replace function public.fleet_driver_returns(p_registration text, p_phone text)
+drop function if exists public.fleet_driver_returns(text,text);
+create function public.fleet_driver_returns(p_registration text, p_phone text)
 returns table (id text, status text, data jsonb, created_at timestamptz)
 language plpgsql security definer set search_path = public
 as $$
