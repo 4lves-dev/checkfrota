@@ -5,7 +5,7 @@
  */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "201";
+const APP_VERSION = "202";
 const SOFTWARE_SIGNATURE = Object.freeze({ owner: "LUCHTI ME", product: "URBAM Frotas", fingerprint: "LUCHTI-CHECKFROTA-URBAM-20260909-A7F3", notice: "Todos os direitos reservados" });
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v201";
 const CHECKLIST = [
@@ -35,7 +35,7 @@ let returnedIssues = [];
 let returnedIssuesTimer = null;
 let scheduledAppointments = [];
 let scheduledAppointmentsTimer = null;
-let myCallsFilter = "pending";
+let myCallsFilter = "scheduled";
 let maintenanceMapLocation = null;
 let maintenanceWatchTimer = null;
 let managementRole = "";
@@ -454,6 +454,19 @@ function notifyScheduledAppointment(issue) {
   notification.onclick = () => { window.focus(); notification.close(); };
   localStorage.setItem(key, new Date().toISOString());
 }
+function notifyReadyForPickup(issue) {
+  const maintenance = maintenanceOf(issue);
+  if (returnNotificationPermission() !== "granted" || maintenance.status !== "Veículo pronto para retirada") return;
+  const key = `checkfrota-ready-driver-${issue.id}-${maintenance.readyAt || maintenance.updatedAt || ""}`;
+  if (localStorage.getItem(key)) return;
+  const notification = new Notification("URBAM Frotas: veículo pronto para retirada", {
+    body: `Prefixo ${issue.vehiclePrefix || "—"}: retirada liberada em ${maintenance.provider || maintenance.address || "local informado pela Gestão"}.`,
+    tag: `checkfrota-ready-driver-${issue.id}`,
+    renotify: true,
+  });
+  notification.onclick = () => { window.focus(); notification.close(); };
+  localStorage.setItem(key, new Date().toISOString());
+}
 function notifyAppointmentReminder(issue) {
   const maintenance = maintenanceOf(issue);
   if (returnNotificationPermission() !== "granted" || !maintenance.scheduledAt || maintenance.deliveryAt) return;
@@ -496,11 +509,11 @@ function notifyCallOpened(issue) {
 }
 function renderScheduledAppointments() {
   const panel = $("#scheduleNotifications"), shell = $("#myCallsPanel"); if (!panel || !shell) return;
-  const visible = scheduledAppointments.filter((issue) => { const maintenance = maintenanceOf(issue); const completed = issue.status === "resolvida" || maintenance.status === "Concluída"; const scheduled = ["Agendada", "Em manutenção", "Veículo pronto para retirada"].includes(maintenance.status); return myCallsFilter === "completed" ? completed : myCallsFilter === "scheduled" ? scheduled && !completed : !scheduled && !completed; });
+  const visible = scheduledAppointments.filter((issue) => { const maintenance = maintenanceOf(issue); const completed = issue.status === "resolvida" || maintenance.status === "Concluída"; return ["Agendada", "Em manutenção", "Veículo pronto para retirada"].includes(maintenance.status) && !completed; });
   const identifiedCollaborator = Boolean($("#driverRegistration")?.value.trim() || localStorage.getItem("checkfrota-driver-registration"));
   shell.hidden = !identifiedCollaborator;
-  $("#myCallsBadge").textContent = String(scheduledAppointments.filter((issue) => issue.status !== "resolvida").length);
-  panel.innerHTML = visible.length ? visible.map((issue) => { const maintenance = maintenanceOf(issue); const googleUrl = maintenanceGoogleNavigationUrl(maintenance); const wazeUrl = maintenanceWazeNavigationUrl(maintenance); const delivered = maintenance.deliveryAt; const scheduled = maintenance.status === "Agendada"; const acknowledged = maintenance.driverAcknowledgedAt; return `<article class="return-notice schedule"><h2>${esc(collaboratorCallStatus(issue))}</h2><p><b>Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate || "—")}</b></p>${scheduled || delivered ? `<p><b>Data e horário:</b> ${esc(maintenance.scheduledAt ? dateTime(maintenance.scheduledAt) : "A confirmar")}</p><p><b>Local da manutenção:</b> ${esc(maintenance.provider || "Oficina a confirmar")}${maintenance.address ? `<br>${esc(maintenance.address)}` : ""}</p>` : ""}<p>${esc(issue.itemName || "Manutenção")} · ${esc(issue.description || "")}</p>${scheduled && !acknowledged ? `<button type="button" class="small-button acknowledge-button" data-acknowledge-schedule="${esc(issue.id)}">Confirmar ciência do agendamento</button>` : acknowledged ? `<p class="schedule-acknowledged">✓ Ciência confirmada em ${esc(dateTime(acknowledged))}</p>` : ""}${delivered ? `<p class="delivery-confirmed"><b>Entregue para manutenção:</b> ${esc(dateTime(delivered))}<br><small>A Gestão e a Liderança foram avisadas. O prazo termina em ${esc(dateTime(maintenance.supplierDeadlineAt || new Date(new Date(delivered).getTime() + 21600000).toISOString()))}.</small></p>` : scheduled ? `<button type="button" class="small-button delivery-button" data-mark-maintenance-delivery="${esc(issue.id)}">✓ Marcar veículo entregue para manutenção</button>` : `<p><small>O agendamento ficará visível aqui quando a Gestão informar data, horário e local.</small></p>`}${googleUrl && (scheduled || delivered) ? `<div class="navigation-actions"><a class="small-button map-link" href="${esc(googleUrl)}" target="_blank" rel="noopener">Google Maps</a><a class="small-button waze-link" href="${esc(wazeUrl)}" target="_blank" rel="noopener">Waze</a></div>` : ""}</article>`; }).join("") : `<p class="schedule-empty">Nenhum chamado nesta categoria.</p>`;
+  $("#myCallsBadge").textContent = String(visible.length);
+  panel.innerHTML = visible.length ? visible.map((issue) => { const maintenance = maintenanceOf(issue); const googleUrl = maintenanceGoogleNavigationUrl(maintenance); const wazeUrl = maintenanceWazeNavigationUrl(maintenance); const delivered = maintenance.deliveryAt; const scheduled = maintenance.status === "Agendada"; const ready = maintenance.status === "Veículo pronto para retirada"; const acknowledged = maintenance.driverAcknowledgedAt; return `<article class="return-notice schedule ${ready ? "ready" : ""}"><h2>${esc(collaboratorCallStatus(issue))}</h2><p><b>Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate || "—")}</b></p>${scheduled || delivered || ready ? `<p><b>Data e horário:</b> ${esc(maintenance.scheduledAt ? dateTime(maintenance.scheduledAt) : "A confirmar")}</p><p><b>Local da manutenção:</b> ${esc(maintenance.provider || "Oficina a confirmar")}${maintenance.address ? `<br>${esc(maintenance.address)}` : ""}</p>` : ""}<p>${esc(issue.itemName || "Manutenção")} · ${esc(issue.description || "")}</p>${ready ? `<p class="ready-for-pickup"><b>✓ Pronto para ser retirado</b><br><small>${maintenance.readyAt ? `Liberado em ${esc(dateTime(maintenance.readyAt))}.` : "Liberação registrada pela Gestão."} A Liderança também recebeu este aviso.</small></p>` : scheduled && !acknowledged ? `<button type="button" class="small-button acknowledge-button" data-acknowledge-schedule="${esc(issue.id)}">Confirmar ciência do agendamento</button>` : acknowledged ? `<p class="schedule-acknowledged">✓ Ciência confirmada em ${esc(dateTime(acknowledged))}</p>` : ""}${!ready && delivered ? `<p class="delivery-confirmed"><b>Entregue para manutenção:</b> ${esc(dateTime(delivered))}<br><small>A Gestão e a Liderança foram avisadas. O prazo termina em ${esc(dateTime(maintenance.supplierDeadlineAt || new Date(new Date(delivered).getTime() + 21600000).toISOString()))}.</small></p>` : !ready && scheduled ? `<button type="button" class="small-button delivery-button" data-mark-maintenance-delivery="${esc(issue.id)}">✓ Marcar veículo entregue para manutenção</button>` : ""}${googleUrl ? `<div class="navigation-actions"><a class="small-button map-link" href="${esc(googleUrl)}" target="_blank" rel="noopener">Google Maps</a><a class="small-button waze-link" href="${esc(wazeUrl)}" target="_blank" rel="noopener">Waze</a></div>` : ""}</article>`; }).join("") : `<p class="schedule-empty">Nenhum agendamento disponível para esta matrícula.</p>`;
 }
 async function acknowledgeSchedule(issueId) {
   const registration = $("#driverRegistration")?.value.replace(/\D/g, "") || localStorage.getItem("checkfrota-driver-registration") || "";
@@ -529,7 +542,9 @@ async function loadScheduledAppointmentsForCollaborator() {
   try {
     const rows = await cloudRpc("fleet_driver_appointments", { p_registration: registration, p_phone: phone });
     scheduledAppointments = (rows || []).map((row) => row.data || row).filter(Boolean);
-    scheduledAppointments.filter((issue) => ["Agendada", "Em manutenção"].includes(maintenanceOf(issue).status)).forEach((issue) => { notifyScheduledAppointment(issue); notifyAppointmentReminder(issue); }); renderScheduledAppointments();
+    scheduledAppointments.filter((issue) => ["Agendada", "Em manutenção"].includes(maintenanceOf(issue).status)).forEach((issue) => { notifyScheduledAppointment(issue); notifyAppointmentReminder(issue); });
+    scheduledAppointments.forEach(notifyReadyForPickup);
+    renderScheduledAppointments();
   } catch (error) { console.warn("Não foi possível buscar agendamentos do colaborador", error); }
 }
 function startScheduledAppointmentsPolling() { if (scheduledAppointmentsTimer) return; scheduledAppointmentsTimer = window.setInterval(() => void loadScheduledAppointmentsForCollaborator(), 60 * 1000); }
@@ -978,9 +993,10 @@ async function submitChecklist() {
     renderScheduledAppointments();
   }
   await finishCorrectionRequest(current.correctionOf, inspection, newIssues.length > 0);
+  submissionCompleted = true;
+  setSubmissionBusy(true);
   const sendResult = await sendToIntegration({ inspection, vehicle, issues: newIssues });
   await showCompletion(inspection, vehicle, newIssues, sendResult);
-  submissionCompleted = true;
   current = { driver: current.driver, driverRegistration: current.driverRegistration, driverRole: current.driverRole, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, vehicleId: vehicle.id, odometer: "", openingLocation: null, states: {}, notes: "" };
   saveData();
   } finally {
@@ -1804,7 +1820,7 @@ document.addEventListener("click", (event) => {
   if (target.dataset.state === "ok") { current.states[target.dataset.item] = { status: "ok" }; renderChecklist(); }
   if (target.dataset.state === "issue") openIssue(target.dataset.item);
   if (target.id === "reviewChecklist") reviewChecklist();
-  if (target.id === "submitChecklist") submitChecklist();
+  if (target.id === "submitChecklist") { target.disabled = true; target.setAttribute("aria-disabled", "true"); void submitChecklist(); }
   if (target.dataset.severity) { issueDraft.severity = target.dataset.severity; $$(".severity").forEach((button) => button.classList.toggle("active", button === target)); }
   if (target.id === "saveIssue") { event.preventDefault(); saveIssue(); }
   if (target.id === "openSettings") { if (!requireMasterAccess()) return; $("#webhookUrl").value = data.settings.webhookUrl; $("#maintenancePhone").value = data.settings.maintenancePhone; $("#maintenanceGroupPhone").value = data.settings.maintenanceGroupPhone || ""; $("#leaderPhone").value = data.settings.leaderPhone || ""; $("#fleetManagerPhone").value = data.settings.fleetManagerPhone || ""; $("#settingsDialog").showModal(); }

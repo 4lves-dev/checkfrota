@@ -1,5 +1,5 @@
 {
-  "version": "201",
+  "version": "202",
   "released_at": "2026-09-17",
-  "notes": "Corrige os controles de manutenção, impede reenvio duplicado, retorna automaticamente ao início e mostra ao colaborador o agendamento com rotas pelo Google Maps e Waze."
+  "notes": "Bloqueia o botão após o envio, simplifica o painel do colaborador para agendamentos e destaca veículo pronto para retirada para colaborador e liderança."
 }
