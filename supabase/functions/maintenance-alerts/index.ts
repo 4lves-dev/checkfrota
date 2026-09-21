@@ -46,9 +46,9 @@ Deno.serve(async (request) => {
     const base = String(issue.baseName || "sem-base"), prefix = issue.vehiclePrefix || "—";
     const title = kind === "prazo-fornecedor" ? "Prazo de manutenção vencido" : "Agendamento sem entrega";
     const body = kind === "prazo-fornecedor" ? `Prefixo ${prefix}: ultrapassou o prazo de 6 horas na manutenção.` : `Prefixo ${prefix}: o horário agendado passou e a entrega não foi registrada.`;
-    const appUrl = `https://4lves-dev.github.io/checkfrota/lider.html?v=209&base=${encodeURIComponent(base)}`;
+    const appUrl = `https://4lves-dev.github.io/checkfrota/lider.html?v=210&base=${encodeURIComponent(base)}&issue=${encodeURIComponent(issue.id || "")}`;
     const leader = await sendPush(oneSignalKey, appId, title, body, appUrl, [{ field: "tag", key: "area", relation: "=", value: "lideranca" }, { operator: "AND" }, { field: "tag", key: "base", relation: "=", value: base }]);
-    const management = await sendPush(oneSignalKey, appId, title, body, `https://4lves-dev.github.io/checkfrota/?gestao=1&v=209`, [{ field: "tag", key: "perfil", relation: "=", value: "gestao" }]);
+    const management = await sendPush(oneSignalKey, appId, title, body, `https://4lves-dev.github.io/checkfrota/?gestao=1&v=210&issue=${encodeURIComponent(issue.id || "")}`, [{ field: "tag", key: "perfil", relation: "=", value: "gestao" }]);
     results.push({ issueId: issue.id, kind, leader: leader.ok, management: management.ok });
   }
   return json({ checked: rows?.length || 0, delivered: results.length, results });
