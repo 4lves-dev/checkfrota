@@ -5,7 +5,7 @@
  */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "209";
+const APP_VERSION = "210";
 const SOFTWARE_SIGNATURE = Object.freeze({ owner: "LUCHTI ME", product: "URBAM Frotas", fingerprint: "LUCHTI-CHECKFROTA-URBAM-20260909-A7F3", notice: "Todos os direitos reservados" });
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v201";
 const CHECKLIST = [
@@ -41,6 +41,7 @@ let managementRole = "";
 let submissionInProgress = false;
 let submissionCompleted = false;
 let completionReturnTimer = null;
+let requestedIssueId = new URLSearchParams(location.search).get("issue") || "";
 
 const initialData = {
   settings: { maintenancePhone: "5512988400316", maintenanceGroupPhone: MAINTENANCE_GROUP_PHONE, leaderPhone: "", fleetManagerPhone: "", webhookUrl: EMAIL_AUTOMATION_URL },
@@ -947,6 +948,16 @@ function getCurrentIssues() {
 }
 function severityRank(severity) { return ({ Leve: 1, "Média": 2, Grave: 3 }[severity] || 0); }
 function highestSeverity(issues) { return issues.reduce((highest, issue) => severityRank(issue.severity) > severityRank(highest) ? issue.severity : highest, "Leve"); }
+async function cloudDuplicateItems(vehicle, currentIssues) {
+  if (!CLOUD?.url || !currentIssues.length) return [];
+  try {
+    const rows = await cloudRpc("fleet_open_duplicates", { p_vehicle_prefix: String(vehicle.prefix || ""), p_item_names: currentIssues.map((issue) => issue.item.name) });
+    return (rows || []).map((row) => row.item_name).filter(Boolean);
+  } catch (error) {
+    console.warn("Validação central de duplicidade indisponível; usando a validação local.", error);
+    return [];
+  }
+}
 
 async function submitChecklist() {
   if (submissionInProgress || submissionCompleted) return;
@@ -968,8 +979,10 @@ async function submitChecklist() {
   };
   const currentIssues = [...getCurrentIssues(), ...(current.washRequested ? [{ item: { name: "Solicitação de lavagem", category: "Lavagem" }, severity: "Leve", description: current.washDetails || "Solicitação de lavagem do veículo." }] : [])];
   const duplicateItems = currentIssues.filter((candidate) => data.issues.some((existing) => existing.status !== "resolvida" && String(existing.vehicleId || existing.vehiclePrefix) === String(vehicle.id || vehicle.prefix) && driverNameKey(existing.itemName) === driverNameKey(candidate.item.name)));
-  if (duplicateItems.length) {
-    const labels = [...new Set(duplicateItems.map((item) => item.item.name))].join(", ");
+  const cloudDuplicates = await cloudDuplicateItems(vehicle, currentIssues);
+  const duplicateLabels = [...new Set([...duplicateItems.map((item) => item.item.name), ...cloudDuplicates])];
+  if (duplicateLabels.length) {
+    const labels = duplicateLabels.join(", ");
     if (!confirm(`Já existe chamado aberto para este veículo em: ${labels}.\n\nDeseja realmente registrar outro chamado?`)) return;
   }
   inspection.status = currentIssues.length ? "Com ocorrência" : "Concluído sem observação";
@@ -1198,7 +1211,7 @@ function renderControl() {
   $("#seriousCount").textContent = open.filter((issue) => issue.severity === "Grave").length;
   const since = Date.now() - 7 * 24 * 60 * 60 * 1000;
   $("#weekChecks").textContent = data.inspections.filter((inspection) => new Date(inspection.createdAt).getTime() >= since).length;
-  renderManagementCommandCenter(); renderMaintenanceWatchAlerts(); renderIssues(); renderAgenda(); renderReports(); renderHistory(); renderVehicles(); renderVehicleTimelines(); renderDrivers(); renderAuditLog();
+  renderManagementCommandCenter(); renderMaintenanceWatchAlerts(); renderIssues(); renderAgenda(); renderReports(); renderHistory(); renderVehicles(); renderVehicleTimelines(); renderDrivers(); renderAuditLog(); focusRequestedIssue();
   renderLeaderInstallTarget();
   renderDailyChecklistAlert();
   renderStorageIndicator();
@@ -1357,6 +1370,51 @@ function maintenanceOf(issue) {
   else if (maintenance.scheduledAt && maintenance.status === "Solicitada") maintenance.status = "Agendada";
   return maintenance;
 }
+const FLOW_STAGES = Object.freeze([
+  "Aguardando liderança",
+  "Aguardando agendamento",
+  "Agendado",
+  "Em manutenção",
+  "Pronto para retirada",
+  "Retirado",
+  "Concluído",
+]);
+function issueFlowStage(issue) {
+  const maintenance = maintenanceOf(issue);
+  if (issue.status === "resolvida" || maintenance.status === "Concluída") return "Concluído";
+  if (maintenance.pickupAt) return "Retirado";
+  if (maintenance.status === "Veículo pronto para retirada" || maintenance.readyAt) return "Pronto para retirada";
+  if (maintenance.status === "Em manutenção" || maintenance.deliveryAt) return "Em manutenção";
+  if (maintenance.status === "Agendada" || maintenance.scheduledAt) return "Agendado";
+  if (canManageMaintenance(issue)) return "Aguardando agendamento";
+  return "Aguardando liderança";
+}
+function issueTimeline(issue) {
+  const maintenance = maintenanceOf(issue), approval = issue.leaderApproval || {};
+  return [
+    { at: issue.createdAt, label: "Chamado aberto", done: true },
+    { at: approval.approvedAt, label: approval.status ? `Liderança: ${approval.status}` : "Decisão da liderança", done: Boolean(approval.status) },
+    { at: maintenance.scheduledAt, label: maintenance.rescheduledAt ? "Manutenção reagendada" : "Manutenção agendada", done: Boolean(maintenance.scheduledAt) },
+    { at: maintenance.deliveryAt, label: "Veículo entregue à manutenção", done: Boolean(maintenance.deliveryAt) },
+    { at: maintenance.readyAt, label: "Veículo pronto para retirada", done: Boolean(maintenance.readyAt) },
+    { at: maintenance.pickupAt, label: "Retirada confirmada", done: Boolean(maintenance.pickupAt) },
+    { at: issue.resolvedAt, label: "Chamado concluído", done: issue.status === "resolvida" || maintenance.status === "Concluída" },
+  ];
+}
+function issueTimelineMarkup(issue) {
+  const current = issueFlowStage(issue);
+  return `<section class="issue-flow" aria-label="Andamento do chamado"><div class="issue-flow-head"><b>${esc(current)}</b><small>${FLOW_STAGES.indexOf(current) + 1} de ${FLOW_STAGES.length}</small></div>${issueTimeline(issue).map((event) => `<div class="issue-flow-event ${event.done ? "done" : "pending"}"><i aria-hidden="true"></i><span>${esc(event.label)}${event.at ? `<small>${esc(dateTime(event.at))}</small>` : ""}</span></div>`).join("")}</section>`;
+}
+function issuePrimaryAction(issue) {
+  const stage = issueFlowStage(issue);
+  if (stage === "Aguardando liderança") return { label: "Aguardando aprovação da liderança", disabled: true };
+  if (stage === "Aguardando agendamento") return { label: isWashIssue(issue) ? "Agendar lavagem" : "Agendar manutenção", disabled: false };
+  if (stage === "Agendado") return { label: "Atualizar ou reagendar", disabled: false };
+  if (stage === "Em manutenção") return { label: "Registrar retorno da manutenção", disabled: false };
+  if (stage === "Pronto para retirada") return { label: "Acompanhar retirada", disabled: false };
+  if (stage === "Retirado") return { label: "Concluir chamado", disabled: false, close: true };
+  return { label: "Chamado concluído", disabled: true };
+}
 function canManageMaintenance(issue) {
   const decision = String(issue?.leaderApproval?.status || "").trim().toLocaleLowerCase("pt-BR");
   return issue?.approvalRoute !== "lideranca" || decision === "aprovada" || decision === "aprovado";
@@ -1375,19 +1433,30 @@ function renderIssues() {
     const gallery = callPhotos.length ? `<div class="issue-photo-gallery"><b>Fotos do chamado (${callPhotos.length})</b><div>${callPhotos.map((photo) => `<button type="button" class="photo-thumb" data-view-photo="${photo.id}" title="Abrir foto de ${esc(photo.itemName)}"><img src="${esc(publicIssuePhotoUrl(photo))}" alt="Foto: ${esc(photo.itemName)}"><span>${esc(photo.itemName)}</span></button>`).join("")}</div></div>` : "";
     const leaderApproval = issue.leaderApproval;
     const waitingForApproval = !canManageMaintenance(issue);
+    const primaryAction = issuePrimaryAction(issue);
     const approvalBox = leaderApproval?.status === "Aprovada" ? `<section class="manager-approval"><b>✓ Aprovado pela liderança</b><span>${esc(leaderApproval.approvedBy || `Base ${issue.baseName || ""}`)} · ${dateTime(leaderApproval.approvedAt)}</span><p>${esc(leaderApproval.note || "Sem observação da liderança.")}</p><label class="helper"><b>Mensagem para o proprietário do veículo</b></label><textarea readonly aria-label="Mensagem para o proprietário">${esc(buildApprovedOwnerMessage(issue))}</textarea><div class="issue-actions"><button class="small-button" data-copy-owner-message="${issue.id}">Copiar mensagem ao proprietário</button><button class="small-button whatsapp" data-approved-owner="${issue.id}">Enviar ao proprietário</button><button class="small-button whatsapp" data-manager-dispatch="${issue.id}">${leaderApproval.dispatchStatus === "Enviado" ? "✓ Enviado ao grupo" : "Enviar ao grupo"}</button></div></section>` : "";
-    return `<article class="issue-card ${issue.severity.toLowerCase()}">
+    return `<article class="issue-card ${issue.severity.toLowerCase()}" data-issue-card="${esc(issue.id)}">
       <div class="card-heading"><div><h3>${esc(issue.itemName)}</h3><p class="vehicle-label">Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate)} · ${esc(issue.vehicleModel || issue.vehicleType)}${issue.vehicleBase ? ` · ${esc(issue.vehicleBase)}` : ""} · ${esc(issue.odometer ?? "—")} km</p></div><span class="chip ${issue.severity.toLowerCase()}">${esc(issueType(issue))}</span></div>
       <p class="issue-desc">${esc(issue.description)}</p>
       <p class="meta">${esc(issue.driver)} · matrícula ${esc(issue.driverRegistration || "—")} · ${esc(formatPhone(issue.driverPhone || "") || "sem telefone")} · ${dateTime(issue.createdAt)}${issue.photoName ? ` · 📷 ${esc(issue.photoName)}` : ""}${openingLocationMapUrl(issue.openingLocation) ? ` · <a href="${esc(openingLocationMapUrl(issue.openingLocation))}" target="_blank" rel="noopener">📍 Local do chamado (${Math.round(issue.openingLocation.accuracy || 0)} m)</a>` : ""}</p>
       ${gallery}
       ${approvalBox}
+      ${issueTimelineMarkup(issue)}
       <p class="maintenance-meta"><b>Manutenção:</b> ${esc(maintenance.status)}${schedule}${maintenance.returnAt ? ` · retorno: ${dateTime(maintenance.returnAt)}` : ""}${maintenance.provider ? ` · ${esc(maintenance.provider)}` : ""}${maintenance.service ? ` · ${esc(maintenance.service)}` : ""}${maintenance.supplierReplyAt ? ` · retorno do fornecedor registrado: ${dateTime(maintenance.supplierReplyAt)}` : ""}${maintenance.driverNotifiedAt ? ` · retorno ao colaborador: ${dateTime(maintenance.driverNotifiedAt)}` : ""}</p>
       ${waitingForApproval ? `<p class="maintenance-meta"><b>Aguardando aprovação da liderança.</b> O agendamento ficará disponível após a decisão.</p>` : ""}
-      <div class="issue-actions">${issue.photoPath ? `<button class="small-button photo-button" data-view-photo="${issue.id}">📷 Ver foto</button>` : ""}<button class="small-button" data-maintenance-issue="${issue.id}" ${waitingForApproval ? "disabled" : ""}>${isWashIssue(issue) ? "Agendar lavagem / retorno" : "Agendar / retorno"}</button><button class="small-button whatsapp" data-whatsapp-issue="${issue.id}">Enviar ao proprietário</button><button class="small-button" data-close-issue="${issue.id}" ${maintenance.pickupAt ? "" : "disabled"}>${maintenance.pickupAt ? "Concluir chamado" : "Aguardar retirada"}</button></div>
+      <div class="issue-actions issue-primary-actions">${primaryAction.close ? `<button class="small-button primary-flow-action" data-close-issue="${issue.id}">${esc(primaryAction.label)}</button>` : `<button class="small-button primary-flow-action" data-maintenance-issue="${issue.id}" ${primaryAction.disabled ? "disabled" : ""}>${esc(primaryAction.label)}</button>`}${issue.photoPath ? `<button class="small-button photo-button" data-view-photo="${issue.id}">📷 Ver foto</button>` : ""}<button class="small-button whatsapp" data-whatsapp-issue="${issue.id}">Enviar ao proprietário</button></div>
     </article>`;
   }).join("");
   bindIssueFilters();
+}
+function focusRequestedIssue() {
+  if (!requestedIssueId) return;
+  const card = document.querySelector(`[data-issue-card="${CSS.escape(requestedIssueId)}"]`);
+  if (!card) return;
+  requestedIssueId = "";
+  card.classList.add("deep-linked");
+  window.setTimeout(() => card.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
+  window.setTimeout(() => card.classList.remove("deep-linked"), 5000);
 }
 function renderAgenda() {
   const panel = $("#agendaPanel"); if (!panel) return;
@@ -1411,10 +1480,14 @@ function renderReports() {
   const completed = issues.filter((issue) => issue.status === "resolvida" || maintenanceOf(issue).status === "Concluída").length;
   const approved = issues.filter((issue) => issue.leaderApproval?.approvedAt);
   const averageApprovalHours = approved.length ? approved.reduce((sum, issue) => sum + Math.max(0, new Date(issue.leaderApproval.approvedAt) - new Date(issue.createdAt)), 0) / approved.length / 3600000 : 0;
+  const scheduledIssues = issues.filter((issue) => maintenanceOf(issue).scheduledAt);
+  const averageSchedulingHours = scheduledIssues.length ? scheduledIssues.reduce((sum, issue) => { const start = issue.leaderApproval?.approvedAt || issue.createdAt; return sum + Math.max(0, new Date(maintenanceOf(issue).scheduledAt) - new Date(start)); }, 0) / scheduledIssues.length / 3600000 : 0;
   const delivered = issues.filter((issue) => maintenanceOf(issue).deliveryAt);
   const averageStoppedHours = delivered.length ? delivered.reduce((sum, issue) => { const m = maintenanceOf(issue); return sum + Math.max(0, new Date(m.readyAt || Date.now()) - new Date(m.deliveryAt)); }, 0) / delivered.length / 3600000 : 0;
   const late = issues.filter((issue) => supplierSlaResult(issue)?.state === "late").length;
-  panel.innerHTML = `<section class="report-summary management-kpis"><article><span>${issues.length}</span><small>solicitações</small></article><article><span>${open}</span><small>em aberto</small></article><article><span>${scheduled}</span><small>agendadas</small></article><article><span>${completed}</span><small>concluídas</small></article><article><span>${averageApprovalHours.toFixed(1)}h</span><small>tempo médio para aprovação</small></article><article><span>${averageStoppedHours.toFixed(1)}h</span><small>tempo médio parado</small></article><article class="alert"><span>${late}</span><small>fora do prazo de 6 horas</small></article></section><button class="report-download" id="downloadReport">↓ Baixar relatório de solicitações (Excel)</button><div class="report-list">${issues.length ? issues.map((issue) => { const maintenance = maintenanceOf(issue); return `<article class="report-item"><div><b>Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate)} · ${esc(issue.itemName)}</b><p>${esc(issue.description)}</p><small>${dateTime(issue.createdAt)} · ${esc(maintenance.status)}${maintenance.scheduledAt ? ` · ${dateTime(maintenance.scheduledAt)}` : ""}</small></div><span class="chip ${issue.severity.toLowerCase()}">${esc(issue.severity)}</span></article>`; }).join("") : `<div class="empty-state"><span>⌁</span><p>Nenhuma solicitação registrada.</p></div>`}</div>`;
+  const finishedSla = delivered.map(supplierSlaResult).filter((result) => result?.finishedAt);
+  const withinSlaPercent = finishedSla.length ? Math.round(finishedSla.filter((result) => result.state === "within").length * 100 / finishedSla.length) : 0;
+  panel.innerHTML = `<section class="report-summary management-kpis"><article><span>${issues.length}</span><small>solicitações</small></article><article><span>${open}</span><small>em aberto</small></article><article><span>${scheduled}</span><small>agendadas</small></article><article><span>${completed}</span><small>concluídas</small></article><article><span>${averageApprovalHours.toFixed(1)}h</span><small>tempo médio para aprovação</small></article><article><span>${averageSchedulingHours.toFixed(1)}h</span><small>tempo médio até agendar</small></article><article><span>${averageStoppedHours.toFixed(1)}h</span><small>tempo médio parado</small></article><article><span>${withinSlaPercent}%</span><small>concluídas dentro de 6 horas</small></article><article class="alert"><span>${late}</span><small>fora do prazo de 6 horas</small></article></section><button class="report-download" id="downloadReport">↓ Baixar relatório de solicitações (Excel)</button><div class="report-list">${issues.length ? issues.map((issue) => { const maintenance = maintenanceOf(issue); return `<article class="report-item"><div><b>Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate)} · ${esc(issue.itemName)}</b><p>${esc(issue.description)}</p><small>${dateTime(issue.createdAt)} · ${esc(issueFlowStage(issue))}${maintenance.scheduledAt ? ` · ${dateTime(maintenance.scheduledAt)}` : ""}</small></div><span class="chip ${issue.severity.toLowerCase()}">${esc(issue.severity)}</span></article>`; }).join("") : `<div class="empty-state"><span>⌁</span><p>Nenhuma solicitação registrada.</p></div>`}</div>`;
 }
 function downloadReport() {
   if (!window.XLSX) return alert("Não foi possível carregar o recurso de Excel. Verifique sua conexão e tente novamente.");

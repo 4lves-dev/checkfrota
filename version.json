@@ -1,5 +1,5 @@
 {
-  "version": "209",
-  "released_at": "2026-09-17",
-  "notes": "Impede envio duplicado, corrige a situação dos agendamentos no colaborador e na liderança, remove código duplicado e reforça as permissões do instalador do banco."
+  "version": "210",
+  "released_at": "2026-09-21",
+  "notes": "Unifica o fluxo dos chamados, adiciona linha do tempo e ação principal por etapa, amplia indicadores e abre notificações diretamente no chamado correspondente."
 }

@@ -1,5 +1,5 @@
 -- INSTALADOR ÚNICO DO BANCO — URBAM Frotas
--- Versão 205. Execute este arquivo completo no SQL Editor do Supabase.
+-- Versão 210. Execute este arquivo completo no SQL Editor do Supabase.
 -- É idempotente e preserva chamados, veículos, inspeções e colaboradores existentes.
 -- Não execute arquivos SQL antigos separadamente depois deste instalador.
 
@@ -929,6 +929,28 @@ $$;
 revoke all on function public.fleet_driver_appointments(text, text) from public;
 grant execute on function public.fleet_driver_appointments(text, text) to anon, authenticated;
 
+-- Validação central de duplicidade: funciona mesmo quando o chamado anterior
+-- foi aberto em outro celular. Retorna apenas item e protocolo, sem expor dados
+-- pessoais do colaborador.
+create or replace function public.fleet_open_duplicates(p_vehicle_prefix text, p_item_names text[])
+returns table (item_name text, issue_id text)
+language sql
+security definer
+set search_path = public
+as $duplicates$
+  select coalesce(issue.data ->> 'itemName', 'Ocorrência'), issue.id
+  from public.fleet_issues issue
+  where issue.status <> 'resolvida'
+    and coalesce(issue.data ->> 'vehiclePrefix', '') = coalesce(p_vehicle_prefix, '')
+    and lower(coalesce(issue.data ->> 'itemName', '')) = any (
+      select lower(value) from unnest(coalesce(p_item_names, array[]::text[])) value
+    )
+    and coalesce(issue.data -> 'maintenance' ->> 'status', '') <> 'Concluída'
+  limit 20;
+$duplicates$;
+revoke all on function public.fleet_open_duplicates(text,text[]) from public;
+grant execute on function public.fleet_open_duplicates(text,text[]) to anon, authenticated;
+
 select to_regprocedure('public.fleet_driver_appointments(text,text)') is not null as appointments_ready;
 
 create or replace function public.fleet_driver_acknowledge_schedule(p_registration text, p_phone text, p_issue_id text)
@@ -1095,6 +1117,21 @@ set
     'image/heif'
   ]
 where id = 'issue-photos';
+
+-- Impede a listagem pública de todos os anexos. Como o bucket é público,
+-- imagens conhecidas continuam acessíveis pela URL gravada no chamado.
+do $photo_policies$
+declare policy_row record;
+begin
+  for policy_row in
+    select policyname from pg_policies
+    where schemaname = 'storage' and tablename = 'objects' and cmd = 'SELECT'
+      and (coalesce(qual, '') in ('true', '(true)') or coalesce(qual, '') ilike '%issue-photos%')
+  loop
+    execute format('drop policy if exists %I on storage.objects', policy_row.policyname);
+  end loop;
+end
+$photo_policies$;
 
 -- ============================================================================
 -- COMPONENTE: supabase-server-alerts.sql
