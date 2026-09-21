@@ -1,5 +1,5 @@
 {
-  "version": "205",
+  "version": "209",
   "released_at": "2026-09-17",
-  "notes": "Adiciona histórico da Liderança, estado online/offline, horário de sincronização, alertas automáticos de atraso e instalador único do banco."
+  "notes": "Impede envio duplicado, corrige a situação dos agendamentos no colaborador e na liderança, remove código duplicado e reforça as permissões do instalador do banco."
 }

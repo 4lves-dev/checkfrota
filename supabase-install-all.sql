@@ -836,22 +836,28 @@ alter table public.fleet_issues alter column vehicle_id type text using vehicle_
 alter table public.fleet_inspections enable row level security;
 alter table public.fleet_issues enable row level security;
 
+-- Reaplica as políticas restritas após a conversão dos identificadores.
+-- O colaborador grava somente dados identificados; leitura e atualização gerais
+-- permanecem reservadas aos perfis autenticados da Gestão.
 drop policy if exists "Aplicativo lê inspeções" on public.fleet_inspections;
-create policy "Aplicativo lê inspeções" on public.fleet_inspections
-for select to anon, authenticated using (true);
 drop policy if exists "Aplicativo registra inspeções" on public.fleet_inspections;
-create policy "Aplicativo registra inspeções" on public.fleet_inspections
-for insert to anon, authenticated with check (true);
+drop policy if exists "Gestão lê inspeções" on public.fleet_inspections;
+drop policy if exists "Colaborador registra inspeções" on public.fleet_inspections;
+create policy "Gestão lê inspeções" on public.fleet_inspections for select to authenticated using (public.fleet_is_manager());
+create policy "Colaborador registra inspeções" on public.fleet_inspections for insert to anon, authenticated
+with check (coalesce(data ->> 'driverRegistration','') ~ '^[0-9]{3,}$' and length(regexp_replace(coalesce(data ->> 'driverPhone',''), '\D', '', 'g')) between 10 and 13);
 
 drop policy if exists "Aplicativo lê chamados" on public.fleet_issues;
-create policy "Aplicativo lê chamados" on public.fleet_issues
-for select to anon, authenticated using (true);
 drop policy if exists "Aplicativo registra chamados" on public.fleet_issues;
-create policy "Aplicativo registra chamados" on public.fleet_issues
-for insert to anon, authenticated with check (true);
 drop policy if exists "Aplicativo atualiza chamados" on public.fleet_issues;
-create policy "Aplicativo atualiza chamados" on public.fleet_issues
-for update to anon, authenticated using (true) with check (true);
+drop policy if exists "Gestão lê chamados" on public.fleet_issues;
+drop policy if exists "Gestão atualiza chamados" on public.fleet_issues;
+drop policy if exists "Colaborador registra chamados" on public.fleet_issues;
+create policy "Gestão lê chamados" on public.fleet_issues for select to authenticated using (public.fleet_is_manager());
+create policy "Gestão atualiza chamados" on public.fleet_issues for update to authenticated
+using (public.fleet_is_manager()) with check (public.fleet_is_manager());
+create policy "Colaborador registra chamados" on public.fleet_issues for insert to anon, authenticated
+with check (coalesce(data ->> 'driverRegistration','') ~ '^[0-9]{3,}$' and length(regexp_replace(coalesce(data ->> 'driverPhone',''), '\D', '', 'g')) between 10 and 13);
 
 alter table public.fleet_issues drop constraint if exists fleet_issues_status_check;
 alter table public.fleet_issues add constraint fleet_issues_status_check
@@ -1121,7 +1127,7 @@ revoke all on function public.fleet_cleanup_server_notifications() from public, 
 select to_regclass('public.fleet_server_notifications') is not null as server_alerts_ready;
 
 -- VERIFICAÇÃO FINAL DO INSTALADOR
-select 'URBAM Frotas v205' as instalacao, now() as concluida_em,
+select 'URBAM Frotas v209' as instalacao, now() as concluida_em,
   to_regclass('public.fleet_issues') is not null as chamados,
   to_regclass('public.fleet_employees') is not null as colaboradores,
   to_regclass('public.fleet_server_notifications') is not null as alertas_servidor,

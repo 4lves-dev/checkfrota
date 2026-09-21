@@ -5,7 +5,7 @@
  */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "205";
+const APP_VERSION = "209";
 const SOFTWARE_SIGNATURE = Object.freeze({ owner: "LUCHTI ME", product: "URBAM Frotas", fingerprint: "LUCHTI-CHECKFROTA-URBAM-20260909-A7F3", notice: "Todos os direitos reservados" });
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v201";
 const CHECKLIST = [
@@ -35,7 +35,6 @@ let returnedIssues = [];
 let returnedIssuesTimer = null;
 let scheduledAppointments = [];
 let scheduledAppointmentsTimer = null;
-let myCallsFilter = "scheduled";
 let maintenanceMapLocation = null;
 let maintenanceWatchTimer = null;
 let managementRole = "";
@@ -844,6 +843,7 @@ async function captureOpeningLocation() {
 
 async function beginChecklist() {
   submissionCompleted = false;
+  setSubmissionBusy(false);
   if (completionReturnTimer) { clearTimeout(completionReturnTimer); completionReturnTimer = null; }
   const registeredDriver = lookupDriverRegistration();
   const driver = registeredDriver?.name || "";
@@ -987,6 +987,11 @@ async function submitChecklist() {
   data.inspections.unshift(inspection);
   data.issues.unshift(...newIssues);
   saveData();
+  // A partir deste ponto o chamado já existe com segurança no aparelho. Bloqueie
+  // imediatamente novos toques, mesmo que a gravação na nuvem esteja lenta.
+  submissionCompleted = true;
+  sessionStorage.setItem("checkfrota-last-submission", JSON.stringify({ id: inspection.id, at: Date.now() }));
+  setSubmissionBusy(false);
   let cloudSaved = true;
   try { cloudSaved = await cloudSyncSubmission(inspection, newIssues); }
   catch (error) { cloudSaved = false; console.warn("Não foi possível gravar o chamado no banco", error); }
@@ -997,8 +1002,6 @@ async function submitChecklist() {
     renderScheduledAppointments();
   }
   await finishCorrectionRequest(current.correctionOf, inspection, newIssues.length > 0);
-  submissionCompleted = true;
-  setSubmissionBusy(true);
   const sendResult = await sendToIntegration({ inspection, vehicle, issues: newIssues });
   await showCompletion(inspection, vehicle, newIssues, sendResult);
   current = { driver: current.driver, driverRegistration: current.driverRegistration, driverRole: current.driverRole, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, vehicleId: vehicle.id, odometer: "", openingLocation: null, states: {}, notes: "" };
@@ -1012,9 +1015,11 @@ async function submitChecklist() {
 function setSubmissionBusy(busy) {
   const button = $("#submitChecklist");
   document.body.classList.toggle("submission-busy", busy);
+  document.body.classList.toggle("submission-complete", submissionCompleted);
   document.body.setAttribute("aria-busy", String(busy));
   if (!button) return;
   button.disabled = busy || submissionCompleted;
+  button.setAttribute("aria-disabled", String(busy || submissionCompleted));
   button.innerHTML = busy ? `Enviando formulário… <span class="submit-spinner" aria-hidden="true"></span>` : submissionCompleted ? `Formulário enviado <span>✓</span>` : `Concluir e gerar formulário <span>✓</span>`;
 }
 
@@ -1082,7 +1087,7 @@ async function approvalUrl(vehicle, issues) {
 async function showCompletion(inspection, vehicle, issues, sendResult) {
   const severe = issues.some((issue) => issue.severity === "Grave");
   $("#successTitle").textContent = issues.length ? (severe ? "Veículo com bloqueio de deslocamento." : "Ocorrência registrada.") : "Tudo certo para seguir.";
-  $("#successText").textContent = issues.length ? `O formulário foi salvo com ${issues.length} ocorrência(s) e já está disponível para a liderança. Confira o chamado abaixo e conclua para voltar ao início. ${sendResult.sent ? "A integração de e-mail foi acionada." : "Configure a integração para o envio automático por e-mail."}` : "Checklist concluído sem observações. Não é necessária aprovação da liderança.";
+  $("#successText").textContent = issues.length ? `O formulário foi salvo com ${issues.length} ocorrência(s) e já está disponível para ${issues.some((issue) => issue.approvalRoute === "gestao") ? "a Gestão" : "a Liderança"}. O envio está concluído e não precisa de outra confirmação. ${sendResult.sent ? "A integração de e-mail foi acionada." : "Configure a integração para o envio automático por e-mail."}` : "Checklist concluído sem observações. Não é necessária aprovação da liderança.";
   const form = $("#submittedForm");
   const occurrenceRows = issues.length ? issues.map((issue) => `<article class="submitted-issue ${esc(issue.severity.toLowerCase())}"><div><b>${esc(issue.itemName)}</b><span class="chip ${esc(issue.severity.toLowerCase())}">${esc(issue.severity)}</span></div><p>${esc(issue.description)}</p>${issue.photoPath ? `<img src="${esc(publicIssuePhotoUrl(issue))}" alt="Foto da ocorrência ${esc(issue.itemName)}" loading="lazy">` : ""}</article>`).join("") : `<p class="form-empty">Nenhuma ocorrência informada.</p>`;
   form.innerHTML = `<div class="form-top"><span class="form-mark">✓</span><div><small>URBAM FROTAS · RESPOSTA ENVIADA</small><h2>Formulário de inspeção</h2></div></div><div class="form-fields"><div><span>Colaborador</span><b>${esc(inspection.driver)}</b></div>${inspection.driverRegistration ? `<div><span>Matrícula</span><b>${esc(inspection.driverRegistration)}</b></div>` : ""}${inspection.driverRole ? `<div><span>Função</span><b>${esc(inspection.driverRole)}</b></div>` : ""}<div><span>Base</span><b>${esc(inspection.baseName)}</b></div>${inspection.driverEmail ? `<div><span>Cópia para e-mail</span><b>${esc(inspection.driverEmail)}</b></div>` : ""}<div><span>Veículo</span><b>Prefixo ${esc(vehicle.prefix)} · ${esc(vehicle.plate)}</b></div><div><span>Modelo</span><b>${esc(vehicle.model || vehicle.type)}</b></div><div><span>Quilometragem</span><b>${esc(inspection.odometer)} km</b></div><div><span>Data e hora</span><b>${esc(dateTime(inspection.createdAt))}</b></div></div><div class="form-occurrences"><h3>Ocorrências relatadas</h3>${occurrenceRows}</div>${inspection.notes ? `<div class="form-notes"><span>Observação geral</span><p>${esc(inspection.notes)}</p></div>` : ""}`;
@@ -1094,13 +1099,8 @@ async function showCompletion(inspection, vehicle, issues, sendResult) {
     completionReturnTimer = window.setTimeout(() => { completionReturnTimer = null; showScreen("inicio"); }, 6000);
     return;
   }
-  const buttons = [];
   const directToManagement = issues.some((issue) => issue.approvalRoute === "gestao");
-  const approvalTarget = issues[0]?.basePhone || current.basePhone || data.settings.leaderPhone;
-  if (!directToManagement && approvalTarget) {
-    buttons.push(`<button type="button" class="primary-button" data-go="inicio">Concluir envio à liderança</button>`);
-  }
-  actions.innerHTML = buttons.join("");
+  actions.innerHTML = `<div class="dispatch-confirmation" role="status" aria-live="polite"><span aria-hidden="true">✓</span><div><b>Chamado enviado</b><small>Disponível no painel ${directToManagement ? "da Gestão" : "da Liderança"}.</small></div></div>`;
   showScreen("success");
   if (completionReturnTimer) clearTimeout(completionReturnTimer);
   completionReturnTimer = window.setTimeout(() => {
@@ -1341,12 +1341,25 @@ function bindIssueFilters() {
 function empty() { return $("#emptyStateTemplate").content.cloneNode(true); }
 function maintenanceOf(issue) {
   const maintenance = { status: "Solicitada", scheduledAt: "", returnAt: "", provider: "", address: "", service: "", feedback: "", supplierReplyAt: "", readyAt: "", pickupAt: "", pickupBy: "", deliveryAt: "", supplierDeadlineAt: "", driverNotifiedAt: "", driverNotifiedPhone: "", driverNotificationStatus: "", slaNoticeAt: "", slaNoticeType: "", slaEmailAt: "", ...issue.maintenance };
-  const legacy = { "Pendente": "Solicitada", "Aguardando aprovação": "Solicitada", "Em execução": "Em manutenção", "Aguardando peça": "Em manutenção", "Cancelada": "Solicitada" };
-  maintenance.status = legacy[maintenance.status] || maintenance.status || "Solicitada";
+  const statusKey = String(maintenance.status || "").trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
+  const canonicalStatus = {
+    "": "Solicitada", solicitada: "Solicitada", solicitado: "Solicitada", pendente: "Solicitada", "aguardando aprovacao": "Solicitada", cancelada: "Solicitada",
+    agendada: "Agendada", agendado: "Agendada", reagendada: "Agendada", reagendado: "Agendada",
+    "em execucao": "Em manutenção", "em manutencao": "Em manutenção", "aguardando peca": "Em manutenção",
+    "veiculo pronto para retirada": "Veículo pronto para retirada", pronta: "Veículo pronto para retirada", pronto: "Veículo pronto para retirada",
+    concluida: "Concluída", concluido: "Concluída",
+  };
+  maintenance.status = canonicalStatus[statusKey] || maintenance.status || "Solicitada";
+  // Os marcos gravados são a fonte de verdade. Assim, dados de versões antigas
+  // não continuam exibindo "aguardando agendamento" depois de data/hora salvas.
+  if (maintenance.readyAt && maintenance.status !== "Concluída") maintenance.status = "Veículo pronto para retirada";
+  else if (maintenance.deliveryAt && !["Concluída", "Veículo pronto para retirada"].includes(maintenance.status)) maintenance.status = "Em manutenção";
+  else if (maintenance.scheduledAt && maintenance.status === "Solicitada") maintenance.status = "Agendada";
   return maintenance;
 }
 function canManageMaintenance(issue) {
-  return issue?.approvalRoute !== "lideranca" || issue?.leaderApproval?.status === "Aprovada";
+  const decision = String(issue?.leaderApproval?.status || "").trim().toLocaleLowerCase("pt-BR");
+  return issue?.approvalRoute !== "lideranca" || decision === "aprovada" || decision === "aprovado";
 }
 function renderIssues() {
   const panel = $("#issuesPanel");
@@ -1422,10 +1435,6 @@ function renderHistory() {
   const resolvedMarkup = resolvedIssues.map((issue) => `<article class="history-card"><div><b>✓ Resolvido · Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate)} · ${esc(issue.itemName)}</b><p class="meta">${esc(issue.description || "Sem observação")} · concluído em ${dateTime(issue.resolvedAt || issue.maintenance?.updatedAt || issue.createdAt)}</p></div><span class="chip ok">Resolvido</span></article>`).join("");
   if (!inspectionsMarkup && !resolvedMarkup) { panel.append(empty()); return; }
   panel.innerHTML = `${resolvedMarkup ? `<section class="history-resolved"><div class="section-action"><h3>Chamados resolvidos</h3><span class="chip ok">${resolvedIssues.length}</span></div>${resolvedMarkup}</section>` : ""}${inspectionsMarkup ? `<section class="history-inspections"><div class="section-action"><h3>Checklists realizados</h3></div>${inspectionsMarkup}</section>` : ""}`;
-}
-function renderVehicles() {
-  const panel = $("#vehiclesPanel");
-  panel.innerHTML = `<div class="section-action"><h3>Veículos cadastrados</h3><button class="add-button" id="newVehicle">+ Cadastrar</button></div>${data.vehicles.length ? data.vehicles.map((vehicle) => `<article class="vehicle-card"><div><h3>Prefixo ${esc(vehicle.prefix || "—")} · ${esc(vehicle.plate)} <span class="vehicle-label">· ${esc(vehicle.model || vehicle.type)}</span></h3><p>${esc(vehicle.ownerName)}${vehicle.contract ? ` · Contrato: ${esc(vehicle.contract)}` : ""}${vehicle.odometer !== "" ? ` · ${esc(vehicle.odometer)} km` : ""}</p></div><div class="issue-actions"><button class="small-button" data-edit-vehicle="${vehicle.id}">Editar</button><button class="small-button danger-button" data-delete-vehicle="${vehicle.id}">Excluir</button></div></article>`).join("") : ""}`;
 }
 function vehicleHistoryMarkup(vehicle) {
   const inspections = data.inspections.filter((inspection) => inspection.vehicleId === vehicle.id).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -1671,7 +1680,8 @@ function openMaintenanceIssue(issueId) {
   $("#maintenanceIssueId").value = issue.id;
   $("#maintenanceDialogTitle").textContent = `${issue.vehiclePlate} · ${issue.itemName}`;
   $("#maintenanceIssueSummary").textContent = `${issue.severity} · ${issue.description}`;
-  $("#maintenanceStatus").value = ["Solicitada", "Agendada", "Em manutenção", "Veículo pronto para retirada"].includes(maintenance.status) ? maintenance.status : "Solicitada";
+  const approvedWaitingSchedule = maintenance.status === "Solicitada" && canManageMaintenance(issue);
+  $("#maintenanceStatus").value = approvedWaitingSchedule ? "Agendada" : (["Solicitada", "Agendada", "Em manutenção", "Veículo pronto para retirada"].includes(maintenance.status) ? maintenance.status : "Solicitada");
   $("#maintenanceScheduledAt").value = maintenance.scheduledAt ? maintenance.scheduledAt.slice(0, 16) : "";
   $("#maintenanceProvider").value = maintenance.provider;
   const providers = [...new Set(data.issues.map((entry) => maintenanceOf(entry).provider).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
@@ -1833,13 +1843,26 @@ async function requestInstall() {
 
 document.addEventListener("click", (event) => {
   const target = event.target.closest("button, [data-go]"); if (!target) return;
+  if (target.disabled || target.getAttribute("aria-disabled") === "true") {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    return;
+  }
+  if (target.id === "submitChecklist") {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (submissionInProgress || submissionCompleted) return;
+    target.disabled = true;
+    target.setAttribute("aria-disabled", "true");
+    void submitChecklist();
+    return;
+  }
   if (target.dataset.go) showScreen(target.dataset.go);
   if (target.id === "startChecklist") beginChecklist();
   if (target.id === "captureOpeningLocation") void captureOpeningLocation();
   if (target.dataset.state === "ok") { current.states[target.dataset.item] = { status: "ok" }; renderChecklist(); }
   if (target.dataset.state === "issue") openIssue(target.dataset.item);
   if (target.id === "reviewChecklist") reviewChecklist();
-  if (target.id === "submitChecklist") { target.disabled = true; target.setAttribute("aria-disabled", "true"); void submitChecklist(); }
   if (target.dataset.severity) { issueDraft.severity = target.dataset.severity; $$(".severity").forEach((button) => button.classList.toggle("active", button === target)); }
   if (target.id === "saveIssue") { event.preventDefault(); saveIssue(); }
   if (target.id === "openSettings") { if (!requireMasterAccess()) return; $("#webhookUrl").value = data.settings.webhookUrl; $("#maintenancePhone").value = data.settings.maintenancePhone; $("#maintenanceGroupPhone").value = data.settings.maintenanceGroupPhone || ""; $("#leaderPhone").value = data.settings.leaderPhone || ""; $("#fleetManagerPhone").value = data.settings.fleetManagerPhone || ""; $("#settingsDialog").showModal(); }
@@ -1871,7 +1894,6 @@ document.addEventListener("click", (event) => {
   if (target.dataset.reopenReturn) reopenReturnedIssue(target.dataset.reopenReturn);
   if (target.dataset.markMaintenanceDelivery) void markVehicleDeliveredForMaintenance(target.dataset.markMaintenanceDelivery);
   if (target.dataset.acknowledgeSchedule) void acknowledgeSchedule(target.dataset.acknowledgeSchedule);
-  if (target.dataset.myCallsFilter) { myCallsFilter = target.dataset.myCallsFilter; $$("[data-my-calls-filter]").forEach((button) => button.classList.toggle("active", button === target)); renderScheduledAppointments(); }
   if (target.id === "clearIssueFilters") { managerIssueFilters = { base: "", vehicle: "", date: "", owner: "", type: "" }; managerCommandFilter = ""; renderManagementCommandCenter(); renderIssues(); }
   if (target.dataset.viewPhoto) void openIssuePhoto(target.dataset.viewPhoto);
   if (target.dataset.managerDispatch) void dispatchManagerMaintenance(target.dataset.managerDispatch);
@@ -1946,6 +1968,10 @@ if ("serviceWorker" in navigator) {
       registration.addEventListener("updatefound", () => registration.installing?.addEventListener("statechange", () => activateWaitingWorker(registration)));
       await registration.update();
       activateWaitingWorker(registration);
+      // Elimina caches de versões anteriores sempre que o PWA é aberto.
+      const expectedCache = `checkfrota-v${APP_VERSION}`;
+      const keys = await caches.keys();
+      await Promise.all(keys.filter((key) => key.startsWith("checkfrota-v") && key !== expectedCache).map((key) => caches.delete(key)));
     } catch (_) {}
     void checkAppVersion();
   });
@@ -1959,6 +1985,11 @@ window.addEventListener("appinstalled", () => { document.body.classList.add("app
 if (isInstalled()) document.body.classList.add("app-installed"); else window.addEventListener("load", showInstallBanner);
 window.addEventListener("online", () => { localStorage.setItem("checkfrota-last-sync", new Date().toISOString()); void syncCloudOutbox().then((count) => { if (count) console.info(`${count} envio(s) pendente(s) sincronizado(s).`); }); });
 window.addEventListener("offline", () => void syncCloudOutbox());
+// Atualiza o acompanhamento assim que o colaborador volta ao aplicativo;
+// não é necessário aguardar o próximo ciclo de consulta de 60 segundos.
+document.addEventListener("visibilitychange", () => { if (!document.hidden) void loadScheduledAppointmentsForCollaborator(); });
+window.addEventListener("focus", () => void loadScheduledAppointmentsForCollaborator());
+window.addEventListener("online", () => void loadScheduledAppointmentsForCollaborator());
 if (new URLSearchParams(location.search).get("gestao") === "1") {
   if (cloudToken()) showScreen("controle");
   else location.replace(`gestao.html?v=${APP_VERSION}`);
