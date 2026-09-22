@@ -1,5 +1,5 @@
 {
-  "version": "210",
-  "released_at": "2026-09-21",
-  "notes": "Unifica o fluxo dos chamados, adiciona linha do tempo e ação principal por etapa, amplia indicadores e abre notificações diretamente no chamado correspondente."
+  "version": "211",
+  "released_at": "2026-09-22",
+  "notes": "Reduz o tempo de sincronização entre colaborador, Liderança e Gestão: atualização da Gestão a cada 10 segundos, painéis do colaborador a cada 15 segundos e recarga imediata ao reabrir o aplicativo."
 }
