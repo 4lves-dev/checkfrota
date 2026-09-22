@@ -5,7 +5,7 @@
  */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "210";
+const APP_VERSION = "211";
 const SOFTWARE_SIGNATURE = Object.freeze({ owner: "LUCHTI ME", product: "URBAM Frotas", fingerprint: "LUCHTI-CHECKFROTA-URBAM-20260909-A7F3", notice: "Todos os direitos reservados" });
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v201";
 const CHECKLIST = [
@@ -37,6 +37,12 @@ let scheduledAppointments = [];
 let scheduledAppointmentsTimer = null;
 let maintenanceMapLocation = null;
 let maintenanceWatchTimer = null;
+let managementCloudRefreshTimer = null;
+let managementCloudRefreshInFlight = false;
+let collaboratorRefreshTimer = null;
+let collaboratorRefreshInFlight = false;
+const CLOUD_REFRESH_INTERVAL_MS = 10 * 1000;
+const COLLABORATOR_REFRESH_INTERVAL_MS = 15 * 1000;
 let managementRole = "";
 let submissionInProgress = false;
 let submissionCompleted = false;
@@ -551,7 +557,17 @@ async function loadScheduledAppointmentsForCollaborator() {
     renderScheduledAppointments();
   } catch (error) { console.warn("Não foi possível buscar agendamentos do colaborador", error); }
 }
-function startScheduledAppointmentsPolling() { if (scheduledAppointmentsTimer) return; scheduledAppointmentsTimer = window.setInterval(() => void loadScheduledAppointmentsForCollaborator(), 60 * 1000); }
+async function refreshCollaboratorUpdates() {
+  if (collaboratorRefreshInFlight || document.hidden) return;
+  collaboratorRefreshInFlight = true;
+  try { await Promise.all([loadScheduledAppointmentsForCollaborator(), loadReturnedIssuesForCollaborator()]); }
+  finally { collaboratorRefreshInFlight = false; }
+}
+function startCollaboratorUpdatesPolling() {
+  if (collaboratorRefreshTimer) return;
+  collaboratorRefreshTimer = window.setInterval(() => void refreshCollaboratorUpdates(), COLLABORATOR_REFRESH_INTERVAL_MS);
+}
+function startScheduledAppointmentsPolling() { startCollaboratorUpdatesPolling(); }
 function renderReturnedIssues() {
   const panel = $("#returnNotifications"); if (!panel) return;
   if (!returnedIssues.length) { panel.hidden = true; panel.innerHTML = ""; return; }
@@ -568,10 +584,7 @@ async function loadReturnedIssuesForCollaborator() {
     returnedIssues.forEach(notifyReturnedIssue); renderReturnedIssues();
   } catch (error) { console.warn("Não foi possível buscar devoluções do colaborador", error); }
 }
-function startReturnedIssuesPolling() {
-  if (returnedIssuesTimer) return;
-  returnedIssuesTimer = window.setInterval(() => void loadReturnedIssuesForCollaborator(), 60 * 1000);
-}
+function startReturnedIssuesPolling() { startCollaboratorUpdatesPolling(); }
 function openReturnedChecklist(issue, inspection = null) {
   const vehicle = vehicleById(inspection?.vehicleId || issue.vehicleId) || data.vehicles.find((entry) => entry.prefix === (inspection?.vehiclePrefix || issue.vehiclePrefix) || entry.plate === (inspection?.vehiclePlate || issue.vehiclePlate));
   const savedItems = Array.isArray(inspection?.items) ? inspection.items : [];
@@ -629,7 +642,8 @@ function mergeFleetVehicles(cloudVehicles = []) {
   return [...standard, ...extras];
 }
 async function loadCloudManager() {
-  if (!cloudToken()) return;
+  if (!cloudToken() || managementCloudRefreshInFlight) return;
+  managementCloudRefreshInFlight = true;
   try {
     const [issues, inspections, vehicles] = await Promise.all([
       cloudRequest("/rest/v1/fleet_issues?select=id,inspection_id,vehicle_id,status,data&order=created_at.desc"),
@@ -647,6 +661,13 @@ async function loadCloudManager() {
     data.vehicles = mergeFleetVehicles((vehicles || []).map((row) => row.data).filter(Boolean));
     managementCloudLoaded = true; saveData(); renderControl();
   } catch (error) { console.warn("Não foi possível carregar a nuvem", error); }
+  finally { managementCloudRefreshInFlight = false; }
+}
+function startManagementCloudRefresh() {
+  if (managementCloudRefreshTimer) return;
+  managementCloudRefreshTimer = window.setInterval(() => {
+    if (!document.hidden && cloudToken()) void loadCloudManager();
+  }, CLOUD_REFRESH_INTERVAL_MS);
 }
 
 function loadData() {
@@ -1204,7 +1225,7 @@ function renderMaintenanceWatchAlerts() {
     return `<article class="maintenance-watch ${overdue ? "overdue" : ""}"><b>${title}</b><p><strong>Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate || "—")}</strong><br>Entregue: ${esc(dateTime(maintenance.deliveryAt))} · ${esc(maintenance.provider || "Oficina não informada")}</p><small>${esc(detail)} Prazo final: ${esc(dateTime(sla.deadline))}.</small>${maintenance.slaEmailAt ? `<p><small><b>E-mail formal preparado:</b> ${esc(dateTime(maintenance.slaEmailAt))}</small></p>` : ""}<div class="issue-actions"><button type="button" class="small-button" data-copy-sla-notice="${esc(issue.id)}">Copiar texto formal</button><button type="button" class="small-button ${overdue ? "danger-button" : ""}" data-send-sla-notice="${esc(issue.id)}">${action}</button></div></article>`;
   }).join("")}`;
 }
-function startMaintenanceWatch() { if (maintenanceWatchTimer) return; maintenanceWatchTimer = window.setInterval(() => { renderMaintenanceWatchAlerts(); if (cloudToken()) void loadCloudManager(); }, 60000); }
+function startMaintenanceWatch() { if (maintenanceWatchTimer) return; maintenanceWatchTimer = window.setInterval(() => { renderMaintenanceWatchAlerts(); }, 15 * 1000); }
 function renderControl() {
   const open = data.issues.filter((issue) => issue.status === "aberta");
   $("#fleetCount").textContent = data.vehicles.length;
@@ -1219,6 +1240,7 @@ function renderControl() {
   $$("[data-master-only]").forEach((element) => { element.hidden = !masterAdmin; });
   startDailyChecklistNotifications();
   startMaintenanceWatch();
+  startManagementCloudRefresh();
 }
 function formatBytes(bytes = 0) { if (!bytes) return "0 MB"; const mb = bytes / (1024 * 1024); return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(mb >= 10 ? 0 : 1)} MB`; }
 function renderStorageIndicator() {
@@ -2056,16 +2078,16 @@ window.addEventListener("load", () => { void window.URBAMOneSignal?.initialize()
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
 window.addEventListener("appinstalled", () => { document.body.classList.add("app-installed"); $("#installBanner").hidden = true; });
 if (isInstalled()) document.body.classList.add("app-installed"); else window.addEventListener("load", showInstallBanner);
-window.addEventListener("online", () => { localStorage.setItem("checkfrota-last-sync", new Date().toISOString()); void syncCloudOutbox().then((count) => { if (count) console.info(`${count} envio(s) pendente(s) sincronizado(s).`); }); });
+window.addEventListener("online", () => { localStorage.setItem("checkfrota-last-sync", new Date().toISOString()); void syncCloudOutbox().then((count) => { if (count) console.info(`${count} envio(s) pendente(s) sincronizado(s).`); }); if (cloudToken()) void loadCloudManager(); });
 window.addEventListener("offline", () => void syncCloudOutbox());
 // Atualiza o acompanhamento assim que o colaborador volta ao aplicativo;
 // não é necessário aguardar o próximo ciclo de consulta de 60 segundos.
-document.addEventListener("visibilitychange", () => { if (!document.hidden) void loadScheduledAppointmentsForCollaborator(); });
-window.addEventListener("focus", () => void loadScheduledAppointmentsForCollaborator());
-window.addEventListener("online", () => void loadScheduledAppointmentsForCollaborator());
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { void refreshCollaboratorUpdates(); if (cloudToken()) void loadCloudManager(); } });
+window.addEventListener("focus", () => { void refreshCollaboratorUpdates(); if (cloudToken()) void loadCloudManager(); });
+window.addEventListener("online", () => void refreshCollaboratorUpdates());
 if (new URLSearchParams(location.search).get("gestao") === "1") {
   if (cloudToken()) showScreen("controle");
   else location.replace(`gestao.html?v=${APP_VERSION}`);
 } else { renderStart(); }
 void syncCloudOutbox();
-window.setInterval(() => { void syncCloudOutbox(); }, 30 * 1000);
+window.setInterval(() => { void syncCloudOutbox(); }, CLOUD_REFRESH_INTERVAL_MS);
