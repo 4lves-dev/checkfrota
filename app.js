@@ -5,7 +5,7 @@
  */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "220";
+const APP_VERSION = "221";
 const SOFTWARE_SIGNATURE = Object.freeze({ owner: "LUCHTI ME", product: "URBAM Frotas", fingerprint: "LUCHTI-CHECKFROTA-URBAM-20260909-A7F3", notice: "Todos os direitos reservados" });
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v218";
 const CHECKLIST = [
@@ -27,7 +27,8 @@ const LEADER_BASE_LABELS = { Vertical: "Base Vertical / Segurança / Elétrica",
 const DRIVER_NOTIFICATION_PHONE = "";
 const LEGACY_EMAIL_AUTOMATION_URL = "https://script.google.com/macros/s/AKfycbyfdwx76UkQcv2fz1HXLERZrcVMfW1iaNvFALmFET1kIBBeXAQVvkH89iviTDxBCQOA/exec";
 const PREVIOUS_EMAIL_AUTOMATION_URL = "https://script.google.com/macros/s/AKfycbxX-KXsBQ0BZVv4axe42lG9QLfsQ7OC4Ig4Pgscfmur4QhXftk7cit1IGK9RQWzKaIR/exec";
-const EMAIL_AUTOMATION_URL = "https://script.google.com/macros/s/AKfycbyn5t8_lb3dhSvrUKzDzritfXOO1O7BAUo_vX_9nAcNgAgzq5176ctJ0TT3B19rAmcV/exec";
+const RETIRED_EMAIL_AUTOMATION_URL = "https://script.google.com/macros/s/AKfycbyn5t8_lb3dhSvrUKzDzritfXOO1O7BAUo_vX_9nAcNgAgzq5176ctJ0TT3B19rAmcV/exec";
+const EMAIL_AUTOMATION_URL = "https://script.google.com/macros/s/AKfycbxJWNp7UZ6poCL_UiYumn2P9mq8IRs7b4UMkEbHQ7x_EQxjSNdtgrLxb3bexP4HiAhG/exec";
 const EMAIL_COPY_RECIPIENT = "urbamfrota@gmail.com";
 const MASTER_ADMIN_EMAIL = "luciano.silva@urbam.com.br";
 const MAINTENANCE_GROUP_PHONE = "5512996181645";
@@ -697,7 +698,8 @@ function loadData() {
       !initialData.vehicles.some((seed) => seed.prefix === vehicle.prefix || seed.plate === vehicle.plate)
     );
     const savedWebhookUrl = stored.settings?.webhookUrl;
-    const webhookUrl = !savedWebhookUrl || [LEGACY_EMAIL_AUTOMATION_URL, PREVIOUS_EMAIL_AUTOMATION_URL].includes(savedWebhookUrl) ? EMAIL_AUTOMATION_URL : savedWebhookUrl;
+    const knownOldEmailUrls = [LEGACY_EMAIL_AUTOMATION_URL, PREVIOUS_EMAIL_AUTOMATION_URL, RETIRED_EMAIL_AUTOMATION_URL];
+    const webhookUrl = !savedWebhookUrl || knownOldEmailUrls.includes(savedWebhookUrl) ? EMAIL_AUTOMATION_URL : savedWebhookUrl;
     return { ...initialData, ...stored, removedVehicleIds, vehicles: [...seededVehicles, ...customVehicles], settings: { ...initialData.settings, ...stored.settings, webhookUrl } };
   } catch { return structuredClone(initialData); }
 }
