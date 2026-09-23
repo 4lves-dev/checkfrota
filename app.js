@@ -5,7 +5,7 @@
  */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "211";
+const APP_VERSION = "212";
 const SOFTWARE_SIGNATURE = Object.freeze({ owner: "LUCHTI ME", product: "URBAM Frotas", fingerprint: "LUCHTI-CHECKFROTA-URBAM-20260909-A7F3", notice: "Todos os direitos reservados" });
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v201";
 const CHECKLIST = [
@@ -37,12 +37,6 @@ let scheduledAppointments = [];
 let scheduledAppointmentsTimer = null;
 let maintenanceMapLocation = null;
 let maintenanceWatchTimer = null;
-let managementCloudRefreshTimer = null;
-let managementCloudRefreshInFlight = false;
-let collaboratorRefreshTimer = null;
-let collaboratorRefreshInFlight = false;
-const CLOUD_REFRESH_INTERVAL_MS = 10 * 1000;
-const COLLABORATOR_REFRESH_INTERVAL_MS = 15 * 1000;
 let managementRole = "";
 let submissionInProgress = false;
 let submissionCompleted = false;
@@ -158,6 +152,7 @@ let selectedVehicleHistoryId = "";
 let masterAdmin = false;
 let managementCloudLoaded = false;
 const ACCESS_LEVEL_LABELS = { colaborador: "Colaborador", lider: "Líder", coordenador: "Coordenador", gestor: "Gestor" };
+const isArchived = (issue = {}) => issue.status === "arquivada" || Boolean(issue.archivedAt);
 const MASTER_EMPLOYEE_REGISTRATIONS = new Set(["23135"]);
 const employeeAccessLevel = (employee = {}) => employee?.access_level || (employee?.leader ? "lider" : "colaborador");
 function employeeRoster() {
@@ -496,6 +491,7 @@ function driverContactSummary(issue) {
 }
 function collaboratorCallStatus(issue) {
   const maintenance = maintenanceOf(issue);
+  if (isArchived(issue)) return "Chamado arquivado";
   if (issue.status === "resolvida" || maintenance.status === "Concluída") return "Chamado concluído";
   if (maintenance.status === "Veículo pronto para retirada") return "Veículo pronto para retirada";
   if (maintenance.deliveryAt || maintenance.status === "Em manutenção") return "Veículo entregue — em manutenção";
@@ -519,7 +515,7 @@ function notifyCallOpened(issue) {
 }
 function renderScheduledAppointments() {
   const panel = $("#scheduleNotifications"), shell = $("#myCallsPanel"); if (!panel || !shell) return;
-  const visible = scheduledAppointments.filter((issue) => { const maintenance = maintenanceOf(issue); const completed = issue.status === "resolvida" || maintenance.status === "Concluída"; const activeAppointment = ["Agendada", "Em manutenção", "Veículo pronto para retirada"].includes(maintenance.status); const washAwaitingSchedule = isWashIssue(issue) && maintenance.status === "Solicitada"; return (activeAppointment || washAwaitingSchedule) && !completed; });
+  const visible = scheduledAppointments.filter((issue) => { const maintenance = maintenanceOf(issue); const completed = issue.status === "resolvida" || maintenance.status === "Concluída" || isArchived(issue); const activeAppointment = ["Agendada", "Em manutenção", "Veículo pronto para retirada"].includes(maintenance.status); const washAwaitingSchedule = isWashIssue(issue) && maintenance.status === "Solicitada"; return (activeAppointment || washAwaitingSchedule) && !completed; });
   const identifiedCollaborator = Boolean($("#driverRegistration")?.value.trim() || localStorage.getItem("checkfrota-driver-registration"));
   shell.hidden = !identifiedCollaborator;
   $("#myCallsBadge").textContent = String(visible.length);
@@ -557,17 +553,7 @@ async function loadScheduledAppointmentsForCollaborator() {
     renderScheduledAppointments();
   } catch (error) { console.warn("Não foi possível buscar agendamentos do colaborador", error); }
 }
-async function refreshCollaboratorUpdates() {
-  if (collaboratorRefreshInFlight || document.hidden) return;
-  collaboratorRefreshInFlight = true;
-  try { await Promise.all([loadScheduledAppointmentsForCollaborator(), loadReturnedIssuesForCollaborator()]); }
-  finally { collaboratorRefreshInFlight = false; }
-}
-function startCollaboratorUpdatesPolling() {
-  if (collaboratorRefreshTimer) return;
-  collaboratorRefreshTimer = window.setInterval(() => void refreshCollaboratorUpdates(), COLLABORATOR_REFRESH_INTERVAL_MS);
-}
-function startScheduledAppointmentsPolling() { startCollaboratorUpdatesPolling(); }
+function startScheduledAppointmentsPolling() { if (scheduledAppointmentsTimer) return; scheduledAppointmentsTimer = window.setInterval(() => void loadScheduledAppointmentsForCollaborator(), 60 * 1000); }
 function renderReturnedIssues() {
   const panel = $("#returnNotifications"); if (!panel) return;
   if (!returnedIssues.length) { panel.hidden = true; panel.innerHTML = ""; return; }
@@ -584,7 +570,10 @@ async function loadReturnedIssuesForCollaborator() {
     returnedIssues.forEach(notifyReturnedIssue); renderReturnedIssues();
   } catch (error) { console.warn("Não foi possível buscar devoluções do colaborador", error); }
 }
-function startReturnedIssuesPolling() { startCollaboratorUpdatesPolling(); }
+function startReturnedIssuesPolling() {
+  if (returnedIssuesTimer) return;
+  returnedIssuesTimer = window.setInterval(() => void loadReturnedIssuesForCollaborator(), 60 * 1000);
+}
 function openReturnedChecklist(issue, inspection = null) {
   const vehicle = vehicleById(inspection?.vehicleId || issue.vehicleId) || data.vehicles.find((entry) => entry.prefix === (inspection?.vehiclePrefix || issue.vehiclePrefix) || entry.plate === (inspection?.vehiclePlate || issue.vehiclePlate));
   const savedItems = Array.isArray(inspection?.items) ? inspection.items : [];
@@ -642,8 +631,7 @@ function mergeFleetVehicles(cloudVehicles = []) {
   return [...standard, ...extras];
 }
 async function loadCloudManager() {
-  if (!cloudToken() || managementCloudRefreshInFlight) return;
-  managementCloudRefreshInFlight = true;
+  if (!cloudToken()) return;
   try {
     const [issues, inspections, vehicles] = await Promise.all([
       cloudRequest("/rest/v1/fleet_issues?select=id,inspection_id,vehicle_id,status,data&order=created_at.desc"),
@@ -661,13 +649,6 @@ async function loadCloudManager() {
     data.vehicles = mergeFleetVehicles((vehicles || []).map((row) => row.data).filter(Boolean));
     managementCloudLoaded = true; saveData(); renderControl();
   } catch (error) { console.warn("Não foi possível carregar a nuvem", error); }
-  finally { managementCloudRefreshInFlight = false; }
-}
-function startManagementCloudRefresh() {
-  if (managementCloudRefreshTimer) return;
-  managementCloudRefreshTimer = window.setInterval(() => {
-    if (!document.hidden && cloudToken()) void loadCloudManager();
-  }, CLOUD_REFRESH_INTERVAL_MS);
 }
 
 function loadData() {
@@ -999,7 +980,7 @@ async function submitChecklist() {
     items: CHECKLIST.map((item) => ({ ...item, ...current.states[item.id] })),
   };
   const currentIssues = [...getCurrentIssues(), ...(current.washRequested ? [{ item: { name: "Solicitação de lavagem", category: "Lavagem" }, severity: "Leve", description: current.washDetails || "Solicitação de lavagem do veículo." }] : [])];
-  const duplicateItems = currentIssues.filter((candidate) => data.issues.some((existing) => existing.status !== "resolvida" && String(existing.vehicleId || existing.vehiclePrefix) === String(vehicle.id || vehicle.prefix) && driverNameKey(existing.itemName) === driverNameKey(candidate.item.name)));
+  const duplicateItems = currentIssues.filter((candidate) => data.issues.some((existing) => existing.status !== "resolvida" && !isArchived(existing) && String(existing.vehicleId || existing.vehiclePrefix) === String(vehicle.id || vehicle.prefix) && driverNameKey(existing.itemName) === driverNameKey(candidate.item.name)));
   const cloudDuplicates = await cloudDuplicateItems(vehicle, currentIssues);
   const duplicateLabels = [...new Set([...duplicateItems.map((item) => item.item.name), ...cloudDuplicates])];
   if (duplicateLabels.length) {
@@ -1145,7 +1126,7 @@ async function showCompletion(inspection, vehicle, issues, sendResult) {
 
 function renderManagementCommandCenter() {
   const panel = $("#managementCommandCenter"); if (!panel) return;
-  const open = data.issues.filter((issue) => issue.status !== "resolvida");
+  const open = data.issues.filter((issue) => issue.status !== "resolvida" && !isArchived(issue));
   const todayValue = today();
   const count = (predicate) => open.filter(predicate).length;
   const cards = [
@@ -1209,7 +1190,7 @@ function renderMaintenanceWatchAlerts() {
   const panel = $("#maintenanceWatchAlerts"); if (!panel) return;
   const active = data.issues.filter((issue) => {
     const maintenance = maintenanceOf(issue);
-    return maintenance.deliveryAt && maintenance.status !== "Cancelada" && maintenance.status !== "Concluída" && issue.status !== "resolvida";
+    return maintenance.deliveryAt && maintenance.status !== "Cancelada" && maintenance.status !== "Concluída" && issue.status !== "resolvida" && !isArchived(issue);
   });
   if (!active.length) { panel.hidden = true; panel.innerHTML = ""; return; }
   const now = Date.now(); panel.hidden = false;
@@ -1225,7 +1206,7 @@ function renderMaintenanceWatchAlerts() {
     return `<article class="maintenance-watch ${overdue ? "overdue" : ""}"><b>${title}</b><p><strong>Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate || "—")}</strong><br>Entregue: ${esc(dateTime(maintenance.deliveryAt))} · ${esc(maintenance.provider || "Oficina não informada")}</p><small>${esc(detail)} Prazo final: ${esc(dateTime(sla.deadline))}.</small>${maintenance.slaEmailAt ? `<p><small><b>E-mail formal preparado:</b> ${esc(dateTime(maintenance.slaEmailAt))}</small></p>` : ""}<div class="issue-actions"><button type="button" class="small-button" data-copy-sla-notice="${esc(issue.id)}">Copiar texto formal</button><button type="button" class="small-button ${overdue ? "danger-button" : ""}" data-send-sla-notice="${esc(issue.id)}">${action}</button></div></article>`;
   }).join("")}`;
 }
-function startMaintenanceWatch() { if (maintenanceWatchTimer) return; maintenanceWatchTimer = window.setInterval(() => { renderMaintenanceWatchAlerts(); }, 15 * 1000); }
+function startMaintenanceWatch() { if (maintenanceWatchTimer) return; maintenanceWatchTimer = window.setInterval(() => { renderMaintenanceWatchAlerts(); if (cloudToken()) void loadCloudManager(); }, 60000); }
 function renderControl() {
   const open = data.issues.filter((issue) => issue.status === "aberta");
   $("#fleetCount").textContent = data.vehicles.length;
@@ -1240,7 +1221,6 @@ function renderControl() {
   $$("[data-master-only]").forEach((element) => { element.hidden = !masterAdmin; });
   startDailyChecklistNotifications();
   startMaintenanceWatch();
-  startManagementCloudRefresh();
 }
 function formatBytes(bytes = 0) { if (!bytes) return "0 MB"; const mb = bytes / (1024 * 1024); return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(mb >= 10 ? 0 : 1)} MB`; }
 function renderStorageIndicator() {
@@ -1403,6 +1383,7 @@ const FLOW_STAGES = Object.freeze([
 ]);
 function issueFlowStage(issue) {
   const maintenance = maintenanceOf(issue);
+  if (isArchived(issue)) return "Arquivado";
   if (issue.status === "resolvida" || maintenance.status === "Concluída") return "Concluído";
   if (maintenance.pickupAt) return "Retirado";
   if (maintenance.status === "Veículo pronto para retirada" || maintenance.readyAt) return "Pronto para retirada";
@@ -1443,7 +1424,7 @@ function canManageMaintenance(issue) {
 }
 function renderIssues() {
   const panel = $("#issuesPanel");
-  const allIssues = data.issues.filter((issue) => issue.status !== "resolvida" && maintenanceOf(issue).status !== "Concluída").sort((a,b) => severityRank(b.severity) - severityRank(a.severity) || new Date(b.createdAt)-new Date(a.createdAt));
+  const allIssues = data.issues.filter((issue) => issue.status !== "resolvida" && !isArchived(issue) && maintenanceOf(issue).status !== "Concluída").sort((a,b) => severityRank(b.severity) - severityRank(a.severity) || new Date(b.createdAt)-new Date(a.createdAt));
   const issues = allIssues.filter(issueMatchesManagerFilters);
   panel.innerHTML = renderIssueFilters(allIssues);
   if (!issues.length) { panel.append(empty()); bindIssueFilters(); return; }
@@ -1466,7 +1447,7 @@ function renderIssues() {
       ${issueTimelineMarkup(issue)}
       <p class="maintenance-meta"><b>Manutenção:</b> ${esc(maintenance.status)}${schedule}${maintenance.returnAt ? ` · retorno: ${dateTime(maintenance.returnAt)}` : ""}${maintenance.provider ? ` · ${esc(maintenance.provider)}` : ""}${maintenance.service ? ` · ${esc(maintenance.service)}` : ""}${maintenance.supplierReplyAt ? ` · retorno do fornecedor registrado: ${dateTime(maintenance.supplierReplyAt)}` : ""}${maintenance.driverNotifiedAt ? ` · retorno ao colaborador: ${dateTime(maintenance.driverNotifiedAt)}` : ""}</p>
       ${waitingForApproval ? `<p class="maintenance-meta"><b>Aguardando aprovação da liderança.</b> O agendamento ficará disponível após a decisão.</p>` : ""}
-      <div class="issue-actions issue-primary-actions">${primaryAction.close ? `<button class="small-button primary-flow-action" data-close-issue="${issue.id}">${esc(primaryAction.label)}</button>` : `<button class="small-button primary-flow-action" data-maintenance-issue="${issue.id}" ${primaryAction.disabled ? "disabled" : ""}>${esc(primaryAction.label)}</button>`}${issue.photoPath ? `<button class="small-button photo-button" data-view-photo="${issue.id}">📷 Ver foto</button>` : ""}<button class="small-button whatsapp" data-whatsapp-issue="${issue.id}">Enviar ao proprietário</button></div>
+      <div class="issue-actions issue-primary-actions">${primaryAction.close ? `<button class="small-button primary-flow-action" data-close-issue="${issue.id}">${esc(primaryAction.label)}</button>` : `<button class="small-button primary-flow-action" data-maintenance-issue="${issue.id}" ${primaryAction.disabled ? "disabled" : ""}>${esc(primaryAction.label)}</button>`}${issue.photoPath ? `<button class="small-button photo-button" data-view-photo="${issue.id}">📷 Ver foto</button>` : ""}<button class="small-button whatsapp" data-whatsapp-issue="${issue.id}">Enviar ao proprietário</button>${masterAdmin ? `<button class="small-button danger-button" data-archive-issue="${issue.id}">Arquivar por erro</button>` : ""}</div>
     </article>`;
   }).join("");
   bindIssueFilters();
@@ -1482,7 +1463,7 @@ function focusRequestedIssue() {
 }
 function renderAgenda() {
   const panel = $("#agendaPanel"); if (!panel) return;
-  const active = data.issues.filter((issue) => issue.status !== "resolvida" && maintenanceOf(issue).scheduledAt).sort((a, b) => new Date(maintenanceOf(a).scheduledAt) - new Date(maintenanceOf(b).scheduledAt));
+  const active = data.issues.filter((issue) => issue.status !== "resolvida" && !isArchived(issue) && maintenanceOf(issue).scheduledAt).sort((a, b) => new Date(maintenanceOf(a).scheduledAt) - new Date(maintenanceOf(b).scheduledAt));
   const supplierLate = active.filter((issue) => supplierSlaResult(issue)?.state === "late");
   const missed = active.filter((issue) => isMissedAppointment(issue));
   const exceptionalIds = new Set([...supplierLate, ...missed].map((issue) => issue.id));
@@ -1523,13 +1504,15 @@ function downloadReport() {
 function renderHistory() {
   const panel = $("#historyPanel"); panel.innerHTML = "";
   const resolvedIssues = data.issues.filter((issue) => issue.status === "resolvida" || maintenanceOf(issue).status === "Concluída").sort((a, b) => new Date(b.resolvedAt || b.createdAt) - new Date(a.resolvedAt || a.createdAt));
+  const archivedIssues = data.issues.filter(isArchived).sort((a, b) => new Date(b.archivedAt || b.createdAt) - new Date(a.archivedAt || a.createdAt));
   const inspectionsMarkup = data.inspections.slice(0, 30).map((inspection) => {
     const issueCount = inspection.items.filter((item) => item.status === "issue").length;
     return `<article class="history-card"><div><b>Prefixo ${esc(inspection.vehiclePrefix || "—")} · ${esc(inspection.vehiclePlate)} · ${esc(inspection.driver)}</b><p class="meta">${esc(inspection.odometer ?? "—")} km · ${dateTime(inspection.createdAt)}${inspection.notes ? ` · ${esc(inspection.notes)}` : ""}</p></div>${issueCount ? `<span class="chip grave">${issueCount} ocorrência(s)</span>` : `<span class="chip ok">OK</span>`}</article>`;
   }).join("");
   const resolvedMarkup = resolvedIssues.map((issue) => `<article class="history-card"><div><b>✓ Resolvido · Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate)} · ${esc(issue.itemName)}</b><p class="meta">${esc(issue.description || "Sem observação")} · concluído em ${dateTime(issue.resolvedAt || issue.maintenance?.updatedAt || issue.createdAt)}</p></div><span class="chip ok">Resolvido</span></article>`).join("");
-  if (!inspectionsMarkup && !resolvedMarkup) { panel.append(empty()); return; }
-  panel.innerHTML = `${resolvedMarkup ? `<section class="history-resolved"><div class="section-action"><h3>Chamados resolvidos</h3><span class="chip ok">${resolvedIssues.length}</span></div>${resolvedMarkup}</section>` : ""}${inspectionsMarkup ? `<section class="history-inspections"><div class="section-action"><h3>Checklists realizados</h3></div>${inspectionsMarkup}</section>` : ""}`;
+  const archivedMarkup = archivedIssues.map((issue) => `<article class="history-card"><div><b>▣ Arquivado · Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate)} · ${esc(issue.itemName)}</b><p class="meta">Motivo: ${esc(issue.archiveReason || "Não informado")} · arquivado em ${dateTime(issue.archivedAt || issue.createdAt)}</p></div><div><span class="chip">Arquivado</span>${masterAdmin ? `<button class="small-button" data-restore-issue="${esc(issue.id)}">Restaurar</button>` : ""}</div></article>`).join("");
+  if (!inspectionsMarkup && !resolvedMarkup && !(masterAdmin && archivedMarkup)) { panel.append(empty()); return; }
+  panel.innerHTML = `${masterAdmin && archivedMarkup ? `<section class="history-archived"><div class="section-action"><h3>Chamados arquivados por erro</h3><span class="chip">${archivedIssues.length}</span></div><p class="meta">Somente o Administrador Master vê e pode restaurar estes registros.</p>${archivedMarkup}</section>` : ""}${resolvedMarkup ? `<section class="history-resolved"><div class="section-action"><h3>Chamados resolvidos</h3><span class="chip ok">${resolvedIssues.length}</span></div>${resolvedMarkup}</section>` : ""}${inspectionsMarkup ? `<section class="history-inspections"><div class="section-action"><h3>Checklists realizados</h3></div>${inspectionsMarkup}</section>` : ""}`;
 }
 function vehicleHistoryMarkup(vehicle) {
   const inspections = data.inspections.filter((inspection) => inspection.vehicleId === vehicle.id).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -1906,6 +1889,37 @@ async function locateMaintenanceAddress() {
 }
 function prepareReschedule() { $("#maintenanceStatus").value = "Agendada"; $("#maintenanceScheduledAt").focus(); $("#maintenanceMapStatus").textContent = "Atualize data, horário, oficina ou endereço e salve o novo agendamento."; }
 async function closeIssue(issueId) { const issue = data.issues.find((entry) => entry.id === issueId); if (!issue) return; const maintenance = maintenanceOf(issue); if (!maintenance.pickupAt) return alert("Aguarde a confirmação de retirada pela Liderança antes de concluir este chamado."); issue.maintenance = { ...maintenance, status: "Concluída", updatedAt: new Date().toISOString() }; issue.status = "resolvida"; issue.resolvedAt = new Date().toISOString(); saveData(); try { await cloudSave("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: issue.vehicleId, status: issue.status, data: issue }); } catch (error) { queueCloudWrite("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: issue.vehicleId, status: issue.status, data: issue }); alert("O chamado foi resolvido e será sincronizado quando a internet voltar."); } await recordAuditEvent(issue, "chamado_resolvido", "Manutenção concluída após confirmação de retirada pela Liderança"); if (data.settings.webhookUrl) void sendToIntegration({ type: "maintenance-update", issue, maintenance: issue.maintenance }); renderControl(); }
+async function archiveIssue(issueId) {
+  if (!requireMasterAccess()) return;
+  const issue = data.issues.find((entry) => entry.id === issueId); if (!issue) return;
+  const reason = prompt("Informe o motivo do arquivamento. O chamado não será apagado e poderá ser restaurado pelo Master:");
+  if (reason === null) return;
+  if (reason.trim().length < 5) return alert("Informe um motivo com pelo menos 5 caracteres. Isso preserva a rastreabilidade.");
+  if (!confirm(`Arquivar o chamado “${issue.itemName}” do prefixo ${issue.vehiclePrefix}? Ele sairá das pendências e ficará disponível somente no Histórico do Master.`)) return;
+  try {
+    await cloudRpc("fleet_archive_issue", { p_issue_id: issue.id, p_reason: reason.trim() });
+    issue.status = "arquivada";
+    issue.archivedAt = new Date().toISOString();
+    issue.archiveReason = reason.trim();
+    issue.archivedBy = sessionEmail() || "Administrador Master";
+    saveData();
+    await recordAuditEvent(issue, "chamado_arquivado", `Arquivado por erro: ${reason.trim()}`);
+    renderControl();
+  } catch (error) { alert("Não foi possível arquivar. Verifique a conexão e se a atualização do banco foi aplicada."); }
+}
+async function restoreArchivedIssue(issueId) {
+  if (!requireMasterAccess()) return;
+  const issue = data.issues.find((entry) => entry.id === issueId); if (!issue) return;
+  if (!confirm(`Restaurar o chamado “${issue.itemName}” para as pendências?`)) return;
+  try {
+    await cloudRpc("fleet_restore_archived_issue", { p_issue_id: issue.id });
+    issue.status = "aberta";
+    delete issue.archivedAt; delete issue.archiveReason; delete issue.archivedBy;
+    saveData();
+    await recordAuditEvent(issue, "chamado_restaurado", "Chamado arquivado restaurado para pendências.");
+    renderControl();
+  } catch (error) { alert("Não foi possível restaurar. Verifique a conexão e se a atualização do banco foi aplicada."); }
+}
 function saveSettings() { if (!requireMasterAccess()) return; data.settings.webhookUrl = $("#webhookUrl").value.trim(); data.settings.maintenancePhone = phoneOnly($("#maintenancePhone").value); data.settings.maintenanceGroupPhone = phoneOnly($("#maintenanceGroupPhone").value); data.settings.leaderPhone = phoneOnly($("#leaderPhone").value); data.settings.fleetManagerPhone = phoneOnly($("#fleetManagerPhone").value); saveData(); $("#settingsDialog").close(); }
 function dismissInstallBanner() { sessionStorage.setItem("checkfrota-install-dismissed", "1"); $("#installBanner").hidden = true; }
 
@@ -2001,6 +2015,8 @@ document.addEventListener("click", (event) => {
   if (target.dataset.maintenanceIssue) { event.preventDefault(); try { openMaintenanceIssue(target.dataset.maintenanceIssue); } catch (error) { console.error("Falha ao abrir manutenção", error); alert("Não foi possível abrir o agendamento. Atualize o aplicativo e tente novamente."); } }
   if (target.dataset.maintenanceWhatsapp) sendMaintenanceWhatsApp(target.dataset.maintenanceWhatsapp);
   if (target.dataset.closeIssue) void closeIssue(target.dataset.closeIssue);
+  if (target.dataset.archiveIssue) void archiveIssue(target.dataset.archiveIssue);
+  if (target.dataset.restoreIssue) void restoreArchivedIssue(target.dataset.restoreIssue);
   if (target.id === "sendMaintenanceUpdate") { const issue = data.issues.find((entry) => entry.id === $("#maintenanceIssueId").value); if (issue) void saveAndSendInternalMaintenanceUpdate(issue); }
   if (target.id === "locateMaintenanceAddress") void locateMaintenanceAddress();
   if (target.id === "rescheduleMaintenance") prepareReschedule();
@@ -2078,16 +2094,16 @@ window.addEventListener("load", () => { void window.URBAMOneSignal?.initialize()
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
 window.addEventListener("appinstalled", () => { document.body.classList.add("app-installed"); $("#installBanner").hidden = true; });
 if (isInstalled()) document.body.classList.add("app-installed"); else window.addEventListener("load", showInstallBanner);
-window.addEventListener("online", () => { localStorage.setItem("checkfrota-last-sync", new Date().toISOString()); void syncCloudOutbox().then((count) => { if (count) console.info(`${count} envio(s) pendente(s) sincronizado(s).`); }); if (cloudToken()) void loadCloudManager(); });
+window.addEventListener("online", () => { localStorage.setItem("checkfrota-last-sync", new Date().toISOString()); void syncCloudOutbox().then((count) => { if (count) console.info(`${count} envio(s) pendente(s) sincronizado(s).`); }); });
 window.addEventListener("offline", () => void syncCloudOutbox());
 // Atualiza o acompanhamento assim que o colaborador volta ao aplicativo;
 // não é necessário aguardar o próximo ciclo de consulta de 60 segundos.
-document.addEventListener("visibilitychange", () => { if (!document.hidden) { void refreshCollaboratorUpdates(); if (cloudToken()) void loadCloudManager(); } });
-window.addEventListener("focus", () => { void refreshCollaboratorUpdates(); if (cloudToken()) void loadCloudManager(); });
-window.addEventListener("online", () => void refreshCollaboratorUpdates());
+document.addEventListener("visibilitychange", () => { if (!document.hidden) void loadScheduledAppointmentsForCollaborator(); });
+window.addEventListener("focus", () => void loadScheduledAppointmentsForCollaborator());
+window.addEventListener("online", () => void loadScheduledAppointmentsForCollaborator());
 if (new URLSearchParams(location.search).get("gestao") === "1") {
   if (cloudToken()) showScreen("controle");
   else location.replace(`gestao.html?v=${APP_VERSION}`);
 } else { renderStart(); }
 void syncCloudOutbox();
-window.setInterval(() => { void syncCloudOutbox(); }, CLOUD_REFRESH_INTERVAL_MS);
+window.setInterval(() => { void syncCloudOutbox(); }, 30 * 1000);
