@@ -5,9 +5,9 @@
  */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "217";
+const APP_VERSION = "218";
 const SOFTWARE_SIGNATURE = Object.freeze({ owner: "LUCHTI ME", product: "URBAM Frotas", fingerprint: "LUCHTI-CHECKFROTA-URBAM-20260909-A7F3", notice: "Todos os direitos reservados" });
-const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v201";
+const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v218";
 const CHECKLIST = [
   ["pneus", "Pneus e estepe", "Rodagem"],
   ["luzes", "Faróis, lanternas e setas", "Elétrica"],
@@ -659,11 +659,11 @@ function loadData() {
     if (!stored) { const initial = structuredClone(initialData); initial.vehicles = initial.vehicles.map(withFleetResponsible); return initial; }
     // Limpeza solicitada para reiniciar os testes: registros e fila antigos não podem
     // reaparecer no banco ao abrir outro celular.
-    if (localStorage.getItem(LOCAL_DATA_RESET_KEY) !== "v201") {
+    if (localStorage.getItem(LOCAL_DATA_RESET_KEY) !== "v218") {
       stored.issues = [];
       stored.inspections = [];
       localStorage.setItem(OUTBOX_KEY, "[]");
-      localStorage.setItem(LOCAL_DATA_RESET_KEY, "v201");
+      localStorage.setItem(LOCAL_DATA_RESET_KEY, "v218");
     }
     // Atualiza aparelhos que ainda guardam os três veículos de demonstração,
     // preservando veículos reais já cadastrados manualmente pela base.
