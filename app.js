@@ -5,7 +5,7 @@
  */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "218";
+const APP_VERSION = "219";
 const SOFTWARE_SIGNATURE = Object.freeze({ owner: "LUCHTI ME", product: "URBAM Frotas", fingerprint: "LUCHTI-CHECKFROTA-URBAM-20260909-A7F3", notice: "Todos os direitos reservados" });
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v218";
 const CHECKLIST = [
@@ -32,13 +32,20 @@ const EMAIL_COPY_RECIPIENT = "urbamfrota@gmail.com";
 const MASTER_ADMIN_EMAIL = "luciano.silva@urbam.com.br";
 const MAINTENANCE_GROUP_PHONE = "5512996181645";
 const DAILY_CHECKLIST_ALERT_PHONE = "5512981111336";
+// Enquanto os aplicativos estiverem abertos, as informações operacionais
+// precisam aparecer rapidamente nos três painéis. Em segundo plano, as
+// notificações do celular continuam sendo responsabilidade do serviço de push.
+const FAST_SYNC_INTERVAL_MS = 15 * 1000;
 let dailyChecklistNotificationTimer = null;
 let returnedIssues = [];
 let returnedIssuesTimer = null;
 let scheduledAppointments = [];
 let scheduledAppointmentsTimer = null;
+let scheduledAppointmentsLoading = false;
+let returnedIssuesLoading = false;
 let maintenanceMapLocation = null;
 let maintenanceWatchTimer = null;
+let managementCloudLoading = false;
 let managementRole = "";
 let submissionInProgress = false;
 let submissionCompleted = false;
@@ -544,9 +551,11 @@ async function markVehicleDeliveredForMaintenance(issueId) {
   } catch (error) { console.warn("Entrega não registrada", error); alert("Não foi possível registrar a entrega no banco. Verifique a internet e tente novamente."); }
 }
 async function loadScheduledAppointmentsForCollaborator() {
+  if (scheduledAppointmentsLoading) return;
   const registration = $("#driverRegistration")?.value.replace(/\D/g, "") || localStorage.getItem("checkfrota-driver-registration") || "";
   const phone = phoneOnly($("#driverPhone")?.value || current.driverPhone || localStorage.getItem("checkfrota-driver-phone") || "");
   if (!CLOUD?.url || !registration || !phone) return;
+  scheduledAppointmentsLoading = true;
   try {
     const rows = await cloudRpc("fleet_driver_appointments", { p_registration: registration, p_phone: phone });
     scheduledAppointments = (rows || []).map((row) => row.data || row).filter(Boolean);
@@ -554,8 +563,9 @@ async function loadScheduledAppointmentsForCollaborator() {
     scheduledAppointments.forEach(notifyReadyForPickup);
     renderScheduledAppointments();
   } catch (error) { console.warn("Não foi possível buscar agendamentos do colaborador", error); }
+  finally { scheduledAppointmentsLoading = false; }
 }
-function startScheduledAppointmentsPolling() { if (scheduledAppointmentsTimer) return; scheduledAppointmentsTimer = window.setInterval(() => void loadScheduledAppointmentsForCollaborator(), 60 * 1000); }
+function startScheduledAppointmentsPolling() { if (scheduledAppointmentsTimer) return; scheduledAppointmentsTimer = window.setInterval(() => { if (!document.hidden) void loadScheduledAppointmentsForCollaborator(); }, FAST_SYNC_INTERVAL_MS); }
 function renderReturnedIssues() {
   const panel = $("#returnNotifications"); if (!panel) return;
   if (!returnedIssues.length) { panel.hidden = true; panel.innerHTML = ""; return; }
@@ -563,18 +573,21 @@ function renderReturnedIssues() {
   panel.innerHTML = returnedIssues.map((issue) => { const approval = issue.leaderApproval || {}; const review = approval.status === "Retificação solicitada"; return `<article class="return-notice ${review ? "review" : ""}"><h2>${review ? "↩ Retificação solicitada" : "✕ Chamado rejeitado"}</h2><p><b>Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate || "—")}</b></p><p>${esc(approval.note || "A liderança devolveu este chamado. Verifique os dados.")}</p><p><small>Decisão em ${dateTime(approval.approvedAt || issue.createdAt)}</small></p><button type="button" class="small-button" data-reopen-return="${esc(issue.id)}">${review ? "Corrigir e refazer checklist" : "Abrir dados do chamado"}</button></article>`; }).join("");
 }
 async function loadReturnedIssuesForCollaborator() {
+  if (returnedIssuesLoading) return;
   const registration = $("#driverRegistration")?.value.replace(/\D/g, "") || localStorage.getItem("checkfrota-driver-registration") || "";
   const phone = phoneOnly($("#driverPhone")?.value || current.driverPhone || "");
   if (!CLOUD?.url || !registration || !phone) return;
+  returnedIssuesLoading = true;
   try {
     const rows = await cloudRpc("fleet_driver_returns", { p_registration: registration, p_phone: phone });
     returnedIssues = (rows || []).map((row) => row.data).filter((issue) => issue && ["Retificação solicitada", "Recusada"].includes(issue.leaderApproval?.status));
     returnedIssues.forEach(notifyReturnedIssue); renderReturnedIssues();
   } catch (error) { console.warn("Não foi possível buscar devoluções do colaborador", error); }
+  finally { returnedIssuesLoading = false; }
 }
 function startReturnedIssuesPolling() {
   if (returnedIssuesTimer) return;
-  returnedIssuesTimer = window.setInterval(() => void loadReturnedIssuesForCollaborator(), 60 * 1000);
+  returnedIssuesTimer = window.setInterval(() => { if (!document.hidden) void loadReturnedIssuesForCollaborator(); }, FAST_SYNC_INTERVAL_MS);
 }
 function openReturnedChecklist(issue, inspection = null) {
   const vehicle = vehicleById(inspection?.vehicleId || issue.vehicleId) || data.vehicles.find((entry) => entry.prefix === (inspection?.vehiclePrefix || issue.vehiclePrefix) || entry.plate === (inspection?.vehiclePlate || issue.vehiclePlate));
@@ -633,7 +646,8 @@ function mergeFleetVehicles(cloudVehicles = []) {
   return [...standard, ...extras];
 }
 async function loadCloudManager() {
-  if (!cloudToken()) return;
+  if (!cloudToken() || managementCloudLoading) return;
+  managementCloudLoading = true;
   try {
     const [issues, inspections, vehicles] = await Promise.all([
       cloudRequest("/rest/v1/fleet_issues?select=id,inspection_id,vehicle_id,status,data&order=created_at.desc"),
@@ -651,6 +665,7 @@ async function loadCloudManager() {
     data.vehicles = mergeFleetVehicles((vehicles || []).map((row) => row.data).filter(Boolean));
     managementCloudLoaded = true; saveData(); renderControl();
   } catch (error) { console.warn("Não foi possível carregar a nuvem", error); }
+  finally { managementCloudLoading = false; }
 }
 
 function loadData() {
@@ -1213,7 +1228,15 @@ function renderMaintenanceWatchAlerts() {
     return `<article class="maintenance-watch ${overdue ? "overdue" : ""}"><b>${title}</b><p><strong>Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate || "—")}</strong><br>Entregue: ${esc(dateTime(maintenance.deliveryAt))} · ${esc(maintenance.provider || "Oficina não informada")}</p><small>${esc(detail)} Prazo final: ${esc(dateTime(sla.deadline))}.</small>${maintenance.slaEmailAt ? `<p><small><b>E-mail formal preparado:</b> ${esc(dateTime(maintenance.slaEmailAt))}</small></p>` : ""}<div class="issue-actions"><button type="button" class="small-button" data-copy-sla-notice="${esc(issue.id)}">Copiar texto formal</button><button type="button" class="small-button ${overdue ? "danger-button" : ""}" data-send-sla-notice="${esc(issue.id)}">${action}</button></div></article>`;
   }).join("")}`;
 }
-function startMaintenanceWatch() { if (maintenanceWatchTimer) return; maintenanceWatchTimer = window.setInterval(() => { renderMaintenanceWatchAlerts(); if (cloudToken()) void loadCloudManager(); }, 60000); }
+function startMaintenanceWatch() {
+  if (maintenanceWatchTimer) return;
+  maintenanceWatchTimer = window.setInterval(() => {
+    const managementVisible = !document.hidden && $(".screen.active[data-screen='controle']");
+    if (!managementVisible) return;
+    renderMaintenanceWatchAlerts();
+    if (cloudToken()) void loadCloudManager();
+  }, FAST_SYNC_INTERVAL_MS);
+}
 function renderControl() {
   const open = data.issues.filter((issue) => issue.status === "aberta");
   $("#fleetCount").textContent = data.vehicles.length;
@@ -2142,12 +2165,19 @@ window.addEventListener("online", () => { localStorage.setItem("checkfrota-last-
 window.addEventListener("offline", () => void syncCloudOutbox());
 // Atualiza o acompanhamento assim que o colaborador volta ao aplicativo;
 // não é necessário aguardar o próximo ciclo de consulta de 60 segundos.
-document.addEventListener("visibilitychange", () => { if (!document.hidden) void loadScheduledAppointmentsForCollaborator(); });
-window.addEventListener("focus", () => void loadScheduledAppointmentsForCollaborator());
-window.addEventListener("online", () => void loadScheduledAppointmentsForCollaborator());
+function refreshOpenAppData() {
+  if (document.hidden) return;
+  void loadScheduledAppointmentsForCollaborator();
+  void loadReturnedIssuesForCollaborator();
+  if ($(".screen.active[data-screen='controle']") && cloudToken()) void loadCloudManager();
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshOpenAppData(); });
+window.addEventListener("focus", refreshOpenAppData);
+window.addEventListener("online", refreshOpenAppData);
 if (new URLSearchParams(location.search).get("gestao") === "1") {
   if (cloudToken()) showScreen("controle");
   else location.replace(`gestao.html?v=${APP_VERSION}`);
 } else { renderStart(); }
 void syncCloudOutbox();
-window.setInterval(() => { void syncCloudOutbox(); }, 30 * 1000);
+// Tentativas pendentes também ganham prioridade quando o aplicativo está aberto.
+window.setInterval(() => { if (!document.hidden) void syncCloudOutbox(); }, FAST_SYNC_INTERVAL_MS);

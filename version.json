@@ -1,5 +1,5 @@
 {
-  "version": "218",
+  "version": "219",
   "released_at": "2026-09-23",
-  "notes": "Remove cópias locais e filas de testes antigos, preservando veículos, colaboradores e configurações."
+  "notes": "Acelera a sincronização dos chamados: Gestão, Liderança e Colaborador atualizam em até 15 segundos enquanto estiverem abertos."
 }
