@@ -1,5 +1,5 @@
 {
-  "version": "212",
+  "version": "213",
   "released_at": "2026-09-23",
-  "notes": "Adiciona arquivamento controlado de chamados por erro, com motivo obrigatório, restauração exclusiva do Administrador Master e proteção contra duplicidade."
+  "notes": "Atualiza a integração de e-mail do formulário e migra automaticamente aparelhos que ainda usam a URL anterior."
 }

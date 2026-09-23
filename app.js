@@ -5,7 +5,7 @@
  */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "212";
+const APP_VERSION = "213";
 const SOFTWARE_SIGNATURE = Object.freeze({ owner: "LUCHTI ME", product: "URBAM Frotas", fingerprint: "LUCHTI-CHECKFROTA-URBAM-20260909-A7F3", notice: "Todos os direitos reservados" });
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v201";
 const CHECKLIST = [
@@ -25,7 +25,8 @@ const CHECKLIST = [
 const BASES = { Vertical: "5512981567218", Abrigo: "5512997884887", Horizontal: "5512988400697" };
 const LEADER_BASE_LABELS = { Vertical: "Base Vertical / Segurança / Elétrica", Horizontal: "Base Horizontal", Abrigo: "Base Abrigo / Manutenção / Linha Verde / Lavagem" };
 const DRIVER_NOTIFICATION_PHONE = "";
-const EMAIL_AUTOMATION_URL = "https://script.google.com/macros/s/AKfycbyfdwx76UkQcv2fz1HXLERZrcVMfW1iaNvFALmFET1kIBBeXAQVvkH89iviTDxBCQOA/exec";
+const LEGACY_EMAIL_AUTOMATION_URL = "https://script.google.com/macros/s/AKfycbyfdwx76UkQcv2fz1HXLERZrcVMfW1iaNvFALmFET1kIBBeXAQVvkH89iviTDxBCQOA/exec";
+const EMAIL_AUTOMATION_URL = "https://script.google.com/macros/s/AKfycbyn5t8_lb3dhSvrUKzDzritfXOO1O7BAUo_vX_9nAcNgAgzq5176ctJ0TT3B19rAmcV/exec";
 const EMAIL_COPY_RECIPIENT = "urbamfrota@gmail.com";
 const MASTER_ADMIN_EMAIL = "luciano.silva@urbam.com.br";
 const MAINTENANCE_GROUP_PHONE = "5512996181645";
@@ -679,7 +680,9 @@ function loadData() {
       !["v1", "v2", "v3"].includes(vehicle.id) &&
       !initialData.vehicles.some((seed) => seed.prefix === vehicle.prefix || seed.plate === vehicle.plate)
     );
-    return { ...initialData, ...stored, removedVehicleIds, vehicles: [...seededVehicles, ...customVehicles], settings: { ...initialData.settings, ...stored.settings, webhookUrl: stored.settings?.webhookUrl || EMAIL_AUTOMATION_URL } };
+    const savedWebhookUrl = stored.settings?.webhookUrl;
+    const webhookUrl = !savedWebhookUrl || savedWebhookUrl === LEGACY_EMAIL_AUTOMATION_URL ? EMAIL_AUTOMATION_URL : savedWebhookUrl;
+    return { ...initialData, ...stored, removedVehicleIds, vehicles: [...seededVehicles, ...customVehicles], settings: { ...initialData.settings, ...stored.settings, webhookUrl } };
   } catch { return structuredClone(initialData); }
 }
 function saveData() { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
@@ -1045,7 +1048,10 @@ async function sendToIntegration(payload) {
     const response = await fetch(data.settings.webhookUrl, isGoogleAppsScript
       ? { method: "POST", mode: "no-cors", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(payload) }
       : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-    if (isGoogleAppsScript) return { sent: true, reason: "enviado ao Apps Script" };
+    // No modo no-cors o navegador não pode ler a resposta do Apps Script.
+    // Não trate isso como confirmação de entrega: evita informar ao motorista
+    // que o e-mail chegou quando a implantação externa estiver indisponível.
+    if (isGoogleAppsScript) return { sent: true, unverified: true, reason: "encaminhado ao Apps Script; confirme a implantação de e-mail" };
     return { sent: response.ok, reason: response.ok ? "enviado" : "falhou" };
   } catch { return { sent: false, reason: "falhou" }; }
 }
@@ -1102,7 +1108,7 @@ async function approvalUrl(vehicle, issues) {
 async function showCompletion(inspection, vehicle, issues, sendResult) {
   const severe = issues.some((issue) => issue.severity === "Grave");
   $("#successTitle").textContent = issues.length ? (severe ? "Veículo com bloqueio de deslocamento." : "Ocorrência registrada.") : "Tudo certo para seguir.";
-  $("#successText").textContent = issues.length ? `O formulário foi salvo com ${issues.length} ocorrência(s) e já está disponível para ${issues.some((issue) => issue.approvalRoute === "gestao") ? "a Gestão" : "a Liderança"}. O envio está concluído e não precisa de outra confirmação. ${sendResult.sent ? "A integração de e-mail foi acionada." : "Configure a integração para o envio automático por e-mail."}` : "Checklist concluído sem observações. Não é necessária aprovação da liderança.";
+  $("#successText").textContent = issues.length ? `O formulário foi salvo com ${issues.length} ocorrência(s) e já está disponível para ${issues.some((issue) => issue.approvalRoute === "gestao") ? "a Gestão" : "a Liderança"}. O envio está concluído e não precisa de outra confirmação. ${sendResult.unverified ? "O pedido de e-mail foi encaminhado; a confirmação depende da implantação do serviço de e-mail." : sendResult.sent ? "A integração de e-mail confirmou o recebimento." : "Configure a integração para o envio automático por e-mail."}` : "Checklist concluído sem observações. Não é necessária aprovação da liderança.";
   const form = $("#submittedForm");
   const occurrenceRows = issues.length ? issues.map((issue) => `<article class="submitted-issue ${esc(issue.severity.toLowerCase())}"><div><b>${esc(issue.itemName)}</b><span class="chip ${esc(issue.severity.toLowerCase())}">${esc(issue.severity)}</span></div><p>${esc(issue.description)}</p>${issue.photoPath ? `<img src="${esc(publicIssuePhotoUrl(issue))}" alt="Foto da ocorrência ${esc(issue.itemName)}" loading="lazy">` : ""}</article>`).join("") : `<p class="form-empty">Nenhuma ocorrência informada.</p>`;
   form.innerHTML = `<div class="form-top"><span class="form-mark">✓</span><div><small>URBAM FROTAS · RESPOSTA ENVIADA</small><h2>Formulário de inspeção</h2></div></div><div class="form-fields"><div><span>Colaborador</span><b>${esc(inspection.driver)}</b></div>${inspection.driverRegistration ? `<div><span>Matrícula</span><b>${esc(inspection.driverRegistration)}</b></div>` : ""}${inspection.driverRole ? `<div><span>Função</span><b>${esc(inspection.driverRole)}</b></div>` : ""}<div><span>Base</span><b>${esc(inspection.baseName)}</b></div>${inspection.driverEmail ? `<div><span>Cópia para e-mail</span><b>${esc(inspection.driverEmail)}</b></div>` : ""}<div><span>Veículo</span><b>Prefixo ${esc(vehicle.prefix)} · ${esc(vehicle.plate)}</b></div><div><span>Modelo</span><b>${esc(vehicle.model || vehicle.type)}</b></div><div><span>Quilometragem</span><b>${esc(inspection.odometer)} km</b></div><div><span>Data e hora</span><b>${esc(dateTime(inspection.createdAt))}</b></div></div><div class="form-occurrences"><h3>Ocorrências relatadas</h3>${occurrenceRows}</div>${inspection.notes ? `<div class="form-notes"><span>Observação geral</span><p>${esc(inspection.notes)}</p></div>` : ""}`;
