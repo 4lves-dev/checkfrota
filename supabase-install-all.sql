@@ -1208,3 +1208,33 @@ revoke all on function public.fleet_archive_issue(text,text) from public;
 revoke all on function public.fleet_restore_archived_issue(text) from public;
 grant execute on function public.fleet_archive_issue(text,text) to authenticated;
 grant execute on function public.fleet_restore_archived_issue(text) to authenticated;
+
+-- ============================================================================
+-- COMPONENTE: supabase-flow-v220.sql
+-- ============================================================================
+-- Responsável, prazo da próxima ação e trilha de servidor para cada chamado.
+alter table public.fleet_issues add column if not exists updated_at timestamptz not null default now();
+create index if not exists fleet_issues_updated_at_idx on public.fleet_issues (updated_at desc);
+
+create or replace function public.fleet_register_issue_timeline()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare event_action text; event_detail text;
+begin
+  new.updated_at := now();
+  if tg_op = 'INSERT' then
+    event_action := 'chamado_aberto'; event_detail := coalesce(new.data ->> 'itemName', 'Chamado aberto');
+  elsif coalesce(new.data -> 'maintenance' ->> 'status', '') is distinct from coalesce(old.data -> 'maintenance' ->> 'status', '') then
+    event_action := 'etapa_manutencao_atualizada'; event_detail := 'Situação: ' || coalesce(new.data -> 'maintenance' ->> 'status', 'Solicitada');
+  elsif new.status is distinct from old.status then
+    event_action := 'status_atualizado'; event_detail := 'Status: ' || new.status;
+  else
+    event_action := 'chamado_atualizado'; event_detail := 'Dados operacionais atualizados.';
+  end if;
+  insert into public.fleet_audit_events (issue_id, vehicle_id, action, detail, actor_email, snapshot)
+  values (new.id, new.vehicle_id, event_action, event_detail, auth.email(), new.data);
+  return new;
+end; $$;
+
+drop trigger if exists fleet_issue_timeline_trigger on public.fleet_issues;
+create trigger fleet_issue_timeline_trigger before insert or update on public.fleet_issues
+for each row execute function public.fleet_register_issue_timeline();

@@ -5,7 +5,7 @@
  */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "219";
+const APP_VERSION = "220";
 const SOFTWARE_SIGNATURE = Object.freeze({ owner: "LUCHTI ME", product: "URBAM Frotas", fingerprint: "LUCHTI-CHECKFROTA-URBAM-20260909-A7F3", notice: "Todos os direitos reservados" });
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v218";
 const CHECKLIST = [
@@ -1157,9 +1157,10 @@ function renderManagementCommandCenter() {
     ["Agendados hoje", count((issue) => maintenanceOf(issue).scheduledAt?.slice(0, 10) === todayValue), "scheduled"],
     ["Em manutenção", count((issue) => maintenanceOf(issue).status === "Em manutenção"), "in-maintenance"],
     ["Prontos para retirada", count((issue) => maintenanceOf(issue).status === "Veículo pronto para retirada"), "ready"],
+    ["Ações vencidas", count((issue) => isNextActionOverdue(issue)), "action-overdue"],
     ["Atrasados / vencidos", count((issue) => isManagementOverdue(issue)), "late"],
   ];
-  panel.innerHTML = `<div class="section-action"><div><p class="eyebrow">PRIORIDADES DO DIA</p><h3>Central de pendências</h3><p>Toque em uma opção para abrir os chamados correspondentes.</p></div><span class="chip grave">${open.length} em aberto</span></div><div class="command-center-grid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">${cards.map(([label, value, type]) => `<button type="button" class="command-card ${type} ${managerCommandFilter === type ? "active" : ""}" data-command-filter="${type}" aria-pressed="${managerCommandFilter === type}" style="min-width:0;${type === "late" ? "grid-column:span 2;" : ""}"><b>${value}</b><span>${label}</span><small>Ver chamados</small></button>`).join("")}</div>`;
+  panel.innerHTML = `<div class="section-action"><div><p class="eyebrow">PRIORIDADES DO DIA</p><h3>Central de pendências</h3><p>Toque em uma opção para abrir os chamados correspondentes.</p></div><span class="chip grave">${open.length} em aberto</span></div><div class="command-center-grid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">${cards.map(([label, value, type]) => `<button type="button" class="command-card ${type} ${managerCommandFilter === type ? "active" : ""}" data-command-filter="${type}" aria-pressed="${managerCommandFilter === type}" style="min-width:0;${["late","action-overdue"].includes(type) ? "grid-column:span 2;" : ""}"><b>${value}</b><span>${label}</span><small>Ver chamados</small></button>`).join("")}</div>`;
 }
 function renderVehicleTimelines() {
   const cards = $$("#vehiclesPanel .vehicle-card");
@@ -1200,6 +1201,11 @@ function isMissedAppointment(issue) {
 function isManagementOverdue(issue) {
   const maintenance = maintenanceOf(issue);
   return maintenance.status !== "Concluída" && (supplierSlaResult(issue)?.state === "late" || isMissedAppointment(issue));
+}
+function isNextActionOverdue(issue) {
+  const maintenance = maintenanceOf(issue);
+  if (!maintenance.nextActionAt || isArchived(issue) || issue.status === "resolvida" || maintenance.status === "Concluída") return false;
+  return new Date(maintenance.nextActionAt).getTime() < Date.now();
 }
 function notifyManagementMaintenanceWatch(issue, overdue) {
   if (returnNotificationPermission() !== "granted") return;
@@ -1369,7 +1375,7 @@ function issueType(issue) { if (isWashIssue(issue)) return "Lavagem"; if (/pneus
 function issueMatchesManagerFilters(issue) {
   const filter = managerIssueFilters;
   const maintenance = maintenanceOf(issue), todayValue = today();
-  const commandMatch = !managerCommandFilter || (managerCommandFilter === "approval" && !issue.leaderApproval && issue.approvalRoute !== "gestao") || (managerCommandFilter === "approved" && issue.leaderApproval?.status === "Aprovada" && maintenance.status === "Solicitada") || (managerCommandFilter === "scheduled" && maintenance.scheduledAt?.slice(0, 10) === todayValue) || (managerCommandFilter === "in-maintenance" && maintenance.status === "Em manutenção") || (managerCommandFilter === "ready" && maintenance.status === "Veículo pronto para retirada") || (managerCommandFilter === "late" && isManagementOverdue(issue));
+  const commandMatch = !managerCommandFilter || (managerCommandFilter === "approval" && !issue.leaderApproval && issue.approvalRoute !== "gestao") || (managerCommandFilter === "approved" && issue.leaderApproval?.status === "Aprovada" && maintenance.status === "Solicitada") || (managerCommandFilter === "scheduled" && maintenance.scheduledAt?.slice(0, 10) === todayValue) || (managerCommandFilter === "in-maintenance" && maintenance.status === "Em manutenção") || (managerCommandFilter === "ready" && maintenance.status === "Veículo pronto para retirada") || (managerCommandFilter === "action-overdue" && isNextActionOverdue(issue)) || (managerCommandFilter === "late" && isManagementOverdue(issue));
   return commandMatch && (!filter.base || issue.baseName === filter.base) && (!filter.vehicle || issue.vehicleId === filter.vehicle) && (!filter.date || localDateValue(issue.createdAt) === filter.date) && (!filter.owner || normalizeOwnerName(issue.ownerName) === filter.owner) && (!filter.type || issueType(issue) === filter.type);
 }
 function renderIssueFilters(issues) {
@@ -1377,7 +1383,7 @@ function renderIssueFilters(issues) {
   const vehicles = data.vehicles.filter((vehicle) => issues.some((issue) => issue.vehicleId === vehicle.id));
   const owners = [...new Set(issues.map((issue) => normalizeOwnerName(issue.ownerName)).filter(Boolean))].sort();
   const types = ["Manutenção mecânica", "Lavagem", "Documentação", "Pneus"].filter((type) => issues.some((issue) => issueType(issue) === type));
-  const commandLabel = { approval: "Aguardando líder", approved: "Aprovados para gestão", scheduled: "Agendados hoje", "in-maintenance": "Em manutenção", ready: "Prontos para retirada", late: "Atrasados" }[managerCommandFilter];
+  const commandLabel = { approval: "Aguardando líder", approved: "Aprovados para gestão", scheduled: "Agendados hoje", "in-maintenance": "Em manutenção", ready: "Prontos para retirada", "action-overdue": "Ações vencidas", late: "Atrasados" }[managerCommandFilter];
   return `<section class="manager-filters"><div><b>Pendências da frota${commandLabel ? ` · ${commandLabel}` : ""}</b><small>Filtre por base, veículo, categoria, data ou responsável.</small></div><label>Base<select id="issueFilterBase"><option value="">Todas</option>${bases.map((value) => `<option value="${esc(value)}" ${managerIssueFilters.base === value ? "selected" : ""}>${esc(value)}</option>`).join("")}</select></label><label>Veículo<select id="issueFilterVehicle"><option value="">Todos</option>${vehicles.map((vehicle) => `<option value="${esc(vehicle.id)}" ${managerIssueFilters.vehicle === vehicle.id ? "selected" : ""}>${esc(vehicle.prefix)} · ${esc(vehicle.plate)}</option>`).join("")}</select></label><label>Categoria<select id="issueFilterType"><option value="">Todas</option>${types.map((value) => `<option value="${esc(value)}" ${managerIssueFilters.type === value ? "selected" : ""}>${esc(value)}</option>`).join("")}</select></label><label>Data<input id="issueFilterDate" type="date" value="${esc(managerIssueFilters.date)}"></label><label>Responsável<select id="issueFilterOwner"><option value="">Todos</option>${owners.map((value) => `<option value="${esc(value)}" ${managerIssueFilters.owner === value ? "selected" : ""}>${esc(value)}</option>`).join("")}</select></label><button type="button" class="small-button" id="clearIssueFilters">Limpar filtros</button></section>`;
 }
 function bindIssueFilters() {
@@ -1385,7 +1391,7 @@ function bindIssueFilters() {
 }
 function empty() { return $("#emptyStateTemplate").content.cloneNode(true); }
 function maintenanceOf(issue) {
-  const maintenance = { status: "Solicitada", scheduledAt: "", returnAt: "", provider: "", address: "", service: "", feedback: "", supplierReplyAt: "", readyAt: "", pickupAt: "", pickupBy: "", deliveryAt: "", supplierDeadlineAt: "", driverNotifiedAt: "", driverNotifiedPhone: "", driverNotificationStatus: "", slaNoticeAt: "", slaNoticeType: "", slaEmailAt: "", ...issue.maintenance };
+  const maintenance = { status: "Solicitada", scheduledAt: "", returnAt: "", provider: "", address: "", service: "", feedback: "", responsible: "Gestão de Frota", nextActionAt: "", delayReason: "", supplierReplyAt: "", readyAt: "", pickupAt: "", pickupBy: "", deliveryAt: "", supplierDeadlineAt: "", driverNotifiedAt: "", driverNotifiedPhone: "", driverNotificationStatus: "", slaNoticeAt: "", slaNoticeType: "", slaEmailAt: "", ...issue.maintenance };
   const statusKey = String(maintenance.status || "").trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
   const canonicalStatus = {
     "": "Solicitada", solicitada: "Solicitada", solicitado: "Solicitada", pendente: "Solicitada", "aguardando aprovacao": "Solicitada", cancelada: "Solicitada",
@@ -1476,6 +1482,7 @@ function renderIssues() {
       ${approvalBox}
       ${issueTimelineMarkup(issue)}
       <p class="maintenance-meta"><b>Manutenção:</b> ${esc(maintenance.status)}${schedule}${maintenance.returnAt ? ` · retorno: ${dateTime(maintenance.returnAt)}` : ""}${maintenance.provider ? ` · ${esc(maintenance.provider)}` : ""}${maintenance.service ? ` · ${esc(maintenance.service)}` : ""}${maintenance.supplierReplyAt ? ` · retorno do fornecedor registrado: ${dateTime(maintenance.supplierReplyAt)}` : ""}${maintenance.driverNotifiedAt ? ` · retorno ao colaborador: ${dateTime(maintenance.driverNotifiedAt)}` : ""}</p>
+      <p class="maintenance-meta"><b>Próxima ação:</b> ${esc(maintenance.responsible || "Gestão de Frota")}${maintenance.nextActionAt ? ` · até ${dateTime(maintenance.nextActionAt)}` : " · prazo não definido"}${maintenance.delayReason ? ` · atraso: ${esc(maintenance.delayReason)}` : ""}${isNextActionOverdue(issue) ? " · ⚠ prazo vencido" : ""}</p>
       ${waitingForApproval ? `<p class="maintenance-meta"><b>Aguardando aprovação da liderança.</b> O agendamento ficará disponível após a decisão.</p>` : ""}
       <div class="issue-actions issue-primary-actions">${primaryAction.close ? `<button class="small-button primary-flow-action" data-close-issue="${issue.id}">${esc(primaryAction.label)}</button>` : `<button class="small-button primary-flow-action" data-maintenance-issue="${issue.id}" ${primaryAction.disabled ? "disabled" : ""}>${esc(primaryAction.label)}</button>`}${issue.photoPath ? `<button class="small-button photo-button" data-view-photo="${issue.id}">📷 Ver foto</button>` : ""}<button class="small-button whatsapp" data-whatsapp-issue="${issue.id}">Enviar ao proprietário</button>${masterAdmin ? `<button class="small-button danger-button" data-archive-issue="${issue.id}">Arquivar por erro</button>` : ""}</div>
     </article>`;
@@ -1725,7 +1732,24 @@ async function copyManagerMaintenanceMessage(issueId) {
   try { await navigator.clipboard.writeText(message); alert("Mensagem copiada."); }
   catch { alert("Não foi possível copiar automaticamente. Selecione o texto da mensagem e copie."); }
 }
-function maintenanceFormValues(existing = {}) { const status = $("#maintenanceStatus").value; const location = maintenanceMapLocation || {}; const feedback = $("#maintenanceFeedback").value.trim(); const isReady = status === "Veículo pronto para retirada"; return { ...existing, status, scheduledAt: $("#maintenanceScheduledAt").value, returnAt: $("#maintenanceReturnAt").value, provider: $("#maintenanceProvider").value.trim(), address: $("#maintenanceAddress").value.trim(), service: $("#maintenanceService").value.trim(), feedback, latitude: location.latitude ?? "", longitude: location.longitude ?? "", mapLabel: location.mapLabel || "", mapUrl: location.mapUrl || "", supplierReplyAt: isReady && feedback ? (existing.supplierReplyAt || new Date().toISOString()) : (existing.supplierReplyAt || ""), readyAt: isReady ? (existing.readyAt || new Date().toISOString()) : (existing.readyAt || ""), updatedAt: new Date().toISOString() }; }
+function maintenanceFormValues(existing = {}) {
+  const status = $("#maintenanceStatus").value;
+  const location = maintenanceMapLocation || {};
+  const feedback = $("#maintenanceFeedback").value.trim();
+  const isReady = status === "Veículo pronto para retirada";
+  return {
+    ...existing, status,
+    responsible: $("#maintenanceResponsible").value || "Gestão de Frota",
+    nextActionAt: $("#maintenanceNextActionAt").value,
+    delayReason: $("#maintenanceDelayReason").value,
+    scheduledAt: $("#maintenanceScheduledAt").value, returnAt: $("#maintenanceReturnAt").value,
+    provider: $("#maintenanceProvider").value.trim(), address: $("#maintenanceAddress").value.trim(),
+    service: $("#maintenanceService").value.trim(), feedback,
+    latitude: location.latitude ?? "", longitude: location.longitude ?? "", mapLabel: location.mapLabel || "", mapUrl: location.mapUrl || "",
+    supplierReplyAt: isReady && feedback ? (existing.supplierReplyAt || new Date().toISOString()) : (existing.supplierReplyAt || ""),
+    readyAt: isReady ? (existing.readyAt || new Date().toISOString()) : (existing.readyAt || ""), updatedAt: new Date().toISOString()
+  };
+}
 function buildMaintenanceMessage(issue) {
   const maintenance = maintenanceOf(issue);
   return `*RETORNO DE SERVIÇO — ${maintenance.status.toUpperCase()}*\n\nVeículo: Prefixo ${issue.vehiclePrefix || "—"} · ${issue.vehiclePlate} (${issue.vehicleModel || issue.vehicleType})\nQuilometragem: ${issue.odometer ?? "Não informada"} km\nSolicitação: ${issue.itemName}\n${maintenance.scheduledAt ? `Agendamento: ${dateTime(maintenance.scheduledAt)}\n` : ""}${maintenance.returnAt ? `Previsão de retorno: ${dateTime(maintenance.returnAt)}\n` : ""}${maintenance.provider ? `Oficina / responsável: ${maintenance.provider}\n` : ""}${maintenance.service ? `Serviço: ${maintenance.service}\n` : ""}${maintenance.feedback ? `Retorno: ${maintenance.feedback}\n` : ""}\nSolicitação original: ${issue.description}`;
@@ -1790,6 +1814,8 @@ function openMaintenanceIssue(issueId) {
   $("#maintenanceIssueSummary").textContent = `${issue.severity} · ${issue.description}`;
   const approvedWaitingSchedule = maintenance.status === "Solicitada" && canManageMaintenance(issue);
   $("#maintenanceStatus").value = approvedWaitingSchedule ? "Agendada" : (["Solicitada", "Agendada", "Em manutenção", "Veículo pronto para retirada"].includes(maintenance.status) ? maintenance.status : "Solicitada");
+  $("#maintenanceResponsible").value = maintenance.responsible || "Gestão de Frota";
+  $("#maintenanceNextActionAt").value = maintenance.nextActionAt ? maintenance.nextActionAt.slice(0, 16) : "";
   $("#maintenanceScheduledAt").value = maintenance.scheduledAt ? maintenance.scheduledAt.slice(0, 16) : "";
   $("#maintenanceProvider").value = maintenance.provider;
   const providers = [...new Set(data.issues.map((entry) => maintenanceOf(entry).provider).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
@@ -1801,6 +1827,7 @@ function openMaintenanceIssue(issueId) {
   $("#maintenanceService").value = maintenance.service || "";
   $("#maintenanceReturnAt").value = maintenance.returnAt ? maintenance.returnAt.slice(0, 16) : "";
   $("#maintenanceFeedback").value = maintenance.feedback;
+  $("#maintenanceDelayReason").value = maintenance.delayReason || "";
   const dialog = $("#maintenanceDialog");
   if (!dialog) return alert("Não foi possível abrir o agendamento. Atualize o aplicativo e tente novamente.");
   if (!dialog.open) dialog.showModal();
@@ -1824,6 +1851,9 @@ async function saveAndSendInternalMaintenanceUpdate(issue) {
     address: form.address,
     service: form.service,
     feedback: form.feedback,
+    responsible: form.responsible,
+    nextActionAt: form.nextActionAt,
+    delayReason: form.delayReason,
     latitude: form.latitude,
     longitude: form.longitude,
     mapLabel: form.mapLabel,
