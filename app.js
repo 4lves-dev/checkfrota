@@ -5,7 +5,7 @@
  */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "215";
+const APP_VERSION = "217";
 const SOFTWARE_SIGNATURE = Object.freeze({ owner: "LUCHTI ME", product: "URBAM Frotas", fingerprint: "LUCHTI-CHECKFROTA-URBAM-20260909-A7F3", notice: "Todos os direitos reservados" });
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v201";
 const CHECKLIST = [
@@ -26,8 +26,8 @@ const BASES = { Vertical: "5512981567218", Abrigo: "5512997884887", Horizontal: 
 const LEADER_BASE_LABELS = { Vertical: "Base Vertical / Segurança / Elétrica", Horizontal: "Base Horizontal", Abrigo: "Base Abrigo / Manutenção / Linha Verde / Lavagem" };
 const DRIVER_NOTIFICATION_PHONE = "";
 const LEGACY_EMAIL_AUTOMATION_URL = "https://script.google.com/macros/s/AKfycbyfdwx76UkQcv2fz1HXLERZrcVMfW1iaNvFALmFET1kIBBeXAQVvkH89iviTDxBCQOA/exec";
-const PREVIOUS_EMAIL_AUTOMATION_URL = "https://script.google.com/macros/s/AKfycbyn5t8_lb3dhSvrUKzDzritfXOO1O7BAUo_vX_9nAcNgAgzq5176ctJ0TT3B19rAmcV/exec";
-const EMAIL_AUTOMATION_URL = "https://script.google.com/macros/s/AKfycbxX-KXsBQ0BZVv4axe42lG9QLfsQ7OC4Ig4Pgscfmur4QhXftk7cit1IGK9RQWzKaIR/exec";
+const PREVIOUS_EMAIL_AUTOMATION_URL = "https://script.google.com/macros/s/AKfycbxX-KXsBQ0BZVv4axe42lG9QLfsQ7OC4Ig4Pgscfmur4QhXftk7cit1IGK9RQWzKaIR/exec";
+const EMAIL_AUTOMATION_URL = "https://script.google.com/macros/s/AKfycbyn5t8_lb3dhSvrUKzDzritfXOO1O7BAUo_vX_9nAcNgAgzq5176ctJ0TT3B19rAmcV/exec";
 const EMAIL_COPY_RECIPIENT = "urbamfrota@gmail.com";
 const MASTER_ADMIN_EMAIL = "luciano.silva@urbam.com.br";
 const MAINTENANCE_GROUP_PHONE = "5512996181645";
@@ -1928,6 +1928,41 @@ async function restoreArchivedIssue(issueId) {
   } catch (error) { alert("Não foi possível restaurar. Verifique a conexão e se a atualização do banco foi aplicada."); }
 }
 function saveSettings() { if (!requireMasterAccess()) return; data.settings.webhookUrl = $("#webhookUrl").value.trim(); data.settings.maintenancePhone = phoneOnly($("#maintenancePhone").value); data.settings.maintenanceGroupPhone = phoneOnly($("#maintenanceGroupPhone").value); data.settings.leaderPhone = phoneOnly($("#leaderPhone").value); data.settings.fleetManagerPhone = phoneOnly($("#fleetManagerPhone").value); saveData(); $("#settingsDialog").close(); }
+function configuredAutomationUrl() { return $("#webhookUrl")?.value.trim() || data.settings.webhookUrl || ""; }
+function openEmailAutomation() {
+  if (!requireMasterAccess()) return;
+  const url = configuredAutomationUrl();
+  if (!url) return alert("Informe e salve a URL de envio antes de verificar a automação.");
+  const status = $("#emailAutomationStatus");
+  if (status) status.textContent = "Abrindo o endereço de diagnóstico. O resultado esperado é um JSON com \"ok\": true.";
+  window.open(url, "_blank", "noopener");
+}
+async function sendEmailAutomationTest() {
+  if (!requireMasterAccess()) return;
+  const url = configuredAutomationUrl();
+  if (!url) return alert("Informe e salve a URL de envio antes de realizar o teste.");
+  if (!confirm("Enviar um e-mail de teste para urbamfrota@gmail.com? Nenhum chamado real será criado.")) return;
+  const button = $("#sendEmailAutomationTest");
+  if (button) { button.disabled = true; button.textContent = "Encaminhando teste..."; }
+  try {
+    const result = await sendToIntegration({
+      type: "email-automation-test",
+      inspection: { id: `TESTE-EMAIL-${Date.now()}`, createdAt: new Date().toISOString(), driver: "Teste de integração", driverRegistration: "000000", baseName: "Gestão", odometer: "0" },
+      vehicle: { prefix: "TESTE", plate: "TESTE", type: "Sistema" },
+      issues: []
+    });
+    const status = $("#emailAutomationStatus");
+    if (result.sent) {
+      if (status) status.textContent = "Teste encaminhado ao Apps Script. Confirme o recebimento em urbamfrota@gmail.com; a tela não declara entrega sem confirmação do serviço.";
+      alert("Teste encaminhado. Confirme o recebimento em urbamfrota@gmail.com.");
+    } else {
+      if (status) status.textContent = "Não foi possível encaminhar o teste. Confira a URL e a publicação do Apps Script.";
+      alert("O teste não foi encaminhado. Verifique a URL e a implantação do Apps Script.");
+    }
+  } finally {
+    if (button) { button.disabled = false; button.textContent = "Enviar teste por e-mail"; }
+  }
+}
 function dismissInstallBanner() { sessionStorage.setItem("checkfrota-install-dismissed", "1"); $("#installBanner").hidden = true; }
 
 function isInstalled() {
@@ -1982,6 +2017,8 @@ document.addEventListener("click", (event) => {
   if (target.dataset.severity) { issueDraft.severity = target.dataset.severity; $$(".severity").forEach((button) => button.classList.toggle("active", button === target)); }
   if (target.id === "saveIssue") { event.preventDefault(); saveIssue(); }
   if (target.id === "openSettings") { if (!requireMasterAccess()) return; $("#webhookUrl").value = data.settings.webhookUrl; $("#maintenancePhone").value = data.settings.maintenancePhone; $("#maintenanceGroupPhone").value = data.settings.maintenanceGroupPhone || ""; $("#leaderPhone").value = data.settings.leaderPhone || ""; $("#fleetManagerPhone").value = data.settings.fleetManagerPhone || ""; $("#settingsDialog").showModal(); }
+  if (target.id === "openEmailAutomation") openEmailAutomation();
+  if (target.id === "sendEmailAutomationTest") void sendEmailAutomationTest();
   if (target.id === "installApp" || target.id === "installBannerButton" || target.id === "installFromDialog" || target.dataset.install === "app") requestInstall();
   if (target.id === "dismissInstallBanner") dismissInstallBanner();
   if (target.id === "closeInstallDialog") $("#installDialog").close();
