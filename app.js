@@ -5,7 +5,7 @@
  */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "227";
+const APP_VERSION = "228";
 const SOFTWARE_SIGNATURE = Object.freeze({ owner: "LUCHTI ME", product: "URBAM Frotas", fingerprint: "LUCHTI-CHECKFROTA-URBAM-20260909-A7F3", notice: "Todos os direitos reservados" });
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v218";
 const CHECKLIST = [
@@ -291,12 +291,20 @@ async function syncCloudOutbox() {
   if (!queue.length) { if (!localStorage.getItem("checkfrota-last-sync")) localStorage.setItem("checkfrota-last-sync", new Date().toISOString()); setCloudSyncStatus(`✓ Sincronizado às ${syncTimeText()}`, "ok"); return 0; }
   setCloudSyncStatus(`Sincronizando ${queue.length} envio(s)...`, "pending");
   const remaining = [];
+  let lastFailure = "";
   for (const entry of queue) {
     try { await cloudSave(entry.table, entry.row); }
-    catch { remaining.push(entry); }
+    catch (error) {
+      // Um 409 para o mesmo UUID indica que o primeiro envio já chegou ao
+      // banco. Não mantenha o celular preso em uma fila que já foi entregue.
+      const detail = String(error?.message || "");
+      if (/\b409\b|duplicate key|duplicado/i.test(detail)) continue;
+      lastFailure = detail.replace(/^Banco de dados:\s*/i, "").slice(0, 72);
+      remaining.push(entry);
+    }
   }
   localStorage.setItem(OUTBOX_KEY, JSON.stringify(remaining));
-  if (remaining.length) setCloudSyncStatus(`${remaining.length} envio(s) aguardando nova tentativa`, "pending");
+  if (remaining.length) setCloudSyncStatus(`${remaining.length} envio(s) aguardando nova tentativa${lastFailure ? ` · ${lastFailure}` : ""}`, "pending");
   else { localStorage.setItem("checkfrota-last-sync", new Date().toISOString()); setCloudSyncStatus(`✓ Sincronizado às ${syncTimeText()}`, "ok"); }
   return queue.length - remaining.length;
 }
@@ -917,160 +925,7 @@ function renderChecklist() {
     const issueHint = state.status === "issue" ? `<small class="chip ${state.issue.severity.toLowerCase()}">${state.issue.severity}</small>` : "";
     return `<article class="check-item ${issueClass}">
       <div><span class="check-name">${esc(item.name)}</span><span class="check-category">${esc(item.category)} ${issueHint}</span></div>
-      <div class="check-controls">
-        <button class="state-button ok ${state.status === "ok" ? "active" : ""}" data-state="ok" data-item="${item.id}" aria-label="${esc(item.name)} está em ordem" title="Em ordem">✓</button>
-        <button class="state-button issue ${state.status === "issue" ? "active" : ""}" data-state="issue" data-item="${item.id}" aria-label="${esc(item.name)} tem problema" title="Registrar problema">!</button>
-      </div>
-    </article>`;
-  }).join("");
-  updateProgress();
-}
-function updateProgress() {
-  const completed = Object.values(current.states).filter((state) => state.status !== "pending").length;
-  $("#progressText").textContent = `${completed} de ${CHECKLIST.length} itens verificados`;
-  $("#progressBar").style.width = `${(completed / CHECKLIST.length) * 100}%`;
-}
-
-function openIssue(itemId) {
-  issueDraft = { itemId, severity: current.states[itemId]?.issue?.severity || "Leve" };
-  const item = checkById(itemId);
-  $("#issueItemName").textContent = item.name;
-  $("#issueDescription").value = current.states[itemId]?.issue?.description || "";
-  $("#issuePhoto").value = "";
-  $$(".severity").forEach((button) => button.classList.toggle("active", button.dataset.severity === issueDraft.severity));
-  $("#issueDialog").showModal();
-}
-function saveIssue() {
-  const description = $("#issueDescription").value.trim();
-  if (!description) { $("#issueDescription").reportValidity(); return; }
-  const photo = $("#issuePhoto").files[0];
-  if (photo && !["image/jpeg", "image/png", "image/webp", "image/heic"].includes(photo.type)) return alert("Envie apenas uma foto JPEG, PNG, WEBP ou HEIC. Vídeos e outros arquivos não são aceitos.");
-  if (photo && photo.size > 20 * 1024 * 1024) return alert("A foto escolhida tem mais de 20 MB. Tire outra foto com menor tamanho antes de enviar.");
-  current.states[issueDraft.itemId] = {
-    status: "issue",
-    issue: { severity: issueDraft.severity, description, photoName: photo?.name || "", photoFile: photo || null },
-  };
-  $("#issueDialog").close();
-  renderChecklist();
-}
-function reviewChecklist() {
-  const pending = CHECKLIST.filter((item) => current.states[item.id]?.status === "pending");
-  if (pending.length) return alert(`Faltam ${pending.length} item(ns) para verificar. Marque ✓ ou ! em todos eles.`);
-  const issues = getCurrentIssues();
-  $("#reviewSummary").innerHTML = `<section class="review-box card">
-    <div class="review-row"><span>Colaborador</span><b>${esc(current.driver)}</b></div>
-    ${current.driverRegistration ? `<div class="review-row"><span>Matrícula</span><b>${esc(current.driverRegistration)}</b></div>` : ""}
-    ${current.driverRole ? `<div class="review-row"><span>Função</span><b>${esc(current.driverRole)}</b></div>` : ""}
-    ${current.driverEmail ? `<div class="review-row"><span>Cópia do formulário</span><b>${esc(current.driverEmail)}</b></div>` : ""}
-    <div class="review-row"><span>Veículo</span><b>Prefixo ${esc(vehicleById(current.vehicleId).prefix || "—")} · ${esc(vehicleById(current.vehicleId).plate)}</b></div>
-    <div class="review-row"><span>Quilometragem</span><b>${esc(current.odometer)} km</b></div>
-    <div class="review-row"><span>Itens em ordem</span><span class="chip ok">${CHECKLIST.length - issues.length} OK</span></div>
-    <div class="review-row"><span>Ocorrências</span>${issues.length ? `<span class="chip ${highestSeverity(issues).toLowerCase()}">${issues.length} encontrada(s)</span>` : `<span class="chip ok">Nenhuma</span>`}</div>
-  </section>${issues.length ? `<section class="review-box card">${issues.map((issue) => `<div class="review-row"><span>${esc(issue.item.name)}</span><span class="chip ${issue.severity.toLowerCase()}">${esc(issue.severity)}</span></div>`).join("")}</section>` : ""}`;
-  $("#generalNotes").value = current.notes;
-  $("#requestWash").checked = Boolean(current.washRequested);
-  $("#washDetails").value = current.washDetails || "";
-  showScreen("review");
-}
-function getCurrentIssues() {
-  return CHECKLIST.filter((item) => current.states[item.id]?.status === "issue").map((item) => ({ item, ...current.states[item.id].issue }));
-}
-function severityRank(severity) { return ({ Leve: 1, "Média": 2, Grave: 3 }[severity] || 0); }
-function highestSeverity(issues) { return issues.reduce((highest, issue) => severityRank(issue.severity) > severityRank(highest) ? issue.severity : highest, "Leve"); }
-async function cloudDuplicateItems(vehicle, currentIssues) {
-  if (!CLOUD?.url || !currentIssues.length) return [];
-  try {
-    const rows = await cloudRpc("fleet_open_duplicates", { p_vehicle_prefix: String(vehicle.prefix || ""), p_item_names: currentIssues.map((issue) => issue.item.name) });
-    return (rows || []).map((row) => row.item_name).filter(Boolean);
-  } catch (error) {
-    console.warn("Validação central de duplicidade indisponível; usando a validação local.", error);
-    return [];
-  }
-}
-
-async function submitChecklist() {
-  if (submissionInProgress || submissionCompleted) return;
-  submissionInProgress = true;
-  setSubmissionBusy(true);
-  try {
-  current.notes = $("#generalNotes").value.trim();
-  current.washRequested = $("#requestWash").checked;
-  current.washDetails = $("#washDetails").value.trim();
-  // A localização ajuda a equipe a identificar o ponto do chamado, mas nunca
-  // pode impedir o registro de uma ocorrência. Reaproveitamos o ponto obtido
-  // ao iniciar o checklist e, se ele não existir, tentamos uma última captura.
-  // Em caso de GPS indisponível ou baixa precisão, o formulário segue com a
-  // indicação correspondente para que a manutenção não fique sem registro.
-  let finalOpeningLocation = current.openingLocation || await captureOpeningLocation();
-  if (finalOpeningLocation && Number(finalOpeningLocation.accuracy) > 100) {
-    finalOpeningLocation = { ...finalOpeningLocation, precisionWarning: "Localização aproximada; GPS com precisão acima de 100 metros." };
-  }
-  current.openingLocation = finalOpeningLocation || null;
-  const vehicle = vehicleById(current.vehicleId);
-  const inspection = {
-    id: crypto.randomUUID(), createdAt: new Date().toISOString(), softwareSignature: SOFTWARE_SIGNATURE, driver: current.driver, driverRegistration: current.driverRegistration, driverRole: current.driverRole, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, openingLocation: current.openingLocation, approvalRoute: current.directToManagement ? "gestao" : "lideranca",
-    vehicleId: vehicle.id, vehiclePrefix: vehicle.prefix || "", vehiclePlate: vehicle.plate, vehicleType: vehicle.type, vehicleModel: vehicle.model || "", vehicleBase: vehicle.base || "", odometer: current.odometer, notes: current.notes, washRequested: current.washRequested, washDetails: current.washDetails, correctionOf: current.correctionOf || "",
-    items: CHECKLIST.map((item) => ({ ...item, ...current.states[item.id] })),
-  };
-  const currentIssues = [...getCurrentIssues(), ...(current.washRequested ? [{ item: { name: "Solicitação de lavagem", category: "Lavagem" }, severity: "Leve", description: current.washDetails || "Solicitação de lavagem do veículo." }] : [])];
-  const duplicateItems = currentIssues.filter((candidate) => data.issues.some((existing) => existing.status !== "resolvida" && !isArchived(existing) && String(existing.vehicleId || existing.vehiclePrefix) === String(vehicle.id || vehicle.prefix) && driverNameKey(existing.itemName) === driverNameKey(candidate.item.name)));
-  const cloudDuplicates = await cloudDuplicateItems(vehicle, currentIssues);
-  const duplicateLabels = [...new Set([...duplicateItems.map((item) => item.item.name), ...cloudDuplicates])];
-  if (duplicateLabels.length) {
-    const labels = duplicateLabels.join(", ");
-    if (!confirm(`Já existe chamado aberto para este veículo em: ${labels}.\n\nDeseja realmente registrar outro chamado?`)) return;
-  }
-  inspection.status = currentIssues.length ? "Com ocorrência" : "Concluído sem observação";
-  inspection.completedAt = currentIssues.length ? "" : new Date().toISOString();
-  const newIssues = currentIssues.map((issue) => ({
-    id: crypto.randomUUID(), inspectionId: inspection.id, status: "aberta", createdAt: inspection.createdAt,
-    softwareSignature: SOFTWARE_SIGNATURE, driver: current.driver, driverRegistration: current.driverRegistration, driverRole: current.driverRole, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, openingLocation: current.openingLocation, approvalRoute: current.directToManagement ? "gestao" : "lideranca", vehicleId: vehicle.id, vehiclePrefix: vehicle.prefix || "", vehiclePlate: vehicle.plate, vehicleType: vehicle.type, vehicleModel: vehicle.model || "", vehicleBase: BASE_BY_PREFIX[vehicle.prefix] || vehicle.base || "", odometer: current.odometer,
-    ownerName: vehicle.ownerName, ownerPhone: vehicle.ownerPhone, email: vehicle.email,
-    itemName: issue.item.name, severity: issue.severity, description: issue.description, photoName: issue.photoName, _photoFile: issue.photoFile || null,
-    correctionOf: current.correctionOf || "", maintenance: { status: "Solicitada", scheduledAt: "", provider: "", feedback: "", updatedAt: "" },
-  }));
-  try { await Promise.all(newIssues.map(async (issue) => { const compressedPhoto = await compressPhoto(issue._photoFile); issue.photoSize = compressedPhoto?.size || 0; issue.photoPath = await uploadIssuePhoto(issue, compressedPhoto); delete issue._photoFile; })); }
-  catch (error) { alert("Não foi possível preparar a foto. Tente outra imagem em formato JPEG, PNG, WEBP ou HEIC."); return; }
-  vehicle.odometer = current.odometer;
-  data.inspections.unshift(inspection);
-  data.issues.unshift(...newIssues);
-  saveData();
-  // A partir deste ponto o chamado já existe com segurança no aparelho. Bloqueie
-  // imediatamente novos toques, mesmo que a gravação na nuvem esteja lenta.
-  submissionCompleted = true;
-  sessionStorage.setItem("checkfrota-last-submission", JSON.stringify({ id: inspection.id, at: Date.now() }));
-  setSubmissionBusy(false);
-  let cloudSaved = true;
-  try { cloudSaved = await cloudSyncSubmission(inspection, newIssues); }
-  catch (error) { cloudSaved = false; console.warn("Não foi possível gravar o chamado no banco", error); }
-  if (!cloudSaved) alert("O checklist ficou salvo com segurança neste aparelho e será enviado automaticamente assim que a conexão voltar.");
-  // O colaborador só recebe e visualiza o retorno quando a Gestão agendar.
-  // Antes disso, o chamado segue apenas para Liderança/Gestão, evitando dúvida
-  // no aparelho de quem abriu a solicitação.
-  scheduledAppointments = scheduledAppointments.filter((issue) => !newIssues.some((created) => created.id === issue.id));
-  renderScheduledAppointments();
-  renderDailyChecklistAlert();
-  await finishCorrectionRequest(current.correctionOf, inspection, newIssues.length > 0);
-  const emailDeliveryId = crypto.randomUUID();
-  try { await cloudSave("fleet_email_deliveries", { id: emailDeliveryId, inspection_id: inspection.id, recipient: EMAIL_COPY_RECIPIENT, status: "encaminhado" }); }
-  catch (error) { console.warn("Rastreio de e-mail será criado após instalar a atualização do banco", error); }
-  const sendResult = await sendToIntegration({ inspection, vehicle, issues: newIssues, emailDeliveryId });
-  await showCompletion(inspection, vehicle, newIssues, sendResult);
-  current = { driver: current.driver, driverRegistration: current.driverRegistration, driverRole: current.driverRole, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, vehicleId: vehicle.id, odometer: "", openingLocation: null, states: {}, notes: "" };
-  saveData();
-  } finally {
-    submissionInProgress = false;
-    setSubmissionBusy(false);
-  }
-}
-
-function setSubmissionBusy(busy) {
-  const button = $("#submitChecklist");
-  document.body.classList.toggle("submission-busy", busy);
-  document.body.classList.toggle("submission-complete", submissionCompleted);
-  document.body.setAttribute("aria-busy", String(busy));
-  if (!button) return;
-  button.disabled = busy || submissionCompleted;
+      <div clas.disabled = busy || submissionCompleted;
   button.setAttribute("aria-disabled", String(busy || submissionCompleted));
   button.innerHTML = busy ? `Enviando formulário… <span class="submit-spinner" aria-hidden="true"></span>` : submissionCompleted ? `Formulário enviado <span>✓</span>` : `Concluir e gerar formulário <span>✓</span>`;
 }
