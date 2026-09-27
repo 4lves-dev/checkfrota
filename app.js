@@ -5,7 +5,7 @@
  */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "221";
+const APP_VERSION = "222";
 const SOFTWARE_SIGNATURE = Object.freeze({ owner: "LUCHTI ME", product: "URBAM Frotas", fingerprint: "LUCHTI-CHECKFROTA-URBAM-20260909-A7F3", notice: "Todos os direitos reservados" });
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v218";
 const CHECKLIST = [
@@ -990,10 +990,16 @@ async function submitChecklist() {
   current.notes = $("#generalNotes").value.trim();
   current.washRequested = $("#requestWash").checked;
   current.washDetails = $("#washDetails").value.trim();
-  const finalOpeningLocation = await captureOpeningLocation();
-  if (!finalOpeningLocation) return alert("Não foi possível registrar o local de abertura. Ative a localização precisa do celular e tente enviar novamente.");
-  if (Number(finalOpeningLocation.accuracy) > 100) return alert(`A precisão atual é de aproximadamente ${Math.round(finalOpeningLocation.accuracy)} metros. Vá para um local com melhor sinal de GPS e tente enviar novamente.`);
-  current.openingLocation = finalOpeningLocation;
+  // A localização ajuda a equipe a identificar o ponto do chamado, mas nunca
+  // pode impedir o registro de uma ocorrência. Reaproveitamos o ponto obtido
+  // ao iniciar o checklist e, se ele não existir, tentamos uma última captura.
+  // Em caso de GPS indisponível ou baixa precisão, o formulário segue com a
+  // indicação correspondente para que a manutenção não fique sem registro.
+  let finalOpeningLocation = current.openingLocation || await captureOpeningLocation();
+  if (finalOpeningLocation && Number(finalOpeningLocation.accuracy) > 100) {
+    finalOpeningLocation = { ...finalOpeningLocation, precisionWarning: "Localização aproximada; GPS com precisão acima de 100 metros." };
+  }
+  current.openingLocation = finalOpeningLocation || null;
   const vehicle = vehicleById(current.vehicleId);
   const inspection = {
     id: crypto.randomUUID(), createdAt: new Date().toISOString(), softwareSignature: SOFTWARE_SIGNATURE, driver: current.driver, driverRegistration: current.driverRegistration, driverRole: current.driverRole, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, openingLocation: current.openingLocation, approvalRoute: current.directToManagement ? "gestao" : "lideranca",
