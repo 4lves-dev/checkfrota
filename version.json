@@ -1,6 +1,6 @@
 {
-  "version": "228",
+  "version": "229",
   "released_at": "2026-09-27",
-  "notes": "Fila de envio mais clara e sem repetição quando o chamado já foi gravado no banco."
+  "notes": "Tela do colaborador responde imediatamente; sincronização e e-mail seguem em segundo plano."
 }
 
