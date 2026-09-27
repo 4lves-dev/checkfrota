@@ -24,6 +24,27 @@ function doGet() {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
+function escapeHtml_(value) {
+  return String(value === undefined || value === null ? '—' : value)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+
+function checklistRow_(item, index) {
+  const issue = item && item.status === 'issue';
+  const title = escapeHtml_(item && item.name || `Item ${index + 1}`);
+  const detail = issue
+    ? `OCORRÊNCIA: ${escapeHtml_(item.issue && item.issue.description || item.description || 'Verificar apontamento')}`
+    : 'EM ORDEM: Item em ordem';
+  const color = issue ? '#b42318' : '#087443';
+  const icon = issue ? '!' : '✓';
+  return `<tr><td style="width:40px;padding:13px 10px;border-bottom:1px solid #dce6ee;text-align:center;color:${color};font-weight:800;font-size:18px">${icon}</td><td style="padding:11px 10px;border-bottom:1px solid #dce6ee"><div style="font-weight:700;color:#183a59">${index + 1}. ${title}</div><div style="margin-top:3px;font-size:11px;font-weight:700;color:${color}">${detail}</div></td></tr>`;
+}
+
+function issueBlock_(issue) {
+  return `<div style="margin:10px 0;padding:13px 14px;border:1px solid #f1b7b1;border-left:4px solid #c63b32;border-radius:8px;background:#fff8f7"><b style="color:#8d241e">${escapeHtml_(issue.itemName || 'Ocorrência')}</b><span style="float:right;border-radius:12px;padding:3px 8px;background:#fde7e5;color:#9d251f;font-size:11px;font-weight:700">${escapeHtml_(issue.severity || 'Não informada')}</span><p style="margin:7px 0 0;color:#4b5560;font-size:13px;line-height:1.45">${escapeHtml_(issue.description || 'Sem descrição')}</p></div>`;
+}
+
 function doPost(e) {
   let payload = {};
   try {
@@ -37,7 +58,14 @@ function doPost(e) {
     const issueText = issues.length
       ? issues.map(issue => `• ${issue.itemName || 'Ocorrência'} — ${issue.severity || 'Não informada'}\n  ${issue.description || 'Sem descrição'}`).join('\n\n')
       : 'Checklist concluído sem ocorrências.';
-    const subject = `[URBAM Frotas] Formulário ${inspection.id} · Prefixo ${vehicle.prefix}`;
+    const items = Array.isArray(inspection.items) ? inspection.items : [];
+    const checklistRows = items.length
+      ? items.map(checklistRow_).join('')
+      : '<tr><td style="padding:13px;color:#526475">Detalhamento do checklist não foi informado.</td></tr>';
+    const issueHtml = issues.length
+      ? issues.map(issueBlock_).join('')
+      : '<div style="padding:13px 14px;border:1px solid #b8dfc9;border-left:4px solid #087443;border-radius:8px;background:#f4fcf7;color:#087443;font-weight:700">✓ Checklist concluído sem ocorrências.</div>';
+    const subject = `[URBAM Frotas] Checklist · Prefixo ${vehicle.prefix}`;
     const body = [
       'URBAM Frotas — formulário de inspeção', '',
       `Protocolo: ${inspection.id}`,
@@ -50,7 +78,8 @@ function doPost(e) {
       inspection.notes ? `\nObservação geral: ${inspection.notes}` : ''
     ].filter(Boolean).join('\n');
 
-    MailApp.sendEmail({ to: URBAM_FROTAS_EMAIL, subject, body, name: 'URBAM Frotas' });
+    const htmlBody = `<!doctype html><html><body style="margin:0;padding:24px;background:#f2f5f8;font-family:Arial,sans-serif;color:#17324a"><main style="max-width:680px;margin:0 auto;background:#fff;border:1px solid #dce6ee;border-radius:12px;overflow:hidden"><header style="padding:22px 28px;background:#083b64;color:#fff"><div style="font-size:11px;font-weight:700;letter-spacing:1px">URBAM FROTAS · FORMULÁRIO ENVIADO</div><h1 style="margin:7px 0 0;font-size:24px">Checklist de inspeção</h1></header><section style="padding:24px 28px"><p style="margin:0 0 18px;color:#075a91;font-size:12px;font-weight:700">PROTOCOLO: ${escapeHtml_(inspection.id)}</p><h2 style="font-size:17px;margin:0 0 12px;color:#183a59">Dados do formulário</h2><table style="width:100%;border-collapse:collapse;font-size:13px"><tr><td style="width:40%;padding:9px 7px;border-bottom:1px solid #dce6ee;color:#617181">Motorista</td><td style="padding:9px 7px;border-bottom:1px solid #dce6ee;font-weight:700">${escapeHtml_(inspection.driver)}</td></tr><tr><td style="padding:9px 7px;border-bottom:1px solid #dce6ee;color:#617181">Matrícula</td><td style="padding:9px 7px;border-bottom:1px solid #dce6ee;font-weight:700">${escapeHtml_(inspection.driverRegistration)}</td></tr><tr><td style="padding:9px 7px;border-bottom:1px solid #dce6ee;color:#617181">Base</td><td style="padding:9px 7px;border-bottom:1px solid #dce6ee;font-weight:700">${escapeHtml_(inspection.baseName)}</td></tr><tr><td style="padding:9px 7px;border-bottom:1px solid #dce6ee;color:#617181">Veículo</td><td style="padding:9px 7px;border-bottom:1px solid #dce6ee;font-weight:700">Prefixo ${escapeHtml_(vehicle.prefix)} · ${escapeHtml_(vehicle.plate)} · ${escapeHtml_(vehicle.model || vehicle.type)}</td></tr><tr><td style="padding:9px 7px;border-bottom:1px solid #dce6ee;color:#617181">Quilometragem</td><td style="padding:9px 7px;border-bottom:1px solid #dce6ee;font-weight:700">${escapeHtml_(inspection.odometer)} km</td></tr><tr><td style="padding:9px 7px;border-bottom:1px solid #dce6ee;color:#617181">Data e hora</td><td style="padding:9px 7px;border-bottom:1px solid #dce6ee;font-weight:700">${date}</td></tr></table><h2 style="font-size:17px;margin:25px 0 12px;color:#183a59">Checklist completo</h2><table style="width:100%;border-collapse:separate;border-spacing:0;border:1px solid #dce6ee;border-radius:8px;overflow:hidden">${checklistRows}</table><h2 style="font-size:17px;margin:25px 0 12px;color:#183a59">Ocorrências relatadas</h2>${issueHtml}${inspection.notes ? `<section style="margin-top:18px;padding:13px 14px;border-radius:8px;background:#f3f7fa"><b style="font-size:12px;color:#506274">OBSERVAÇÃO GERAL</b><p style="margin:6px 0 0;font-size:13px;line-height:1.45">${escapeHtml_(inspection.notes)}</p></section>` : ''}</section><footer style="padding:15px 28px;background:#f4f7f9;color:#607181;font-size:11px">URBAM Frotas · Registro automático de inspeção</footer></main></body></html>`;
+    MailApp.sendEmail({ to: URBAM_FROTAS_EMAIL, subject, body, htmlBody, name: 'URBAM Frotas' });
     confirmDelivery_(payload.emailDeliveryId, 'enviado');
     return ContentService.createTextOutput(JSON.stringify({ ok: true, protocol: inspection.id }))
       .setMimeType(ContentService.MimeType.JSON);
