@@ -1,6 +1,6 @@
 {
-  "version": "227",
+  "version": "228",
   "released_at": "2026-09-27",
-  "notes": "Fluxo de mensagens restaurado: avisos por aplicativo, WhatsApp manual e destinatários separados por etapa."
+  "notes": "Fila de envio mais clara e sem repetição quando o chamado já foi gravado no banco."
 }
 
