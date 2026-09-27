@@ -5,7 +5,7 @@
  */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "224";
+const APP_VERSION = "225";
 const SOFTWARE_SIGNATURE = Object.freeze({ owner: "LUCHTI ME", product: "URBAM Frotas", fingerprint: "LUCHTI-CHECKFROTA-URBAM-20260909-A7F3", notice: "Todos os direitos reservados" });
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v218";
 const CHECKLIST = [
@@ -31,7 +31,6 @@ const RETIRED_EMAIL_AUTOMATION_URL = "https://script.google.com/macros/s/AKfycby
 const EMAIL_COPY_RECIPIENT = "urbamfrota@gmail.com";
 const MASTER_ADMIN_EMAIL = "luciano.silva@urbam.com.br";
 const MAINTENANCE_GROUP_PHONE = "5512996181645";
-const DAILY_CHECKLIST_ALERT_PHONE = "5512981111336";
 // Enquanto os aplicativos estiverem abertos, as informações operacionais
 // precisam aparecer rapidamente nos três painéis. Em segundo plano, as
 // notificações do celular continuam sendo responsabilidade do serviço de push.
@@ -1304,11 +1303,13 @@ function renderDailyChecklistAlert() {
   }
   if (!missing.length) { panel.className = "daily-checklist-alert clear"; panel.innerHTML = `<b>✓ Checklist diário em dia</b><p>Todos os veículos cadastrados possuem checklist registrado hoje.</p>`; return; }
   const automaticKey = `checkfrota-daily-checklist-dispatch-${dailyChecklistAlertContent(missing).dispatchId}`;
+  const coordinatorConfigured = Boolean(data.settings.coordinatorPhone);
   const delivery = data.settings.webhookUrl
     ? (localStorage.getItem(automaticKey) ? "✓ Resumo automático encaminhado pela integração." : "O resumo será encaminhado automaticamente pela integração após a sincronização do painel.")
     : "Cadastre a integração nas Configurações da base para habilitar o envio automático.";
   panel.className = "daily-checklist-alert";
-  panel.innerHTML = `<div><p class="eyebrow">ALERTA DIÁRIO · APÓS 08H</p><h2>${missing.length} veículo(s) sem checklist hoje</h2><p>Verifique os carros e caminhões abaixo antes da liberação.</p><small>${delivery}</small></div><ul>${missing.map((vehicle) => `<li>Prefixo ${esc(vehicle.prefix || "—")} · ${esc(vehicle.plate || "sem placa")} · ${esc(vehicle.model || vehicle.type || "Veículo")}</li>`).join("")}</ul><button type="button" class="small-button whatsapp" id="sendDailyChecklistAlert">Enviar pelo WhatsApp agora</button>`;
+  const coordinatorHint = coordinatorConfigured ? "A mensagem abaixo pode ser copiada ou enviada ao coordenador." : "Cadastre o WhatsApp do coordenador em Configurações para habilitar o envio direto.";
+  panel.innerHTML = `<div><p class="eyebrow">ALERTA DIÁRIO · APÓS 08H</p><h2>${missing.length} veículo(s) sem checklist hoje</h2><p>Verifique os carros e caminhões abaixo antes da liberação.</p><small>${delivery}<br>${coordinatorHint}</small></div><ul>${missing.map((vehicle) => `<li>Prefixo ${esc(vehicle.prefix || "—")} · ${esc(vehicle.plate || "sem placa")} · ${esc(vehicle.model || vehicle.type || "Veículo")}</li>`).join("")}</ul><div class="issue-actions"><button type="button" class="small-button" id="copyDailyCoordinatorChecklistAlert">Copiar mensagem ao coordenador</button><button type="button" class="small-button whatsapp" id="sendDailyCoordinatorChecklistAlert">Enviar ao coordenador</button></div>`;
 }
 function notificationPermission() { return "Notification" in window ? Notification.permission : "unsupported"; }
 function renderNotificationSettings() {
@@ -1343,7 +1344,7 @@ function dailyChecklistAlertContent(missing = vehiclesWithoutChecklistToday()) {
   return {
     missing, dispatchId, date, time,
     subject: `URBAM Frotas — ${missing.length} veículo(s) sem checklist em ${date}`,
-    message: `*URBAM FROTAS — ALERTA DIÁRIO DE CHECKLIST*\n\nData: ${date}\nHorário da conferência: ${time}\n\nHá ${missing.length} carro(s) ou caminhão(ões) sem checklist registrado hoje:\n\n${list}\n\nSolicitamos verificar a situação e providenciar o preenchimento antes da operação.`,
+    message: `*URBAM FROTAS — ALERTA DIÁRIO AO COORDENADOR*\n\nData: ${date}\nHorário da conferência: ${time}\n\nForam identificados ${missing.length} veículo(s) sem checklist registrado até este horário:\n\n${list}\n\nSolicitamos verificar a situação e providenciar o preenchimento antes da operação.`,
   };
 }
 async function dispatchDailyChecklistAlert() {
@@ -1369,10 +1370,18 @@ function startDailyChecklistNotifications() {
   if (dailyChecklistNotificationTimer) return;
   dailyChecklistNotificationTimer = window.setInterval(() => { renderDailyChecklistAlert(); notifyDailyChecklistIfNeeded(); void dispatchDailyChecklistAlert(); }, 60 * 1000);
 }
-function sendDailyChecklistAlert() {
+async function copyDailyCoordinatorChecklistAlert() {
   const dailyAlert = dailyChecklistAlertContent();
   if (!dailyAlert.missing.length) return window.alert("Todos os veículos cadastrados possuem checklist hoje.");
-  window.open(whatsappLink(DAILY_CHECKLIST_ALERT_PHONE, dailyAlert.message), "_blank", "noopener");
+  try { await navigator.clipboard.writeText(dailyAlert.message); alert("Mensagem ao coordenador copiada."); }
+  catch { alert("Não foi possível copiar automaticamente. Selecione a mensagem e copie."); }
+}
+function sendDailyCoordinatorChecklistAlert() {
+  const dailyAlert = dailyChecklistAlertContent();
+  if (!dailyAlert.missing.length) return window.alert("Todos os veículos cadastrados possuem checklist hoje.");
+  const target = data.settings.coordinatorPhone || "";
+  if (!target) return alert("Cadastre o WhatsApp do coordenador em Configurações antes de enviar.");
+  window.open(whatsappLink(target, dailyAlert.message), "_blank", "noopener");
 }
 function renderLeaderInstallTarget() {
   const select = $("#leaderInstallBase"); const hint = $("#leaderInstallHint");
@@ -2136,7 +2145,8 @@ document.addEventListener("click", (event) => {
   if (target.dataset.deleteVehicle) deleteVehicle(target.dataset.deleteVehicle);
   if (target.id === "restoreFleet") void restoreFleet();
   if (target.id === "sendLeaderInstall") sendLeaderInstall();
-  if (target.id === "sendDailyChecklistAlert") sendDailyChecklistAlert();
+  if (target.id === "copyDailyCoordinatorChecklistAlert") void copyDailyCoordinatorChecklistAlert();
+  if (target.id === "sendDailyCoordinatorChecklistAlert") sendDailyCoordinatorChecklistAlert();
   if (target.id === "enableDailyNotifications") void enableDailyNotifications();
   if (target.id === "enablePushNotifications") void window.URBAMOneSignal?.requestPermission({ role: new URLSearchParams(location.search).get("gestao") === "1" ? "gestao" : "colaborador", base: current.baseName, area: "frota", externalId: $("#driverRegistration")?.value ? `colaborador:${$("#driverRegistration").value.replace(/\D/g, "")}` : "" }).then((result) => { if (result?.enabled) alert("Avisos ativados neste dispositivo."); else alert("Os avisos ainda não foram ativados. Em Configurações do site, defina Notificações como Permitir e tente novamente."); });
   if (target.id === "enableReturnNotifications") void enableReturnNotifications();

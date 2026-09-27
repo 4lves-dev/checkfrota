@@ -1,5 +1,5 @@
 {
-  "version": "224",
+  "version": "225",
   "released_at": "2026-09-27",
-  "notes": "Retorno do colaborador somente após agendamento, alerta diário no servidor às 08h e encaminhamento de base mais confiável para a Liderança."
+  "notes": "Mensagem ao coordenador após as 08h com a relação de veículos sem checklist, com cópia e envio direto pelo WhatsApp."
 }
