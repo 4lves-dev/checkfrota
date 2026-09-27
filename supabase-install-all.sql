@@ -1142,13 +1142,16 @@ $photo_policies$;
 create table if not exists public.fleet_server_notifications (
   notification_key text primary key,
   issue_id text not null,
-  notification_type text not null check (notification_type in ('prazo-fornecedor','agendamento-vencido')),
+  notification_type text not null check (notification_type in ('prazo-fornecedor','agendamento-vencido','checklist-diario')),
   created_at timestamptz not null default now()
 );
 create index if not exists fleet_server_notifications_issue_idx
   on public.fleet_server_notifications (issue_id, created_at desc);
 alter table public.fleet_server_notifications enable row level security;
 revoke all on public.fleet_server_notifications from anon, authenticated;
+alter table public.fleet_server_notifications drop constraint if exists fleet_server_notifications_notification_type_check;
+alter table public.fleet_server_notifications add constraint fleet_server_notifications_notification_type_check
+  check (notification_type in ('prazo-fornecedor','agendamento-vencido','checklist-diario'));
 
 -- Mantém somente o registro necessário para impedir avisos repetidos indefinidamente.
 create or replace function public.fleet_cleanup_server_notifications()

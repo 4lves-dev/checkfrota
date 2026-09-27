@@ -1,5 +1,5 @@
 {
-  "version": "223",
+  "version": "224",
   "released_at": "2026-09-27",
-  "notes": "Confirmação do encaminhamento de e-mail, proteção contra atualizações simultâneas e atualização automática do aplicativo."
+  "notes": "Retorno do colaborador somente após agendamento, alerta diário no servidor às 08h e encaminhamento de base mais confiável para a Liderança."
 }
