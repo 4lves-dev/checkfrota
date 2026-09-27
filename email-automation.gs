@@ -45,6 +45,59 @@ function issueBlock_(issue) {
   return `<div style="margin:10px 0;padding:13px 14px;border:1px solid #f1b7b1;border-left:4px solid #c63b32;border-radius:8px;background:#fff8f7"><b style="color:#8d241e">${escapeHtml_(issue.itemName || 'Ocorrência')}</b><span style="float:right;border-radius:12px;padding:3px 8px;background:#fde7e5;color:#9d251f;font-size:11px;font-weight:700">${escapeHtml_(issue.severity || 'Não informada')}</span><p style="margin:7px 0 0;color:#4b5560;font-size:13px;line-height:1.45">${escapeHtml_(issue.description || 'Sem descrição')}</p></div>`;
 }
 
+// Gera um anexo que pode ser arquivado, impresso ou encaminhado sem depender
+// do layout do aplicativo. O documento temporário é enviado para a lixeira ao
+// final, portanto não acumula arquivos no Drive.
+function buildChecklistPdf_(inspection, vehicle, issues, date) {
+  const documentName = `Formulario-URBAM-Frotas-${vehicle.prefix || 'veiculo'}-${String(inspection.id || '').slice(0, 8)}`;
+  const document = DocumentApp.create(documentName);
+  const body = document.getBody();
+  body.appendParagraph('URBAM FROTAS').setHeading(DocumentApp.ParagraphHeading.HEADING1);
+  body.appendParagraph('FORMULÁRIO DE INSPEÇÃO').setHeading(DocumentApp.ParagraphHeading.HEADING2);
+  body.appendParagraph(`Protocolo: ${inspection.id || '—'}`);
+  body.appendParagraph(`Data e hora: ${date}`);
+  body.appendParagraph('');
+  body.appendParagraph('Dados do formulário').setHeading(DocumentApp.ParagraphHeading.HEADING2);
+  [
+    ['Colaborador', inspection.driver],
+    ['Matrícula', inspection.driverRegistration],
+    ['Base', inspection.baseName],
+    ['Veículo', `Prefixo ${vehicle.prefix || '—'} · Placa ${vehicle.plate || '—'} · ${vehicle.model || vehicle.type || '—'}`],
+    ['Quilometragem', `${inspection.odometer || '—'} km`]
+  ].forEach(([label, value]) => body.appendParagraph(`${label}: ${value || '—'}`));
+
+  body.appendParagraph('');
+  body.appendParagraph('Checklist completo').setHeading(DocumentApp.ParagraphHeading.HEADING2);
+  const items = Array.isArray(inspection.items) ? inspection.items : [];
+  if (items.length) {
+    items.forEach((item, index) => {
+      const isIssue = item && item.status === 'issue';
+      const description = isIssue ? (item.issue && item.issue.description || item.description || 'Verificar apontamento') : 'Em ordem';
+      body.appendParagraph(`${isIssue ? '☐' : '☑'} ${index + 1}. ${item && item.name || 'Item'} — ${description}`);
+    });
+  } else {
+    body.appendParagraph('Detalhamento do checklist não informado.');
+  }
+
+  body.appendParagraph('');
+  body.appendParagraph('Ocorrências relatadas').setHeading(DocumentApp.ParagraphHeading.HEADING2);
+  if (issues.length) {
+    issues.forEach((issue, index) => body.appendParagraph(`${index + 1}. ${issue.itemName || 'Ocorrência'} (${issue.severity || 'Não informada'}): ${issue.description || 'Sem descrição'}`));
+  } else {
+    body.appendParagraph('Checklist concluído sem ocorrências.');
+  }
+  if (inspection.notes) {
+    body.appendParagraph('');
+    body.appendParagraph('Observação geral').setHeading(DocumentApp.ParagraphHeading.HEADING2);
+    body.appendParagraph(inspection.notes);
+  }
+  document.saveAndClose();
+  const file = DriveApp.getFileById(document.getId());
+  const pdf = file.getAs(MimeType.PDF).setName(`${documentName}.pdf`);
+  file.setTrashed(true);
+  return pdf;
+}
+
 function doPost(e) {
   let payload = {};
   try {
@@ -79,7 +132,15 @@ function doPost(e) {
     ].filter(Boolean).join('\n');
 
     const htmlBody = `<!doctype html><html><body style="margin:0;padding:24px;background:#f2f5f8;font-family:Arial,sans-serif;color:#17324a"><main style="max-width:680px;margin:0 auto;background:#fff;border:1px solid #dce6ee;border-radius:12px;overflow:hidden"><header style="padding:22px 28px;background:#083b64;color:#fff"><div style="font-size:11px;font-weight:700;letter-spacing:1px">URBAM FROTAS · FORMULÁRIO ENVIADO</div><h1 style="margin:7px 0 0;font-size:24px">Checklist de inspeção</h1></header><section style="padding:24px 28px"><p style="margin:0 0 18px;color:#075a91;font-size:12px;font-weight:700">PROTOCOLO: ${escapeHtml_(inspection.id)}</p><h2 style="font-size:17px;margin:0 0 12px;color:#183a59">Dados do formulário</h2><table style="width:100%;border-collapse:collapse;font-size:13px"><tr><td style="width:40%;padding:9px 7px;border-bottom:1px solid #dce6ee;color:#617181">Motorista</td><td style="padding:9px 7px;border-bottom:1px solid #dce6ee;font-weight:700">${escapeHtml_(inspection.driver)}</td></tr><tr><td style="padding:9px 7px;border-bottom:1px solid #dce6ee;color:#617181">Matrícula</td><td style="padding:9px 7px;border-bottom:1px solid #dce6ee;font-weight:700">${escapeHtml_(inspection.driverRegistration)}</td></tr><tr><td style="padding:9px 7px;border-bottom:1px solid #dce6ee;color:#617181">Base</td><td style="padding:9px 7px;border-bottom:1px solid #dce6ee;font-weight:700">${escapeHtml_(inspection.baseName)}</td></tr><tr><td style="padding:9px 7px;border-bottom:1px solid #dce6ee;color:#617181">Veículo</td><td style="padding:9px 7px;border-bottom:1px solid #dce6ee;font-weight:700">Prefixo ${escapeHtml_(vehicle.prefix)} · ${escapeHtml_(vehicle.plate)} · ${escapeHtml_(vehicle.model || vehicle.type)}</td></tr><tr><td style="padding:9px 7px;border-bottom:1px solid #dce6ee;color:#617181">Quilometragem</td><td style="padding:9px 7px;border-bottom:1px solid #dce6ee;font-weight:700">${escapeHtml_(inspection.odometer)} km</td></tr><tr><td style="padding:9px 7px;border-bottom:1px solid #dce6ee;color:#617181">Data e hora</td><td style="padding:9px 7px;border-bottom:1px solid #dce6ee;font-weight:700">${date}</td></tr></table><h2 style="font-size:17px;margin:25px 0 12px;color:#183a59">Checklist completo</h2><table style="width:100%;border-collapse:separate;border-spacing:0;border:1px solid #dce6ee;border-radius:8px;overflow:hidden">${checklistRows}</table><h2 style="font-size:17px;margin:25px 0 12px;color:#183a59">Ocorrências relatadas</h2>${issueHtml}${inspection.notes ? `<section style="margin-top:18px;padding:13px 14px;border-radius:8px;background:#f3f7fa"><b style="font-size:12px;color:#506274">OBSERVAÇÃO GERAL</b><p style="margin:6px 0 0;font-size:13px;line-height:1.45">${escapeHtml_(inspection.notes)}</p></section>` : ''}</section><footer style="padding:15px 28px;background:#f4f7f9;color:#607181;font-size:11px">URBAM Frotas · Registro automático de inspeção</footer></main></body></html>`;
-    MailApp.sendEmail({ to: URBAM_FROTAS_EMAIL, subject, body, htmlBody, name: 'URBAM Frotas' });
+    const pdfAttachment = buildChecklistPdf_(inspection, vehicle, issues, date);
+    MailApp.sendEmail({
+      to: URBAM_FROTAS_EMAIL,
+      subject,
+      body,
+      htmlBody,
+      attachments: [pdfAttachment],
+      name: 'URBAM Frotas'
+    });
     confirmDelivery_(payload.emailDeliveryId, 'enviado');
     return ContentService.createTextOutput(JSON.stringify({ ok: true, protocol: inspection.id }))
       .setMimeType(ContentService.MimeType.JSON);
@@ -89,3 +150,4 @@ function doPost(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 }
+
