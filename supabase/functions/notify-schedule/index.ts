@@ -45,17 +45,26 @@ Deno.serve(async (request) => {
 
   const issue = row.data;
   const maintenance = issue.maintenance || {};
-  if (maintenance.status !== "Agendada" || !maintenance.scheduledAt) return json({ error: "Chamado ainda não está agendado" }, 409);
-  const when = new Date(maintenance.scheduledAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
-  const title = "Manutenção agendada";
-  const body = `Prefixo ${issue.vehiclePrefix || "—"}: ${when} · ${maintenance.provider || maintenance.address || "local informado"}`;
+  const scheduled = maintenance.status === "Agendada";
+  const ready = maintenance.status === "Veículo pronto para retirada";
+  if (!scheduled && !ready) return json({ error: "Chamado não possui uma atualização que gere aviso" }, 409);
+  if (scheduled && !maintenance.scheduledAt) return json({ error: "Agendamento sem data e horário" }, 409);
+  const when = new Date(scheduled ? maintenance.scheduledAt : (maintenance.readyAt || maintenance.updatedAt || new Date().toISOString())).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+  const title = scheduled ? "Manutenção agendada" : "Veículo pronto para retirada";
+  const body = scheduled
+    ? `Prefixo ${issue.vehiclePrefix || "—"}: ${when} · ${maintenance.provider || maintenance.address || "local informado"}`
+    : `Prefixo ${issue.vehiclePrefix || "—"}: liberado em ${maintenance.provider || maintenance.address || "local informado"}.`;
   const base = String(issue.baseName || "sem-base");
-  const common = { app_id: appId, headings: { en: title, pt: title }, contents: { en: body, pt: body }, url: `https://4lves-dev.github.io/checkfrota/?v=210&matricula=${encodeURIComponent(issue.driverRegistration || "")}&issue=${encodeURIComponent(issue.id || "")}` };
+  const common = { app_id: appId, headings: { en: title, pt: title }, contents: { en: body, pt: body } };
+  const collaboratorUrl = `https://4lves-dev.github.io/checkfrota/?v=227&matricula=${encodeURIComponent(issue.driverRegistration || "")}&issue=${encodeURIComponent(issue.id || "")}`;
+  const leadershipUrl = `https://4lves-dev.github.io/checkfrota/lider.html?v=227&base=${encodeURIComponent(base)}&issue=${encodeURIComponent(issue.id || "")}`;
 
   const messages = [
-    issue.driverRegistration ? { ...common, include_aliases: { external_id: [`colaborador:${issue.driverRegistration}`] }, target_channel: "push" } : null,
-    { ...common, filters: [{ field: "tag", key: "area", relation: "=", value: "lideranca" }, { operator: "AND" }, { field: "tag", key: "base", relation: "=", value: base }] },
-    { ...common, filters: [{ field: "tag", key: "area", relation: "=", value: "lideranca" }, { operator: "AND" }, { field: "tag", key: "base", relation: "=", value: "Todas as bases" }] },
+    issue.driverRegistration ? { ...common, url: collaboratorUrl, include_aliases: { external_id: [`colaborador:${issue.driverRegistration}`] }, target_channel: "push" } : null,
+    { ...common, url: leadershipUrl, filters: [{ field: "tag", key: "area", relation: "=", value: "lideranca" }, { operator: "AND" }, { field: "tag", key: "base", relation: "=", value: base }] },
+    { ...common, url: leadershipUrl, filters: [{ field: "tag", key: "area", relation: "=", value: "lideranca" }, { operator: "AND" }, { field: "tag", key: "base", relation: "=", value: "Todas as bases" }] },
+    { ...common, url: leadershipUrl, filters: [{ field: "tag", key: "perfil", relation: "=", value: "coordenador" }] },
+    { ...common, url: leadershipUrl, filters: [{ field: "tag", key: "perfil", relation: "=", value: "gestor" }] },
   ].filter(Boolean);
 
   const results = [];
@@ -70,3 +79,4 @@ Deno.serve(async (request) => {
   if (results.some((result) => !result.ok)) return json({ error: "Uma ou mais notificações falharam", results }, 502);
   return json({ delivered: results.length, results });
 });
+
