@@ -1,5 +1,6 @@
 {
-  "version": "225",
+  "version": "227",
   "released_at": "2026-09-27",
-  "notes": "Mensagem ao coordenador após as 08h com a relação de veículos sem checklist, com cópia e envio direto pelo WhatsApp."
+  "notes": "Fluxo de mensagens restaurado: avisos por aplicativo, WhatsApp manual e destinatários separados por etapa."
 }
+
