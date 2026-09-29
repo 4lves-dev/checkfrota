@@ -1,5 +1,5 @@
 {
-  "version": "235",
+  "version": "236",
   "released_at": "2026-09-27",
-  "notes": "Confirmação correta de sincronização e reparo definitivo do recebimento de chamados."
+  "notes": "Correção da credencial de sincronização com Supabase."
 }
