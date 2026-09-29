@@ -5,7 +5,7 @@
  */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "235";
+const APP_VERSION = "236";
 const SOFTWARE_SIGNATURE = Object.freeze({ owner: "LUCHTI ME", product: "URBAM Frotas", fingerprint: "LUCHTI-CHECKFROTA-URBAM-20260909-A7F3", notice: "Todos os direitos reservados" });
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v218";
 const CHECKLIST = [
@@ -193,7 +193,13 @@ const phoneOnly = (phone = "") => phone.replace(/\D/g, "");
 
 const CLOUD = window.CHECKFROTA_SUPABASE;
 function cloudToken() { return sessionStorage.getItem("checkfrota-supabase-token") || ""; }
-function cloudHeaders(json = true) { const token = cloudToken(); return { apikey: CLOUD?.publishableKey || "", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(json ? { "Content-Type": "application/json" } : {}) }; }
+function cloudHeaders(json = true) {
+  // O Supabase precisa receber a chave publicada também como credencial Bearer
+  // quando não há sessão de Gestão. Sem isso, o pedido anônimo perde o papel
+  // permitido pelas políticas RLS e o chamado fica preso na fila local.
+  const token = cloudToken() || CLOUD?.publishableKey || "";
+  return { apikey: CLOUD?.publishableKey || "", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(json ? { "Content-Type": "application/json" } : {}) };
+}
 async function cloudRequest(path, options = {}) { if (!CLOUD?.url) return null; const response = await fetch(`${CLOUD.url}${path}`, { ...options, signal: options.signal || AbortSignal.timeout(15000), headers: { ...cloudHeaders(options.json !== false), ...(options.headers || {}) } }); if (!response.ok) throw new Error(`Supabase: ${response.status}`); return response.status === 204 ? null : response.json(); }
 async function cloudRpc(functionName, payload = {}) {
   return cloudRequest(`/rest/v1/rpc/${functionName}`, { method: "POST", body: JSON.stringify(payload) });
