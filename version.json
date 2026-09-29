@@ -1,6 +1,6 @@
 {
-  "version": "229",
+  "version": "230",
   "released_at": "2026-09-27",
-  "notes": "Tela do colaborador responde imediatamente; sincronização e e-mail seguem em segundo plano."
+  "notes": "Consulta de matrícula reforçada no banco; formulário por e-mail volta a incluir PDF após atualizar o Apps Script."
 }
 
