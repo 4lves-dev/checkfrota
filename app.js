@@ -1,4 +1,4 @@
-Warning: truncated output (original token count: 54682)
+Warning: truncated output (original token count: 54711)
 Total output lines: 2357
 
 /*
@@ -8,7 +8,7 @@ Total output lines: 2357
  */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "230";
+const APP_VERSION = "231";
 const SOFTWARE_SIGNATURE = Object.freeze({ owner: "LUCHTI ME", product: "URBAM Frotas", fingerprint: "LUCHTI-CHECKFROTA-URBAM-20260909-A7F3", notice: "Todos os direitos reservados" });
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v218";
 const CHECKLIST = [
@@ -28,7 +28,7 @@ const CHECKLIST = [
 const BASES = { Vertical: "5512981567218", Abrigo: "5512997884887", Horizontal: "5512988400697" };
 const LEADER_BASE_LABELS = { Vertical: "Base Vertical / Segurança / Elétrica", Horizontal: "Base Horizontal", Abrigo: "Base Abrigo / Manutenção / Linha Verde / Lavagem" };
 const DRIVER_NOTIFICATION_PHONE = "";
-const EMAIL_AUTOMATION_URL = "https://script.google.com/macros/s/AKfycbyfdwx76UkQcv2fz1HXLERZrcVMfW1iaNvFALmFET1kIBBeXAQVvkH89iviTDxBCQOA/exec";
+const EMAIL_AUTOMATION_URL = "https://script.google.com/macros/s/AKfycbxPzbJSWqvza351MQQBscjjRt855tO2Na3xCBzHgelh9ZeMAHv_xXC8VMgbSLP1kOqC/exec";
 const PREVIOUS_EMAIL_AUTOMATION_URL = "https://script.google.com/macros/s/AKfycbxX-KXsBQ0BZVv4axe42lG9QLfsQ7OC4Ig4Pgscfmur4QhXftk7cit1IGK9RQWzKaIR/exec";
 const RETIRED_EMAIL_AUTOMATION_URL = "https://script.google.com/macros/s/AKfycbyn5t8_lb3dhSvrUKzDzritfXOO1O7BAUo_vX_9nAcNgAgzq5176ctJ0TT3B19rAmcV/exec";
 const EMAIL_COPY_RECIPIENT = "urbamfrota@gmail.com";
@@ -481,7 +481,87 @@ function maintenanceWazeNavigationUrl(maintenance = {}) {
 }
 function appointmentFingerprint(issue) { const maintenance = maintenanceOf(issue); return [maintenance.scheduledAt, maintenance.provider, maintenance.address, maintenance.latitude, maintenance.longitude, maintenance.updatedAt].join("|"); }
 function notifyScheduledAppointment(issue) {
-  const maintenance = maintenanceOf(issue); const key = `checkfrota-schedule-notification-${issue.id}-${appointmentFingerprint(issue)}`;…34682 tokens truncated…At)}, o ${vehicleType.toLowerCase()} ${issue.vehiclePrefix || "—"}, placa ${issue.vehiclePlate || "—"}, apresentou ${problem}, motivo pelo qual foi encaminhado para manutenção.\n\nO veículo foi entregue para atendimento em ${dateTime(maintenance.deliveryAt)} e o prazo contratual de 6 horas venceu em ${dateTime(sla.deadline)}. Somente em ${dateTime(sla.finishedAt)} foi informado que o veículo estava pronto para retirada, caracterizando atraso de ${durationLabel(sla.difference)}.\n\nSolicitamos o registro formal desta ocorrência, a justificativa do atraso e as providências previstas no contrato para evitar nova indisponibilidade do serviço.\n\nDados do veículo:\n\n- Veículo: ${vehicleType}${issue.vehicleModel ? ` · ${issue.vehicleModel}` : ""}\n- Prefixo: ${issue.vehiclePrefix || "—"}\n- Placa: ${issue.vehiclePlate || "—"}\n- Contrato: ${issue.contract || data.vehicles.find((vehicle) => vehicle.id === issue.vehicleId)?.contract || "A informar"}\n- Oficina / fornecedor: ${maintenance.provider || "A informar"}\n- Entrega para manutenção: ${dateTime(maintenance.deliveryAt)}\n- Veículo pronto para retirada: ${dateTime(sla.finishedAt)}\n\nAtenciosamente,\nURBAM Frotas`;
+  const maintenance = maintenanceOf(issue); const key = `checkfrota-schedule-notification-${issue.id}-${appointmentFingerprint(issue)}`;
+  if (returnNotificationPermission() !== "granted" || localStorage.getItem(key)) return;
+  const when = maintenance.scheduledAt ? dateTime(maintenance.scheduledAt) : "horário a confirmar";
+  const where = maintenance.provider || maintenance.address || "local a confirmar";
+  const notification = new Notification("URBAM Frotas: manutenção agendada", { body: `Prefixo ${issue.vehiclePrefix || "—"}: ${when} · ${where}`, tag: `checkfrota-schedule-${issue.id}`, renotify: true });
+  notification.onclick = () => { window.focus(); notification.close(); };
+  localStorage.setItem(key, new Date().toISOString());
+}
+function notifyReadyForPickup(issue) {
+  const maintenance = maintenanceOf(issue);
+  if (returnNotificationPermission() !== "granted" || maintenance.status !== "Veículo pronto para retirada") return;
+  const key = `checkfrota-ready-driver-${issue.id}-${maintenance.readyAt || maintenance.updatedAt || ""}`;
+  if (localStorage.getItem(key)) return;
+  const notification = new Notification("URBAM Frotas: veículo pronto para retirada", {
+    body: `Prefixo ${issue.vehiclePrefix || "—"}: retirada liberada em ${maintenance.provider || maintenance.address || "local informado pela Gestão"}.`,
+    tag: `checkfrota-ready-driver-${issue.id}`,
+    renotify: true,
+  });
+  notification.onclick = () => { window.focus(); notification.close(); };
+  localStorage.setItem(key, new Date().toISOString());
+}
+function notifyAppointmentReminder(issue) {
+  const maintenance = maintenanceOf(issue);
+  if (returnNotificationPermission() !== "granted" || !maintenance.scheduledAt || maintenance.deliveryAt) return;
+  const distance = new Date(maintenance.scheduledAt).getTime() - Date.now();
+  if (distance < 0 || distance > 2 * 60 * 60 * 1000) return;
+  const key = `checkfrota-schedule-reminder-${issue.id}-${maintenance.scheduledAt}`;
+  if (localStorage.getItem(key)) return;
+  const notification = new Notification("URBAM Frotas: manutenção em até 2 horas", { body: `Prefixo ${issue.vehiclePrefix || "—"}: ${dateTime(maintenance.scheduledAt)} · ${maintenance.provider || "consulte o local no aplicativo"}`, tag: `checkfrota-reminder-${issue.id}` });
+  notification.onclick = () => { window.focus(); notification.close(); };
+  localStorage.setItem(key, new Date().toISOString());
+}
+function appointmentReference(issue) { return String(issue.inspectionId || issue.id || "").toUpperCase(); }
+function driverContactSummary(issue) {
+  const registration = String(issue.driverRegistration || "Não informada");
+  const phone = phoneOnly(issue.driverPhone || "");
+  return `${issue.driver || "Colaborador não identificado"} · matrícula ${registration}${phone ? ` · WhatsApp ${formatPhone(phone)}` : " · WhatsApp não informado"}`;
+}
+function collaboratorCallStatus(issue) {
+  const maintenance = maintenanceOf(issue);
+  if (isArchived(issue)) return "Chamado arquivado";
+  if (issue.status === "resolvida" || maintenance.status === "Concluída") return "Chamado concluído";
+  if (maintenance.status === "Veículo pronto para retirada") return "Veículo pronto para retirada";
+  if (maintenance.deliveryAt || maintenance.status === "Em manutenção") return "Veículo entregue — em manutenção";
+  if (maintenance.status === "Agendada") return "Manutenção agendada";
+  if (issue.leaderApproval?.status === "Aprovada") return "Aprovado — aguardando agendamento";
+  if (issue.leaderApproval?.status === "Retificação solicitada") return "Retificação solicitada";
+  if (issue.leaderApproval?.status === "Recusada") return "Chamado recusado";
+  if (issue.approvalRoute === "gestao") return "Recebido pela Gestão";
+  return "Enviado — aguardando liderança";
+}
+function notifyCallOpened(issue) {
+  if (returnNotificationPermission() !== "granted") return;
+  const key = `checkfrota-opened-notification-${issue.id}`;
+  if (localStorage.getItem(key)) return;
+  const notification = new Notification("URBAM Frotas: chamado recebi…32711 tokens truncated…ldMaintenanceMessage(issue) {
+  const maintenance = maintenanceOf(issue);
+  return `*RETORNO DE SERVIÇO — ${maintenance.status.toUpperCase()}*\n\nVeículo: Prefixo ${issue.vehiclePrefix || "—"} · ${issue.vehiclePlate} (${issue.vehicleModel || issue.vehicleType})\nQuilometragem: ${issue.odometer ?? "Não informada"} km\nSolicitação: ${issue.itemName}\n${maintenance.scheduledAt ? `Agendamento: ${dateTime(maintenance.scheduledAt)}\n` : ""}${maintenance.returnAt ? `Previsão de retorno: ${dateTime(maintenance.returnAt)}\n` : ""}${maintenance.provider ? `Oficina / responsável: ${maintenance.provider}\n` : ""}${maintenance.service ? `Serviço: ${maintenance.service}\n` : ""}${maintenance.feedback ? `Retorno: ${maintenance.feedback}\n` : ""}\nSolicitação original: ${issue.description}`;
+}
+function buildDriverAppointmentMessage(issue, maintenance = maintenanceOf(issue)) {
+  const map = maintenanceMapUrl(maintenance, issue);
+  return `*URBAM FROTAS — AGENDAMENTO DE MANUTENÇÃO*\n\nOlá, ${issue.driver || "colaborador"}.\n\n*Chamado:* ${appointmentReference(issue)}\n*Veículo:* Prefixo ${issue.vehiclePrefix || "—"} · Placa ${issue.vehiclePlate || "—"}\n*Ocorrência:* ${issue.itemName || "Manutenção"}\n*Agendamento:* ${maintenance.scheduledAt ? dateTime(maintenance.scheduledAt) : "A confirmar"}\n*Local:* ${maintenance.provider || "Oficina a confirmar"}${maintenance.address ? `\n*Endereço:* ${maintenance.address}` : ""}${map ? `\n*Rota no mapa:* ${map}` : ""}\n\nAbra o aplicativo URBAM Frotas para consultar este agendamento e, quando entregar o veículo, clique em *Marcar veículo entregue para manutenção*.\n\nMatrícula vinculada: ${issue.driverRegistration || "—"}\n\nURBAM Frotas — Gestão de Manutenção`;
+}
+function buildDriverReadyMessage(issue, maintenance = maintenanceOf(issue)) {
+  const map = maintenanceMapUrl(maintenance, issue);
+  return `*URBAM FROTAS — VEÍCULO PRONTO PARA RETIRADA*\n\nOlá, ${issue.driver || "colaborador"}.\n\n*Veículo:* Prefixo ${issue.vehiclePrefix || "—"} · Placa ${issue.vehiclePlate || "—"}\n*Local:* ${maintenance.provider || "Local informado pela Gestão"}${maintenance.address ? `\n*Endereço:* ${maintenance.address}` : ""}${map ? `\n*Rota no mapa:* ${map}` : ""}\n*Serviço executado:* ${maintenance.service || "Informado pela Gestão"}\n*Liberado em:* ${maintenance.readyAt ? dateTime(maintenance.readyAt) : "agora"}\n\nO veículo está liberado para retirada. Consulte o aplicativo URBAM Frotas para acompanhar o chamado.\n\nURBAM Frotas — Gestão de Manutenção`;
+}
+function buildLeaderReadyMessage(issue, maintenance = maintenanceOf(issue)) {
+  const map = maintenanceMapUrl(maintenance, issue);
+  return `*URBAM FROTAS — VEÍCULO PRONTO PARA RETIRADA*\n\n*Veículo:* Prefixo ${issue.vehiclePrefix || "—"} · Placa ${issue.vehiclePlate || "—"}\n*Base:* ${issue.baseName || "—"}\n*Colaborador:* ${issue.driver || "—"}${issue.driverRegistration ? ` · matrícula ${issue.driverRegistration}` : ""}\n*Local:* ${maintenance.provider || "Local informado pela Gestão"}${maintenance.address ? `\n*Endereço:* ${maintenance.address}` : ""}${map ? `\n*Mapa / rota:* ${map}` : ""}\n*Serviço executado:* ${maintenance.service || "Informado pela Gestão"}\n*Liberado em:* ${maintenance.readyAt ? dateTime(maintenance.readyAt) : "agora"}\n\nO aviso também está disponível no painel da Liderança.\n\nURBAM Frotas — Gestão de Manutenção`;
+}
+function slaEmailSubject(issue) {
+  return `Notificação – Veículo com defeito sem reparo e ausência de veículo reserva`;
+}
+function buildSupplierSlaMessage(issue) {
+  const maintenance = maintenanceOf(issue); const sla = supplierSlaResult(issue);
+  if (!sla) return "";
+  const vehicleType = issue.vehicleType || "Veículo";
+  const problem = issue.description || issue.itemName || "problema informado no chamado";
+  if (sla.state === "late" && sla.finishedAt) {
+    return `Prezados,\n\nEm ${dateTime(issue.createdAt)}, o ${vehicleType.toLowerCase()} ${issue.vehiclePrefix || "—"}, placa ${issue.vehiclePlate || "—"}, apresentou ${problem}, motivo pelo qual foi encaminhado para manutenção.\n\nO veículo foi entregue para atendimento em ${dateTime(maintenance.deliveryAt)} e o prazo contratual de 6 horas venceu em ${dateTime(sla.deadline)}. Somente em ${dateTime(sla.finishedAt)} foi informado que o veículo estava pronto para retirada, caracterizando atraso de ${durationLabel(sla.difference)}.\n\nSolicitamos o registro formal desta ocorrência, a justificativa do atraso e as providências previstas no contrato para evitar nova indisponibilidade do serviço.\n\nDados do veículo:\n\n- Veículo: ${vehicleType}${issue.vehicleModel ? ` · ${issue.vehicleModel}` : ""}\n- Prefixo: ${issue.vehiclePrefix || "—"}\n- Placa: ${issue.vehiclePlate || "—"}\n- Contrato: ${issue.contract || data.vehicles.find((vehicle) => vehicle.id === issue.vehicleId)?.contract || "A informar"}\n- Oficina / fornecedor: ${maintenance.provider || "A informar"}\n- Entrega para manutenção: ${dateTime(maintenance.deliveryAt)}\n- Veículo pronto para retirada: ${dateTime(sla.finishedAt)}\n\nAtenciosamente,\nURBAM Frotas`;
   }
   return `Prezados,\n\nEm ${dateTime(maintenance.deliveryAt)}, o ${vehicleType.toLowerCase()} ${issue.vehiclePrefix || "—"}, placa ${issue.vehiclePlate || "—"}, apresentou ${problem}, motivo pelo qual o veículo permaneceu parado, conforme comunicado e registrado por mensagens, fotos e vídeos enviados.\n\nAté a presente data, o veículo ainda não foi reparado e não foi disponibilizado veículo reserva, impossibilitando a continuidade das atividades de forma adequada.\n\nSolicito providências urgentes para:\n\n- Realizar o reparo do veículo; ou\n- Disponibilizar imediatamente um veículo em condições de uso para a execução das atividades.\n\nEsta notificação tem como objetivo registrar que o problema foi comunicado tempestivamente e que, até o momento, não houve solução.\n\nDiante do exposto, solicitamos a regularização imediata da situação, com a devida prestação do serviço contratado ou a disponibilização de veículo substituto adequado.\n\nDados do veículo:\n\n- Veículo: ${vehicleType}${issue.vehicleModel ? ` · ${issue.vehicleModel}` : ""}\n- Prefixo: ${issue.vehiclePrefix || "—"}\n- Placa: ${issue.vehiclePlate || "—"}\n- Contrato: ${issue.contract || data.vehicles.find((vehicle) => vehicle.id === issue.vehicleId)?.contract || "A informar"}\n- Oficina / fornecedor: ${maintenance.provider || "A informar"}\n- Entrega para manutenção: ${dateTime(maintenance.deliveryAt)}\n- Prazo de 6 horas vencido em: ${dateTime(sla.deadline)}\n\nAtenciosamente,\nURBAM Frotas`;
 }
