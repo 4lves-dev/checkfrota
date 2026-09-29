@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 54711)
-Total output lines: 2357
-
 /*
  * URBAM Frotas — software proprietário da LUCHTI ME.
  * Assinatura técnica: LUCHTI-CHECKFROTA-URBAM-20260909-A7F3.
@@ -536,7 +533,1336 @@ function notifyCallOpened(issue) {
   if (returnNotificationPermission() !== "granted") return;
   const key = `checkfrota-opened-notification-${issue.id}`;
   if (localStorage.getItem(key)) return;
-  const notification = new Notification("URBAM Frotas: chamado recebi…32711 tokens truncated…ldMaintenanceMessage(issue) {
+  const notification = new Notification("URBAM Frotas: chamado recebido", {
+    body: `Prefixo ${issue.vehiclePrefix || "—"}: ${issue.itemName || "solicitação"}. Acompanhe o andamento no aplicativo.`,
+    tag: `checkfrota-opened-${issue.id}`,
+  });
+  notification.onclick = () => { window.focus(); notification.close(); };
+  localStorage.setItem(key, new Date().toISOString());
+}
+function renderScheduledAppointments() {
+  const panel = $("#scheduleNotifications"), shell = $("#myCallsPanel"); if (!panel || !shell) return;
+  const visible = scheduledAppointments.filter((issue) => { const maintenance = maintenanceOf(issue); const completed = issue.status === "resolvida" || maintenance.status === "Concluída" || isArchived(issue); return ["Agendada", "Em manutenção", "Veículo pronto para retirada"].includes(maintenance.status) && !completed; });
+  const identifiedCollaborator = Boolean($("#driverRegistration")?.value.trim() || localStorage.getItem("checkfrota-driver-registration"));
+  shell.hidden = !identifiedCollaborator || !visible.length;
+  $("#myCallsBadge").textContent = String(visible.length);
+  panel.innerHTML = visible.map((issue) => { const maintenance = maintenanceOf(issue); const googleUrl = maintenanceGoogleNavigationUrl(maintenance); const wazeUrl = maintenanceWazeNavigationUrl(maintenance); const delivered = maintenance.deliveryAt; const scheduled = maintenance.status === "Agendada"; const ready = maintenance.status === "Veículo pronto para retirada"; const acknowledged = maintenance.driverAcknowledgedAt; return `<article class="return-notice schedule ${ready ? "ready" : ""}"><h2>${esc(collaboratorCallStatus(issue))}</h2><p><b>Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate || "—")}</b></p><p><b>Data e horário:</b> ${esc(maintenance.scheduledAt ? dateTime(maintenance.scheduledAt) : "A confirmar")}</p><p><b>Local da manutenção:</b> ${esc(maintenance.provider || "Oficina a confirmar")}${maintenance.address ? `<br>${esc(maintenance.address)}` : ""}</p><p>${esc(issue.itemName || "Manutenção")} · ${esc(issue.description || "")}</p>${ready ? `<p class="ready-for-pickup"><b>✓ Pronto para ser retirado</b><br><small>${maintenance.readyAt ? `Liberado em ${esc(dateTime(maintenance.readyAt))}.` : "Liberação registrada pela Gestão."} A Liderança também recebeu este aviso.</small></p>` : scheduled && !acknowledged ? `<button type="button" class="small-button acknowledge-button" data-acknowledge-schedule="${esc(issue.id)}">Confirmar ciência do agendamento</button>` : acknowledged ? `<p class="schedule-acknowledged">✓ Ciência confirmada em ${esc(dateTime(acknowledged))}</p>` : ""}${!ready && delivered ? `<p class="delivery-confirmed"><b>Entregue para manutenção:</b> ${esc(dateTime(delivered))}<br><small>A Gestão e a Liderança foram avisadas. O prazo termina em ${esc(dateTime(maintenance.supplierDeadlineAt || new Date(new Date(delivered).getTime() + 21600000).toISOString()))}.</small></p>` : !ready && scheduled ? `<button type="button" class="small-button delivery-button" data-mark-maintenance-delivery="${esc(issue.id)}">✓ Marcar veículo entregue para manutenção</button>` : ""}${googleUrl ? `<div class="navigation-actions"><a class="small-button map-link" href="${esc(googleUrl)}" target="_blank" rel="noopener">Google Maps</a><a class="small-button waze-link" href="${esc(wazeUrl)}" target="_blank" rel="noopener">Waze</a></div>` : ""}</article>`; }).join("");
+}
+async function acknowledgeSchedule(issueId) {
+  const registration = $("#driverRegistration")?.value.replace(/\D/g, "") || localStorage.getItem("checkfrota-driver-registration") || "";
+  const phone = phoneOnly($("#driverPhone")?.value || localStorage.getItem("checkfrota-driver-phone") || "");
+  try { const rows = await cloudRpc("fleet_driver_acknowledge_schedule", { p_registration: registration, p_phone: phone, p_issue_id: issueId }); const updated = rows?.[0]?.data; const issue = scheduledAppointments.find((entry) => entry.id === issueId); if (issue && updated) Object.assign(issue, updated); renderScheduledAppointments(); }
+  catch (error) { console.warn("Ciência não registrada", error); alert("Não foi possível confirmar a ciência. Verifique a internet e tente novamente."); }
+}
+async function markVehicleDeliveredForMaintenance(issueId) {
+  const issue = scheduledAppointments.find((entry) => entry.id === issueId); if (!issue) return;
+  if (!confirm(`Confirmar que o Prefixo ${issue.vehiclePrefix || "—"} foi entregue para manutenção agora? O prazo corrido de 6 horas para o fornecedor começará neste horário.`)) return;
+  const registration = $("#driverRegistration")?.value.replace(/\D/g, "") || localStorage.getItem("checkfrota-driver-registration") || "";
+  const phone = phoneOnly($("#driverPhone")?.value || current.driverPhone || localStorage.getItem("checkfrota-driver-phone") || "");
+  if (!registration || !phone) return alert("Informe sua matrícula e WhatsApp para registrar a entrega.");
+  try {
+    const rows = await cloudRpc("fleet_driver_mark_maintenance_delivery", { p_registration: registration, p_phone: phone, p_issue_id: issueId });
+    const updated = rows?.[0]?.data || rows?.data;
+    if (updated) Object.assign(issue, updated);
+    renderScheduledAppointments();
+    alert("Entrega registrada. A Gestão recebeu o aviso e o prazo de 6 horas corridas começou agora.");
+  } catch (error) { console.warn("Entrega não registrada", error); alert("Não foi possível registrar a entrega no banco. Verifique a internet e tente novamente."); }
+}
+async function loadScheduledAppointmentsForCollaborator() {
+  if (scheduledAppointmentsLoading) return;
+  const registration = $("#driverRegistration")?.value.replace(/\D/g, "") || localStorage.getItem("checkfrota-driver-registration") || "";
+  const phone = phoneOnly($("#driverPhone")?.value || current.driverPhone || localStorage.getItem("checkfrota-driver-phone") || "");
+  if (!CLOUD?.url || !registration || !phone) return;
+  scheduledAppointmentsLoading = true;
+  try {
+    const rows = await cloudRpc("fleet_driver_appointments", { p_registration: registration, p_phone: phone });
+    scheduledAppointments = (rows || []).map((row) => row.data || row).filter(Boolean);
+    scheduledAppointments.filter((issue) => ["Agendada", "Em manutenção"].includes(maintenanceOf(issue).status)).forEach((issue) => { notifyScheduledAppointment(issue); notifyAppointmentReminder(issue); });
+    scheduledAppointments.forEach(notifyReadyForPickup);
+    renderScheduledAppointments();
+  } catch (error) { console.warn("Não foi possível buscar agendamentos do colaborador", error); }
+  finally { scheduledAppointmentsLoading = false; }
+}
+function startScheduledAppointmentsPolling() { if (scheduledAppointmentsTimer) return; scheduledAppointmentsTimer = window.setInterval(() => { if (!document.hidden) void loadScheduledAppointmentsForCollaborator(); }, FAST_SYNC_INTERVAL_MS); }
+function renderReturnedIssues() {
+  const panel = $("#returnNotifications"); if (!panel) return;
+  if (!returnedIssues.length) { panel.hidden = true; panel.innerHTML = ""; return; }
+  panel.hidden = false;
+  panel.innerHTML = returnedIssues.map((issue) => { const approval = issue.leaderApproval || {}; const review = approval.status === "Retificação solicitada"; return `<article class="return-notice ${review ? "review" : ""}"><h2>${review ? "↩ Retificação solicitada" : "✕ Chamado rejeitado"}</h2><p><b>Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate || "—")}</b></p><p>${esc(approval.note || "A liderança devolveu este chamado. Verifique os dados.")}</p><p><small>Decisão em ${dateTime(approval.approvedAt || issue.createdAt)}</small></p><button type="button" class="small-button" data-reopen-return="${esc(issue.id)}">${review ? "Corrigir e refazer checklist" : "Abrir dados do chamado"}</button></article>`; }).join("");
+}
+async function loadReturnedIssuesForCollaborator() {
+  if (returnedIssuesLoading) return;
+  const registration = $("#driverRegistration")?.value.replace(/\D/g, "") || localStorage.getItem("checkfrota-driver-registration") || "";
+  const phone = phoneOnly($("#driverPhone")?.value || current.driverPhone || "");
+  if (!CLOUD?.url || !registration || !phone) return;
+  returnedIssuesLoading = true;
+  try {
+    const rows = await cloudRpc("fleet_driver_returns", { p_registration: registration, p_phone: phone });
+    returnedIssues = (rows || []).map((row) => row.data).filter((issue) => issue && ["Retificação solicitada", "Recusada"].includes(issue.leaderApproval?.status));
+    returnedIssues.forEach(notifyReturnedIssue); renderReturnedIssues();
+  } catch (error) { console.warn("Não foi possível buscar devoluções do colaborador", error); }
+  finally { returnedIssuesLoading = false; }
+}
+function startReturnedIssuesPolling() {
+  if (returnedIssuesTimer) return;
+  returnedIssuesTimer = window.setInterval(() => { if (!document.hidden) void loadReturnedIssuesForCollaborator(); }, FAST_SYNC_INTERVAL_MS);
+}
+function openReturnedChecklist(issue, inspection = null) {
+  const vehicle = vehicleById(inspection?.vehicleId || issue.vehicleId) || data.vehicles.find((entry) => entry.prefix === (inspection?.vehiclePrefix || issue.vehiclePrefix) || entry.plate === (inspection?.vehiclePlate || issue.vehiclePlate));
+  const savedItems = Array.isArray(inspection?.items) ? inspection.items : [];
+  const states = Object.fromEntries(CHECKLIST.map((item) => {
+    const saved = savedItems.find((entry) => entry.id === item.id);
+    if (saved?.status) return [item.id, { status: saved.status, ...(saved.issue ? { issue: { ...saved.issue, photoFile: null } } : {}) }];
+    const isReturnedItem = item.name === issue.itemName;
+    return [item.id, isReturnedItem ? { status: "issue", issue: { severity: issue.severity || "Leve", description: issue.description || "", photoName: issue.photoName || "", photoFile: null } } : { status: "pending" }];
+  }));
+  current = {
+    driver: inspection?.driver || issue.driver || "", driverRegistration: inspection?.driverRegistration || issue.driverRegistration || "", driverRole: inspection?.driverRole || issue.driverRole || "", driverEmail: inspection?.driverEmail || issue.driverEmail || EMAIL_COPY_RECIPIENT,
+    driverPhone: inspection?.driverPhone || issue.driverPhone || "", baseName: inspection?.baseName || issue.baseName || "", basePhone: inspection?.basePhone || issue.basePhone || BASES[inspection?.baseName || issue.baseName] || "",
+    vehicleId: vehicle?.id || inspection?.vehicleId || issue.vehicleId || "", odometer: inspection?.odometer ?? issue.odometer ?? "", states, notes: inspection?.notes || "", washRequested: Boolean(inspection?.washRequested), washDetails: inspection?.washDetails || "", correctionOf: issue.id,
+  };
+  $("#driverRegistration").value = current.driverRegistration; $("#driverPhone").value = formatPhone(current.driverPhone); $("#baseSelect").value = current.baseName; renderVehicleOptions(); $("#vehicleSelect").value = current.vehicleId; $("#vehiclePrefixLookup").value = vehicleById(current.vehicleId)?.prefix || ""; $("#odometer").value = current.odometer;
+  lookupDriverRegistration(); renderBasePhone(); renderVehicleOwner();
+  if (!vehicle) return false;
+  $("#checklistVehicle").textContent = `Prefixo ${vehicle.prefix || "—"} · ${vehicle.plate} · ${vehicle.model || vehicle.type}`;
+  renderChecklist(); showScreen("checklist");
+  return true;
+}
+async function reopenReturnedIssue(issueId) {
+  const issue = returnedIssues.find((entry) => entry.id === issueId); if (!issue) return;
+  let inspection = data.inspections.find((entry) => entry.id === issue.inspectionId) || null;
+  // Nunca espere a rede para abrir a correção. A ocorrência fica disponível
+  // imediatamente; o formulário completo é aplicado assim que chegar.
+  if (!openReturnedChecklist(issue, inspection)) return alert("Não foi possível localizar o veículo deste chamado. Selecione-o na tela inicial e tente novamente.");
+  if (inspection) return alert("Checklist original restaurado. Corrija o que for necessário e envie a nova versão.");
+  if (!CLOUD?.url || !issue.inspectionId) return alert("A ocorrência devolvida foi restaurada. Complete os demais itens do checklist e envie a nova versão.");
+  try {
+    const registration = $("#driverRegistration")?.value.replace(/\D/g, "") || localStorage.getItem("checkfrota-driver-registration") || "";
+    const phone = phoneOnly($("#driverPhone")?.value || current.driverPhone || "");
+    if (!registration || !phone) throw new Error("Identificação do colaborador incompleta.");
+    const rows = await cloudRpc("fleet_driver_inspection", { p_registration: registration, p_phone: phone, p_inspection_id: issue.inspectionId });
+    inspection = rows?.[0]?.data || null;
+    if (!inspection) return alert("A ocorrência devolvida foi restaurada. Complete os demais itens do checklist e envie a nova versão.");
+    if (!data.inspections.some((entry) => entry.id === inspection.id)) { data.inspections.unshift(inspection); saveData(); }
+    openReturnedChecklist(issue, inspection);
+    alert("Checklist original restaurado. Corrija o que for necessário e envie a nova versão.");
+  } catch (error) {
+    console.warn("Não foi possível recuperar a inspeção original", error);
+    alert("A ocorrência devolvida foi restaurada. Complete os demais itens do checklist e envie a nova versão.");
+  }
+}
+function mergeFleetVehicles(cloudVehicles = []) {
+  // O banco pode conter somente veículos criados manualmente. Ele nunca deve
+  // substituir a frota de referência e fazer caminhões sumirem do aplicativo.
+  const localVehicles = Array.isArray(data.vehicles) ? data.vehicles : [];
+  const allVehicles = [...cloudVehicles, ...localVehicles];
+  const findMatch = (vehicle) => allVehicles.find((entry) => entry && (entry.id === vehicle.id || entry.prefix === vehicle.prefix || entry.plate === vehicle.plate));
+  const standard = initialData.vehicles
+    .filter((seed) => !(data.removedVehicleIds || []).includes(seed.id))
+    .map((seed) => withFleetResponsible({ ...seed, ...(findMatch(seed) || {}) }));
+  const extras = allVehicles.filter((vehicle, index) => vehicle && !initialData.vehicles.some((seed) => seed.id === vehicle.id || seed.prefix === vehicle.prefix || seed.plate === vehicle.plate) && allVehicles.findIndex((entry) => entry && (entry.id === vehicle.id || entry.prefix === vehicle.prefix || entry.plate === vehicle.plate)) === index);
+  return [...standard, ...extras];
+}
+async function loadCloudManager() {
+  if (!cloudToken() || managementCloudLoading) return;
+  managementCloudLoading = true;
+  try {
+    const [issues, inspections, vehicles] = await Promise.all([
+      cloudRequest("/rest/v1/fleet_issues?select=id,inspection_id,vehicle_id,status,data,revision&order=created_at.desc"),
+      cloudRequest("/rest/v1/fleet_inspections?select=data&order=created_at.desc"),
+      cloudRequest("/rest/v1/fleet_vehicles?select=data"),
+    ]);
+    if (issues) data.issues = issues.map((row) => ({
+      ...(row.data || {}),
+      id: row.id ?? row.data?.id,
+      inspectionId: row.inspection_id ?? row.data?.inspectionId,
+      vehicleId: row.vehicle_id ?? row.data?.vehicleId,
+      status: row.status || row.data?.status || "aberta",
+      __revision: Number.isInteger(row.revision) ? row.revision : undefined,
+    }));
+    if (inspections) data.inspections = inspections.map((row) => row.data);
+    data.vehicles = mergeFleetVehicles((vehicles || []).map((row) => row.data).filter(Boolean));
+    managementCloudLoaded = true; saveData(); renderControl();
+  } catch (error) { console.warn("Não foi possível carregar a nuvem", error); }
+  finally { managementCloudLoading = false; }
+}
+
+function loadData() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (!stored) { const initial = structuredClone(initialData); initial.vehicles = initial.vehicles.map(withFleetResponsible); return initial; }
+    // Limpeza solicitada para reiniciar os testes: registros e fila antigos não podem
+    // reaparecer no banco ao abrir outro celular.
+    if (localStorage.getItem(LOCAL_DATA_RESET_KEY) !== "v218") {
+      stored.issues = [];
+      stored.inspections = [];
+      localStorage.setItem(OUTBOX_KEY, "[]");
+      localStorage.setItem(LOCAL_DATA_RESET_KEY, "v218");
+    }
+    // Atualiza aparelhos que ainda guardam os três veículos de demonstração,
+    // preservando veículos reais já cadastrados manualmente pela base.
+    const storedVehicles = Array.isArray(stored.vehicles) ? stored.vehicles : [];
+    const removedVehicleIds = Array.isArray(stored.removedVehicleIds) ? stored.removedVehicleIds : [];
+    const seededVehicles = initialData.vehicles.filter((seed) => !removedVehicleIds.includes(seed.id)).map((seed) => {
+      const storedVehicle = storedVehicles.find((vehicle) => vehicle.prefix === seed.prefix || vehicle.plate === seed.plate);
+      const merged = { ...withFleetResponsible(seed), ...(storedVehicle || {}) };
+      merged.ownerName = normalizeOwnerName(RESPONSIBLES_BY_PREFIX[seed.prefix] || merged.ownerName);
+      if (NO_OWNER_PHONE_PREFIXES.has(String(seed.prefix))) merged.ownerPhone = "";
+      else if (!storedVehicle?.ownerPhone) merged.ownerPhone = OWNER_PHONE_BY_PREFIX[seed.prefix] || merged.ownerPhone;
+      return merged;
+    });
+    const customVehicles = storedVehicles.filter((vehicle) =>
+      !["v1", "v2", "v3"].includes(vehicle.id) &&
+      !initialData.vehicles.some((seed) => seed.prefix === vehicle.prefix || seed.plate === vehicle.plate)
+    );
+    const savedWebhookUrl = stored.settings?.webhookUrl;
+    const knownOldEmailUrls = [PREVIOUS_EMAIL_AUTOMATION_URL, RETIRED_EMAIL_AUTOMATION_URL, "https://script.google.com/macros/s/AKfycbyfdwx76UkQcv2fz1HXLERZrcVMfW1iaNvFALmFET1kIBBeXAQVvkH89iviTDxBCQOA/exec", "https://script.google.com/macros/s/AKfycbxJWNp7UZ6poCL_UiYumn2P9mq8IRs7b4UMkEbHQ7x_EQxjSNdtgrLxb3bexP4HiAhG/exec"];
+    const webhookUrl = !savedWebhookUrl || knownOldEmailUrls.includes(savedWebhookUrl) ? EMAIL_AUTOMATION_URL : savedWebhookUrl;
+    return { ...initialData, ...stored, removedVehicleIds, vehicles: [...seededVehicles, ...customVehicles], settings: { ...initialData.settings, ...stored.settings, coordinatorPhone: phoneOnly(stored.settings?.coordinatorPhone || initialData.settings.coordinatorPhone), webhookUrl } };
+  } catch { return structuredClone(initialData); }
+}
+function saveData() { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+function vehicleById(id) { return data.vehicles.find((vehicle) => vehicle.id === id); }
+function checkById(id) { return CHECKLIST.find((item) => item.id === id); }
+
+function showScreen(name) {
+  $$(".screen").forEach((screen) => screen.classList.toggle("active", screen.dataset.screen === name));
+  window.scrollTo({ top: 0, behavior: "smooth" });
+  if (name === "controle") { renderControl(); void loadCloudManager(); void loadEmployeeDatabase(); void loadMasterAccess(); }
+  if (name === "inicio") renderStart();
+}
+
+function renderStart() {
+  void loadEmployeeDatabase();
+  void loadVehicleDirectory();
+  const rememberedDriverRegistration = localStorage.getItem("checkfrota-driver-registration") || "";
+  const rememberedDriverPhone = localStorage.getItem("checkfrota-driver-phone") || "";
+  const rememberedBase = localStorage.getItem("checkfrota-base") || "";
+  if (!$("#driverRegistration").value) $("#driverRegistration").value = rememberedDriverRegistration;
+  if (!$("#driverPhone").value) $("#driverPhone").value = formatPhone(rememberedDriverPhone);
+  const correctionRegistration = new URLSearchParams(location.search).get("matricula");
+  if (correctionRegistration) $("#driverRegistration").value = correctionRegistration;
+  lookupDriverRegistration();
+  if (!$("#baseSelect").value) $("#baseSelect").value = rememberedBase;
+  renderVehicleOptions();
+  lookupVehiclePrefix();
+  renderVehicleOwner();
+  renderBasePhone();
+  void loadReturnedIssuesForCollaborator();
+  startReturnedIssuesPolling();
+  void loadScheduledAppointmentsForCollaborator();
+  startScheduledAppointmentsPolling();
+  const correctionId = new URLSearchParams(location.search).get("retificar");
+  if (correctionId && !sessionStorage.getItem(`checkfrota-retificacao-${correctionId}`)) {
+    sessionStorage.setItem(`checkfrota-retificacao-${correctionId}`, "1");
+    setTimeout(() => alert("A liderança solicitou uma retificação. Revise os dados e preencha um novo checklist para enviar a correção."), 120);
+  }
+  const todaysInspections = data.inspections.filter((inspection) => inspection.createdAt.slice(0, 10) === today());
+  $("#dailyDone").textContent = todaysInspections.length;
+  $("#openIssues").textContent = data.issues.filter((issue) => issue.status === "aberta").length;
+}
+function lookupDriverRegistration() {
+  const registrationInput = $("#driverRegistration");
+  const nameInput = $("#driverName");
+  const roleInput = $("#driverRole");
+  const hint = $("#driverLookupHint");
+  if (!registrationInput || !nameInput || !hint) return null;
+  const registration = registrationInput.value.replace(/\D/g, "");
+  if (!registration) {
+    nameInput.value = "";
+    if (roleInput) roleInput.value = "";
+    hint.textContent = "Digite a matrícula para localizar o nome do colaborador.";
+    hint.className = "helper";
+    return null;
+  }
+  // A lista local preenche os cadastros já conhecidos sem depender da rede.
+  // Para matrículas inseridas ou alteradas pela Gestão, consulte também a
+  // base oficial em segundo plano, sem travar o preenchimento da tela.
+  void lookupEmployeeFromCloud(registration);
+  const driver = driverByRegistration(registration);
+  if (!driver) {
+    nameInput.value = "";
+    if (roleInput) roleInput.value = "";
+    hint.textContent = "Matrícula não cadastrada. Procure a Gestão.";
+    hint.className = "helper warning";
+    return null;
+  }
+  registrationInput.value = driver.registration;
+  nameInput.value = driver.name;
+  if (roleInput) roleInput.value = driver.role;
+  hint.textContent = `Colaborador localizado: ${driver.name}.`;
+  hint.className = "helper ok";
+  renderScheduledAppointments();
+  void loadScheduledAppointmentsForCollaborator();
+  void window.URBAMOneSignal?.setContext({ role: "colaborador", base: $("#baseSelect")?.value || current.baseName, area: "checklist", externalId: `colaborador:${driver.registration}` });
+  return driver;
+}
+async function lookupEmployeeFromCloud(registration = "") {
+  const normalized = String(registration).replace(/\D/g, "");
+  if (normalized.length < 3 || !CLOUD?.url || employeeLookupInFlight === normalized) return;
+  if (employeeLookupTimer) clearTimeout(employeeLookupTimer);
+  employeeLookupTimer = window.setTimeout(async () => {
+    const input = $("#driverRegistration");
+    const hint = $("#driverLookupHint");
+    if (!input || input.value.replace(/\D/g, "") !== normalized || driverByRegistration(normalized)) return;
+    employeeLookupInFlight = normalized;
+    if (hint) { hint.textContent = "Consultando cadastro do colaborador…"; hint.className = "helper"; }
+    try {
+      const rows = await cloudRequest(`/rest/v1/fleet_employee_directory?select=registration,name,role,active&registration=eq.${encodeURIComponent(normalized)}&active=is.true`);
+      const employee = Array.isArray(rows) ? rows[0] : null;
+      if (employee?.registration && input.value.replace(/\D/g, "") === normalized) {
+        employeeDatabase = [...employeeDatabase.filter((item) => String(item.registration).replace(/\D/g, "") !== normalized), employee];
+        lookupDriverRegistration();
+      } else if (input.value.replace(/\D/g, "") === normalized && hint) {
+        hint.textContent = "Matrícula não cadastrada. Procure a Gestão.";
+        hint.className = "helper warning";
+      }
+    } catch (error) {
+      // A contingência local continua disponível; não exiba erro técnico para
+      // o colaborador quando estiver temporariamente sem internet.
+      console.warn("Não foi possível consultar a matrícula no banco", error);
+    } finally {
+      employeeLookupInFlight = "";
+    }
+  }, 250);
+}
+function baseKey(value) { const text = String(value || "").toLowerCase(); if (text.includes("vertical")) return "Vertical"; if (text.includes("horizontal")) return "Horizontal"; if (text.includes("abrigo")) return "Abrigo"; if (text.includes("sasc")) return "SASC"; if (text.includes("gestão") || text.includes("gestao")) return "Gestão"; return ""; }
+function vehicleBaseKey(vehicle) { return baseKey(BASE_BY_PREFIX[vehicle?.prefix] || vehicle?.base); }
+function isDirectManagementVehicle(vehicle) { return DIRECT_MANAGEMENT_PREFIXES.has(String(vehicle?.prefix || "")); }
+function renderVehicleOptions() {
+  const select = $("#vehicleSelect"); const selectedBase = $("#baseSelect").value; const oldValue = select.value || current.vehicleId;
+  const vehicles = selectedBase ? data.vehicles.filter((vehicle) => vehicleBaseKey(vehicle) === selectedBase) : [];
+  select.innerHTML = `<option value="">${selectedBase ? "Selecione o veículo" : "Selecione primeiro a base"}</option>${vehicles.map((vehicle) => `<option value="${vehicle.id}">Prefixo ${esc(vehicle.prefix || "—")} · ${esc(vehicle.plate)} · ${esc(vehicle.model || vehicle.type)}</option>`).join("")}`;
+  if (vehicles.some((vehicle) => vehicle.id === oldValue)) select.value = oldValue; else current.vehicleId = "";
+  renderVehicleOwner();
+}
+function vehicleByPrefix(prefix = "") {
+  const normalized = String(prefix).replace(/\D/g, "");
+  return data.vehicles.find((vehicle) => String(vehicle.prefix || "").replace(/\D/g, "") === normalized) || null;
+}
+function lookupVehiclePrefix() {
+  const input = $("#vehiclePrefixLookup");
+  const hint = $("#vehiclePrefixHint");
+  if (!input || !hint) return null;
+  const prefix = input.value.replace(/\D/g, "");
+  input.value = prefix;
+  if (!prefix) {
+    $("#vehicleSelect").value = "";
+    $("#baseSelect").value = "";
+    hint.textContent = "Digite o prefixo para localizar o veículo, a placa e a base.";
+    hint.className = "helper";
+    $("#vehicleOwner").textContent = "";
+    return null;
+  }
+  const vehicle = vehicleByPrefix(prefix);
+  if (!vehicle) {
+    $("#vehicleSelect").value = "";
+    $("#baseSelect").value = "";
+    hint.textContent = "Prefixo não cadastrado. Confira o número ou procure a Gestão.";
+    hint.className = "helper warning";
+    $("#vehicleOwner").textContent = "";
+    return null;
+  }
+  const base = vehicleBaseKey(vehicle);
+  $("#baseSelect").value = base;
+  renderVehicleOptions();
+  $("#vehicleSelect").value = vehicle.id;
+  current.vehicleId = vehicle.id;
+  renderBasePhone();
+  renderVehicleOwner();
+  hint.innerHTML = `✓ <b>Prefixo ${esc(vehicle.prefix)}</b> · ${esc(vehicle.plate)} · ${esc(vehicle.model || vehicle.type)}<br>Base: ${esc(base || "Gestão")}`;
+  hint.className = "helper ok vehicle-prefix-result";
+  return vehicle;
+}
+function renderBasePhone() { const base = $("#baseSelect").value; const phone = BASES[base] || ""; const formatted = phone.replace(/^55(\d{2})(\d{5})(\d{4})$/, "($1) $2-$3"); $("#basePhone").textContent = phone ? `Telefone da Base ${base}: ${formatted}` : base ? "Este destino segue diretamente para Gestão e Manutenção." : "Selecione a base para assumir o telefone de envio."; }
+function renderVehicleOwner() {
+  const vehicle = vehicleById($("#vehicleSelect").value);
+  $("#vehicleOwner").textContent = vehicle ? `Responsável: ${vehicle.ownerName}${vehicle.email ? ` · ${vehicle.email}` : ""}` : "";
+}
+
+function openingLocationMapUrl(locationData) { return locationData?.latitude != null && locationData?.longitude != null ? `https://www.google.com/maps?q=${locationData.latitude},${locationData.longitude}` : ""; }
+function renderOpeningLocationStatus(message = "", state = "") {
+  const status = $("#openingLocationStatus"); if (!status) return;
+  const locationData = current.openingLocation;
+  status.className = `helper ${state || (locationData ? "ok" : "")}`;
+  status.innerHTML = locationData && !message ? `✓ Localização capturada com precisão aproximada de <b>${Math.round(locationData.accuracy)} metros</b>. <a href="${esc(openingLocationMapUrl(locationData))}" target="_blank" rel="noopener">Conferir no mapa</a>` : esc(message || "Será solicitada ao iniciar o checklist para registrar o ponto mais preciso possível.");
+}
+async function captureOpeningLocation() {
+  if (!navigator.geolocation) { renderOpeningLocationStatus("Este aparelho não oferece localização. O checklist poderá continuar sem o ponto.", "warning"); return null; }
+  const button = $("#captureOpeningLocation"); if (button) button.disabled = true;
+  renderOpeningLocationStatus("Obtendo a localização mais precisa do celular… mantenha a localização/GPS ativada.");
+  return new Promise((resolve) => {
+    let best = null, watchId = null, finished = false;
+    const finish = (message = "", state = "") => {
+      if (finished) return; finished = true;
+      if (watchId != null) navigator.geolocation.clearWatch(watchId);
+      if (button) button.disabled = false;
+      if (best) {
+        current.openingLocation = { latitude: Number(best.coords.latitude.toFixed(7)), longitude: Number(best.coords.longitude.toFixed(7)), accuracy: Math.round(best.coords.accuracy), capturedAt: new Date(best.timestamp || Date.now()).toISOString(), mapUrl: `https://www.google.com/maps?q=${best.coords.latitude},${best.coords.longitude}` };
+        renderOpeningLocationStatus(); resolve(current.openingLocation);
+      } else { current.openingLocation = null; renderOpeningLocationStatus(message || "Não foi possível obter a localização. Verifique a permissão e tente novamente.", state || "warning"); resolve(null); }
+    };
+    const timer = window.setTimeout(() => finish("O GPS não respondeu dentro do tempo esperado. Ative a localização precisa e tente novamente.", "warning"), 20000);
+    watchId = navigator.geolocation.watchPosition((position) => {
+      if (!best || position.coords.accuracy < best.coords.accuracy) best = position;
+      if (position.coords.accuracy <= 10) { clearTimeout(timer); finish(); }
+    }, (error) => {
+      clearTimeout(timer);
+      const messages = { 1: "Permissão de localização negada. Autorize a localização para registrar o ponto do chamado.", 2: "Localização indisponível. Ative o GPS e tente novamente.", 3: "O GPS demorou para responder. Tente novamente em local aberto." };
+      finish(messages[error.code] || "Não foi possível obter a localização.", "warning");
+    }, { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
+    const qualityTimer = window.setInterval(() => { if (best?.coords?.accuracy <= 10) { clearInterval(qualityTimer); clearTimeout(timer); finish(); } }, 400);
+    window.setTimeout(() => { clearInterval(qualityTimer); clearTimeout(timer); finish(); }, 20000);
+  });
+}
+
+async function beginChecklist() {
+  submissionCompleted = false;
+  setSubmissionBusy(false);
+  if (completionReturnTimer) { clearTimeout(completionReturnTimer); completionReturnTimer = null; }
+  const registeredDriver = lookupDriverRegistration();
+  const driver = registeredDriver?.name || "";
+  const driverRegistration = registeredDriver?.registration || "";
+  const driverRole = registeredDriver?.role || "";
+  const driverEmail = EMAIL_COPY_RECIPIENT;
+  const phoneDigits = phoneOnly($("#driverPhone").value);
+  const driverPhone = phoneDigits.length === 10 || phoneDigits.length === 11 ? `55${phoneDigits}` : phoneDigits;
+  const baseName = $("#baseSelect").value;
+  const prefixVehicle = lookupVehiclePrefix();
+  const vehicleId = prefixVehicle?.id || $("#vehicleSelect").value;
+  const odometer = Number($("#odometer").value);
+  const vehicle = vehicleById(vehicleId);
+  const directToManagement = isDirectManagementVehicle(vehicle);
+  const basePhone = directToManagement ? "" : (BASES[baseName] || "");
+  if (!driverRegistration) return alert("Digite uma matrícula cadastrada antes de iniciar.");
+  if (!/^55\d{10,11}$/.test(driverPhone)) return alert("Informe um WhatsApp válido do colaborador, com DDD.");
+  if (!vehicleId) return alert("Digite um prefixo de veículo cadastrado.");
+  if (!baseName) return alert("O veículo não possui uma base cadastrada. Procure a Gestão.");
+  if (!basePhone && !directToManagement) return alert("Selecione a base responsável pela aprovação.");
+  if (!Number.isFinite(odometer) || odometer < 0) return alert("Informe a quilometragem atual do veículo.");
+  if (odometer > 999999) return alert("A quilometragem informada é muito alta. Confira o número antes de continuar.");
+  if (Number(vehicle?.odometer) && odometer < Number(vehicle.odometer)) return alert(`A quilometragem não pode ser menor que o último registro (${vehicle.odometer} km).`);
+  const locationAge = current.openingLocation?.capturedAt ? Date.now() - new Date(current.openingLocation.capturedAt).getTime() : Infinity;
+  const openingLocation = locationAge < 5 * 60 * 1000 ? current.openingLocation : await captureOpeningLocation();
+  current = { driver, driverRegistration, driverRole, driverEmail, driverPhone, baseName, basePhone, vehicleId, odometer, openingLocation, directToManagement, states: Object.fromEntries(CHECKLIST.map((item) => [item.id, { status: "pending" }])), notes: "", washRequested: false, washDetails: "" };
+  void window.URBAMOneSignal?.setContext({ role: "colaborador", base: baseName, area: "checklist", externalId: `colaborador:${driverRegistration}` });
+  localStorage.setItem("checkfrota-driver", driver);
+  localStorage.setItem("checkfrota-driver-registration", driverRegistration);
+  localStorage.setItem("checkfrota-driver-phone", driverPhone);
+  localStorage.setItem("checkfrota-base", baseName);
+  $("#checklistVehicle").textContent = `Prefixo ${vehicle.prefix || "—"} · ${vehicle.plate} · ${vehicle.model || vehicle.type}`;
+  renderChecklist();
+  showScreen("checklist");
+}
+function renderChecklist() {
+  const items = $("#checklistItems");
+  items.innerHTML = CHECKLIST.map((item) => {
+    const state = current.states[item.id] || { status: "pending" };
+    const issueClass = state.status === "issue" ? "has-issue" : "";
+    const issueHint = state.status === "issue" ? `<small class="chip ${state.issue.severity.toLowerCase()}">${state.issue.severity}</small>` : "";
+    return `<article class="check-item ${issueClass}">
+      <div><span class="check-name">${esc(item.name)}</span><span class="check-category">${esc(item.category)} ${issueHint}</span></div>
+      <div class="check-controls">
+        <button class="state-button ok ${state.status === "ok" ? "active" : ""}" data-state="ok" data-item="${item.id}" aria-label="${esc(item.name)} está em ordem" title="Em ordem">✓</button>
+        <button class="state-button issue ${state.status === "issue" ? "active" : ""}" data-state="issue" data-item="${item.id}" aria-label="${esc(item.name)} tem problema" title="Registrar problema">!</button>
+      </div>
+    </article>`;
+  }).join("");
+  updateProgress();
+}
+function updateProgress() {
+  const completed = Object.values(current.states).filter((state) => state.status !== "pending").length;
+  $("#progressText").textContent = `${completed} de ${CHECKLIST.length} itens verificados`;
+  $("#progressBar").style.width = `${(completed / CHECKLIST.length) * 100}%`;
+}
+
+function openIssue(itemId) {
+  issueDraft = { itemId, severity: current.states[itemId]?.issue?.severity || "Leve" };
+  const item = checkById(itemId);
+  $("#issueItemName").textContent = item.name;
+  $("#issueDescription").value = current.states[itemId]?.issue?.description || "";
+  $("#issuePhoto").value = "";
+  $$(".severity").forEach((button) => button.classList.toggle("active", button.dataset.severity === issueDraft.severity));
+  $("#issueDialog").showModal();
+}
+function saveIssue() {
+  const description = $("#issueDescription").value.trim();
+  if (!description) { $("#issueDescription").reportValidity(); return; }
+  const photo = $("#issuePhoto").files[0];
+  if (photo && !["image/jpeg", "image/png", "image/webp", "image/heic"].includes(photo.type)) return alert("Envie apenas uma foto JPEG, PNG, WEBP ou HEIC. Vídeos e outros arquivos não são aceitos.");
+  if (photo && photo.size > 20 * 1024 * 1024) return alert("A foto escolhida tem mais de 20 MB. Tire outra foto com menor tamanho antes de enviar.");
+  current.states[issueDraft.itemId] = {
+    status: "issue",
+    issue: { severity: issueDraft.severity, description, photoName: photo?.name || "", photoFile: photo || null },
+  };
+  $("#issueDialog").close();
+  renderChecklist();
+}
+function reviewChecklist() {
+  const pending = CHECKLIST.filter((item) => current.states[item.id]?.status === "pending");
+  if (pending.length) return alert(`Faltam ${pending.length} item(ns) para verificar. Marque ✓ ou ! em todos eles.`);
+  const issues = getCurrentIssues();
+  $("#reviewSummary").innerHTML = `<section class="review-box card">
+    <div class="review-row"><span>Colaborador</span><b>${esc(current.driver)}</b></div>
+    ${current.driverRegistration ? `<div class="review-row"><span>Matrícula</span><b>${esc(current.driverRegistration)}</b></div>` : ""}
+    ${current.driverRole ? `<div class="review-row"><span>Função</span><b>${esc(current.driverRole)}</b></div>` : ""}
+    ${current.driverEmail ? `<div class="review-row"><span>Cópia do formulário</span><b>${esc(current.driverEmail)}</b></div>` : ""}
+    <div class="review-row"><span>Veículo</span><b>Prefixo ${esc(vehicleById(current.vehicleId).prefix || "—")} · ${esc(vehicleById(current.vehicleId).plate)}</b></div>
+    <div class="review-row"><span>Quilometragem</span><b>${esc(current.odometer)} km</b></div>
+    <div class="review-row"><span>Itens em ordem</span><span class="chip ok">${CHECKLIST.length - issues.length} OK</span></div>
+    <div class="review-row"><span>Ocorrências</span>${issues.length ? `<span class="chip ${highestSeverity(issues).toLowerCase()}">${issues.length} encontrada(s)</span>` : `<span class="chip ok">Nenhuma</span>`}</div>
+  </section>${issues.length ? `<section class="review-box card">${issues.map((issue) => `<div class="review-row"><span>${esc(issue.item.name)}</span><span class="chip ${issue.severity.toLowerCase()}">${esc(issue.severity)}</span></div>`).join("")}</section>` : ""}`;
+  $("#generalNotes").value = current.notes;
+  $("#requestWash").checked = Boolean(current.washRequested);
+  $("#washDetails").value = current.washDetails || "";
+  showScreen("review");
+}
+function getCurrentIssues() {
+  return CHECKLIST.filter((item) => current.states[item.id]?.status === "issue").map((item) => ({ item, ...current.states[item.id].issue }));
+}
+function severityRank(severity) { return ({ Leve: 1, "Média": 2, Grave: 3 }[severity] || 0); }
+function highestSeverity(issues) { return issues.reduce((highest, issue) => severityRank(issue.severity) > severityRank(highest) ? issue.severity : highest, "Leve"); }
+async function cloudDuplicateItems(vehicle, currentIssues) {
+  if (!CLOUD?.url || !currentIssues.length) return [];
+  try {
+    const rows = await cloudRpc("fleet_open_duplicates", { p_vehicle_prefix: String(vehicle.prefix || ""), p_item_names: currentIssues.map((issue) => issue.item.name) });
+    return (rows || []).map((row) => row.item_name).filter(Boolean);
+  } catch (error) {
+    console.warn("Validação central de duplicidade indisponível; usando a validação local.", error);
+    return [];
+  }
+}
+
+async function submitChecklist() {
+  if (submissionInProgress || submissionCompleted) return;
+  submissionInProgress = true;
+  setSubmissionBusy(true);
+  try {
+  current.notes = $("#generalNotes").value.trim();
+  current.washRequested = $("#requestWash").checked;
+  current.washDetails = $("#washDetails").value.trim();
+  // A localização ajuda a equipe a identificar o ponto do chamado, mas nunca
+  // pode impedir o registro de uma ocorrência. Reaproveitamos o ponto obtido
+  // ao iniciar o checklist e, se ele não existir, tentamos uma última captura.
+  // Em caso de GPS indisponível ou baixa precisão, o formulário segue com a
+  // indicação correspondente para que a manutenção não fique sem registro.
+  let finalOpeningLocation = current.openingLocation || await captureOpeningLocation();
+  if (finalOpeningLocation && Number(finalOpeningLocation.accuracy) > 100) {
+    finalOpeningLocation = { ...finalOpeningLocation, precisionWarning: "Localização aproximada; GPS com precisão acima de 100 metros." };
+  }
+  current.openingLocation = finalOpeningLocation || null;
+  const vehicle = vehicleById(current.vehicleId);
+  const inspection = {
+    id: crypto.randomUUID(), createdAt: new Date().toISOString(), softwareSignature: SOFTWARE_SIGNATURE, driver: current.driver, driverRegistration: current.driverRegistration, driverRole: current.driverRole, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, openingLocation: current.openingLocation, approvalRoute: current.directToManagement ? "gestao" : "lideranca",
+    vehicleId: vehicle.id, vehiclePrefix: vehicle.prefix || "", vehiclePlate: vehicle.plate, vehicleType: vehicle.type, vehicleModel: vehicle.model || "", vehicleBase: vehicle.base || "", odometer: current.odometer, notes: current.notes, washRequested: current.washRequested, washDetails: current.washDetails, correctionOf: current.correctionOf || "",
+    items: CHECKLIST.map((item) => ({ ...item, ...current.states[item.id] })),
+  };
+  const currentIssues = [...getCurrentIssues(), ...(current.washRequested ? [{ item: { name: "Solicitação de lavagem", category: "Lavagem" }, severity: "Leve", description: current.washDetails || "Solicitação de lavagem do veículo." }] : [])];
+  const duplicateItems = currentIssues.filter((candidate) => data.issues.some((existing) => existing.status !== "resolvida" && !isArchived(existing) && String(existing.vehicleId || existing.vehiclePrefix) === String(vehicle.id || vehicle.prefix) && driverNameKey(existing.itemName) === driverNameKey(candidate.item.name)));
+  const cloudDuplicates = await cloudDuplicateItems(vehicle, currentIssues);
+  const duplicateLabels = [...new Set([...duplicateItems.map((item) => item.item.name), ...cloudDuplicates])];
+  if (duplicateLabels.length) {
+    const labels = duplicateLabels.join(", ");
+    if (!confirm(`Já existe chamado aberto para este veículo em: ${labels}.\n\nDeseja realmente registrar outro chamado?`)) return;
+  }
+  inspection.status = currentIssues.length ? "Com ocorrência" : "Concluído sem observação";
+  inspection.completedAt = currentIssues.length ? "" : new Date().toISOString();
+  const newIssues = currentIssues.map((issue) => ({
+    id: crypto.randomUUID(), inspectionId: inspection.id, status: "aberta", createdAt: inspection.createdAt,
+    softwareSignature: SOFTWARE_SIGNATURE, driver: current.driver, driverRegistration: current.driverRegistration, driverRole: current.driverRole, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, openingLocation: current.openingLocation, approvalRoute: current.directToManagement ? "gestao" : "lideranca", vehicleId: vehicle.id, vehiclePrefix: vehicle.prefix || "", vehiclePlate: vehicle.plate, vehicleType: vehicle.type, vehicleModel: vehicle.model || "", vehicleBase: BASE_BY_PREFIX[vehicle.prefix] || vehicle.base || "", odometer: current.odometer,
+    ownerName: vehicle.ownerName, ownerPhone: vehicle.ownerPhone, email: vehicle.email,
+    itemName: issue.item.name, severity: issue.severity, description: issue.description, photoName: issue.photoName, _photoFile: issue.photoFile || null,
+    correctionOf: current.correctionOf || "", maintenance: { status: "Solicitada", scheduledAt: "", provider: "", feedback: "", updatedAt: "" },
+  }));
+  try { await Promise.all(newIssues.map(async (issue) => { const compressedPhoto = await compressPhoto(issue._photoFile); issue.photoSize = compressedPhoto?.size || 0; issue.photoPath = await uploadIssuePhoto(issue, compressedPhoto); delete issue._photoFile; })); }
+  catch (error) { alert("Não foi possível preparar a foto. Tente outra imagem em formato JPEG, PNG, WEBP ou HEIC."); return; }
+  vehicle.odometer = current.odometer;
+  data.inspections.unshift(inspection);
+  data.issues.unshift(...newIssues);
+  saveData();
+  // A partir deste ponto o chamado já existe com segurança no aparelho. Bloqueie
+  // imediatamente novos toques, mesmo que a gravação na nuvem esteja lenta.
+  submissionCompleted = true;
+  sessionStorage.setItem("checkfrota-last-submission", JSON.stringify({ id: inspection.id, at: Date.now() }));
+  setSubmissionBusy(false);
+  // A confirmação ao colaborador não depende da velocidade da rede. O envio
+  // começa imediatamente em segundo plano; se falhar, entra na fila local.
+  void cloudSyncSubmission(inspection, newIssues).then((cloudSaved) => {
+    if (!cloudSaved) console.warn("Chamado aguardando sincronização automática.");
+  }).catch((error) => console.warn("Não foi possível gravar o chamado no banco", error));
+  // O colaborador só recebe e visualiza o retorno quando a Gestão agendar.
+  // Antes disso, o chamado segue apenas para Liderança/Gestão, evitando dúvida
+  // no aparelho de quem abriu a solicitação.
+  scheduledAppointments = scheduledAppointments.filter((issue) => !newIssues.some((created) => created.id === issue.id));
+  renderScheduledAppointments();
+  renderDailyChecklistAlert();
+  await finishCorrectionRequest(current.correctionOf, inspection, newIssues.length > 0);
+  const emailDeliveryId = crypto.randomUUID();
+  void cloudSave("fleet_email_deliveries", { id: emailDeliveryId, inspection_id: inspection.id, recipient: EMAIL_COPY_RECIPIENT, status: "encaminhado" })
+    .catch((error) => console.warn("Rastreio de e-mail será criado após instalar a atualização do banco", error));
+  // Não mantenha a tela travada esperando o Apps Script. O serviço recebe a
+  // tentativa em paralelo e o motorista volta ao início em poucos segundos.
+  const emailPayload = { inspection, vehicle, issues: newIssues, emailDeliveryId };
+  void sendToIntegration(emailPayload).then((result) => {
+    if (!result.sent) console.warn("Integração de e-mail indisponível; verifique a configuração.");
+  });
+  await showCompletion(inspection, vehicle, newIssues, { sent: Boolean(data.settings.webhookUrl), unverified: Boolean(data.settings.webhookUrl), reason: "envio em andamento" });
+  current = { driver: current.driver, driverRegistration: current.driverRegistration, driverRole: current.driverRole, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, vehicleId: vehicle.id, odometer: "", openingLocation: null, states: {}, notes: "" };
+  saveData();
+  } finally {
+    submissionInProgress = false;
+    setSubmissionBusy(false);
+  }
+}
+
+function setSubmissionBusy(busy) {
+  const button = $("#submitChecklist");
+  document.body.classList.toggle("submission-busy", busy);
+  document.body.classList.toggle("submission-complete", submissionCompleted);
+  document.body.setAttribute("aria-busy", String(busy));
+  if (!button) return;
+  button.disabled = busy || submissionCompleted;
+  button.setAttribute("aria-disabled", String(busy || submissionCompleted));
+  button.innerHTML = busy ? `Enviando formulário… <span class="submit-spinner" aria-hidden="true"></span>` : submissionCompleted ? `Formulário enviado <span>✓</span>` : `Concluir e gerar formulário <span>✓</span>`;
+}
+
+async function sendToIntegration(payload) {
+  if (!data.settings.webhookUrl) return { sent: false, reason: "sem integração" };
+  try {
+    const isGoogleAppsScript = data.settings.webhookUrl.includes("script.google.com/macros/s/");
+    const response = await fetch(data.settings.webhookUrl, isGoogleAppsScript
+      ? { method: "POST", mode: "no-cors", signal: AbortSignal.timeout(INTEGRATION_TIMEOUT_MS), headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(payload) }
+      : { method: "POST", signal: AbortSignal.timeout(INTEGRATION_TIMEOUT_MS), headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    // No modo no-cors o navegador não pode ler a resposta do Apps Script.
+    // Não trate isso como confirmação de entrega: evita informar ao motorista
+    // que o e-mail chegou quando a implantação externa estiver indisponível.
+    if (isGoogleAppsScript) return { sent: true, unverified: true, reason: "encaminhado ao Apps Script; confirme a implantação de e-mail" };
+    return { sent: response.ok, reason: response.ok ? "enviado" : "falhou" };
+  } catch { return { sent: false, reason: "falhou" }; }
+}
+async function sendMaintenanceStatusPush(issue) {
+  if (!CLOUD?.url || !cloudToken() || !issue?.id) return { sent: false, reason: "sem sessão" };
+  try {
+    const response = await fetch(`${CLOUD.url}/functions/v1/notify-schedule`, {
+      method: "POST",
+      headers: { ...cloudHeaders(), Authorization: `Bearer ${cloudToken()}` },
+      body: JSON.stringify({ issueId: issue.id }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || `Notificação: ${response.status}`);
+    return { sent: true, ...result };
+  } catch (error) {
+    console.warn("A atualização foi salva, mas o aviso do aplicativo não pôde ser entregue.", error);
+    return { sent: false, reason: error.message };
+  }
+}
+function buildWhatsAppMessage(vehicle, issues, inspection) {
+  const createdAt = inspection?.createdAt || issues[0]?.createdAt || new Date();
+  const checklist = (inspection?.items || CHECKLIST.map((item) => ({ ...item, ...current.states[item.id] }))).map((item) => {
+    if (item.status === "issue") {
+      const issue = item.issue || {};
+      return `- ${item.name}: OCORRÊNCIA${issue.description ? ` — ${issue.description}` : ""}`;
+    }
+    return `- ${item.name}: EM ORDEM`;
+  }).join("\n");
+  const wash = issues.find(isWashIssue);
+  const openingLocation = inspection?.openingLocation || issues[0]?.openingLocation;
+  const locationLine = openingLocationMapUrl(openingLocation) ? `\nLocalização do chamado: ${openingLocationMapUrl(openingLocation)} (precisão aproximada: ${Math.round(openingLocation.accuracy || 0)} m)` : "";
+  return `*URBAM FROTAS — FORMULÁRIO DE INSPEÇÃO*\nSolicitação para avaliação da liderança\n\n*Identificação do veículo*\nVeículo: Prefixo ${vehicle.prefix || "—"} · ${vehicle.plate} (${vehicle.model || vehicle.type})\nQuilometragem: ${inspection?.odometer ?? issues[0]?.odometer ?? vehicle.odometer ?? "Não informada"} km\nBase: ${inspection?.baseName || issues[0]?.baseName || current.baseName || "Não informada"}\nData: ${dateTime(createdAt)}${locationLine}\n\n*Checklist completo*\n${checklist}${wash ? `\n\n*Solicitação adicional*\nLavagem do veículo${wash.description && wash.description !== "Solicitação de lavagem do veículo." ? ` — ${wash.description}` : ""}` : ""}\n\nSolicitamos avaliação e providências para o veículo.`;
+}
+function whatsappLink(phone, message) { return `https://wa.me/${phoneOnly(phone)}?text=${encodeURIComponent(message)}`; }
+function leadershipPanelUrl(baseName) {
+  const base = baseName || current.baseName || "Vertical";
+  return `${location.origin}${location.pathname.replace(/[^/]*$/, "lider.html")}?v=${APP_VERSION}&base=${encodeURIComponent(base)}`;
+}
+async function approvalUrl(vehicle, issues) {
+  const first = issues[0] || {};
+  const problem = issues.map((issue) => `${issue.itemName || issue.item?.name}: ${issue.description}`).join(" | ");
+  const params = new URLSearchParams({
+    id: `MAN-${String(first.id || Date.now()).replaceAll("-", "").slice(-8)}`, issueId: first.id || "",
+    prefix: vehicle.prefix || "", type: vehicle.model || vehicle.type, plate: vehicle.plate,
+    driver: first.driver || current.driver || "", driverRegistration: first.driverRegistration || current.driverRegistration || "", driverPhone: first.driverPhone || current.driverPhone || "",
+    leaderPhone: first.basePhone || current.basePhone || data.settings.leaderPhone || "", maintenancePhone: data.settings.maintenancePhone || "", ownerPhone: first.ownerPhone || vehicle.ownerPhone || "", ownerName: first.ownerName || vehicle.ownerName || "",
+    km: String(first.odometer ?? vehicle.odometer ?? ""), baseName: first.baseName || current.baseName || "Não informada", priority: highestSeverity(issues), location: openingLocationMapUrl(first.openingLocation || current.openingLocation), problem,
+  });
+  const photoUrl = await issuePhotoLink(first);
+  if (photoUrl) params.set("photoUrl", photoUrl);
+  if (first.photoName) params.set("photoName", first.photoName);
+  return `${location.origin}${location.pathname.replace(/[^/]*$/, "aprovacao.html")}?v=${APP_VERSION}&${params.toString()}`;
+}
+async function showCompletion(inspection, vehicle, issues, sendResult) {
+  const severe = issues.some((issue) => issue.severity === "Grave");
+  $("#successTitle").textContent = issues.length ? (severe ? "Veículo com bloqueio de deslocamento." : "Ocorrência registrada.") : "Tudo certo para seguir.";
+  $("#successText").textContent = issues.length ? `O formulário foi salvo com ${issues.length} ocorrência(s) e já está disponível para ${issues.some((issue) => issue.approvalRoute === "gestao") ? "a Gestão" : "a Liderança"}. O envio está concluído e não precisa de outra confirmação. ${sendResult.unverified ? "O pedido de e-mail foi encaminhado; a confirmação depende da implantação do serviço de e-mail." : sendResult.sent ? "A integração de e-mail confirmou o recebimento." : "Configure a integração para o envio automático por e-mail."}` : "Checklist concluído sem observações. Não é necessária aprovação da liderança.";
+  const form = $("#submittedForm");
+  const occurrenceRows = issues.length ? issues.map((issue) => `<article class="submitted-issue ${esc(issue.severity.toLowerCase())}"><div><b>${esc(issue.itemName)}</b><span class="chip ${esc(issue.severity.toLowerCase())}">${esc(issue.severity)}</span></div><p>${esc(issue.description)}</p>${issue.photoPath ? `<img src="${esc(publicIssuePhotoUrl(issue))}" alt="Foto da ocorrência ${esc(issue.itemName)}" loading="lazy">` : ""}</article>`).join("") : `<p class="form-empty">Nenhuma ocorrência informada.</p>`;
+  form.innerHTML = `<div class="form-top"><span class="form-mark">✓</span><div><small>URBAM FROTAS · RESPOSTA ENVIADA</small><h2>Formulário de inspeção</h2></div></div><div class="form-fields"><div><span>Colaborador</span><b>${esc(inspection.driver)}</b></div>${inspection.driverRegistration ? `<div><span>Matrícula</span><b>${esc(inspection.driverRegistration)}</b></div>` : ""}${inspection.driverRole ? `<div><span>Função</span><b>${esc(inspection.driverRole)}</b></div>` : ""}<div><span>Base</span><b>${esc(inspection.baseName)}</b></div>${inspection.driverEmail ? `<div><span>Cópia para e-mail</span><b>${esc(inspection.driverEmail)}</b></div>` : ""}<div><span>Veículo</span><b>Prefixo ${esc(vehicle.prefix)} · ${esc(vehicle.plate)}</b></div><div><span>Modelo</span><b>${esc(vehicle.model || vehicle.type)}</b></div><div><span>Quilometragem</span><b>${esc(inspection.odometer)} km</b></div><div><span>Data e hora</span><b>${esc(dateTime(inspection.createdAt))}</b></div></div><div class="form-occurrences"><h3>Ocorrências relatadas</h3>${occurrenceRows}</div>${inspection.notes ? `<div class="form-notes"><span>Observação geral</span><p>${esc(inspection.notes)}</p></div>` : ""}`;
+  const actions = $("#dispatchActions");
+  if (!issues.length) {
+    actions.innerHTML = "";
+    showScreen("success");
+    if (completionReturnTimer) clearTimeout(completionReturnTimer);
+    completionReturnTimer = window.setTimeout(() => { completionReturnTimer = null; showScreen("inicio"); }, 6000);
+    return;
+  }
+  const directToManagement = issues.some((issue) => issue.approvalRoute === "gestao");
+  actions.innerHTML = `<div class="dispatch-confirmation" role="status" aria-live="polite"><span aria-hidden="true">✓</span><div><b>Chamado enviado</b><small>Disponível no painel ${directToManagement ? "da Gestão" : "da Liderança"}.</small></div></div>`;
+  showScreen("success");
+  if (completionReturnTimer) clearTimeout(completionReturnTimer);
+  completionReturnTimer = window.setTimeout(() => {
+    completionReturnTimer = null;
+    showScreen("inicio");
+  }, 6000);
+}
+
+function renderManagementCommandCenter() {
+  const panel = $("#managementCommandCenter"); if (!panel) return;
+  const open = data.issues.filter((issue) => issue.status !== "resolvida" && !isArchived(issue));
+  const todayValue = today();
+  const count = (predicate) => open.filter(predicate).length;
+  const cards = [
+    ["Aguardando líder", count((issue) => !issue.leaderApproval && issue.approvalRoute !== "gestao"), "approval"],
+    ["Aprovados para gestão", count((issue) => issue.leaderApproval?.status === "Aprovada" && maintenanceOf(issue).status === "Solicitada"), "approved"],
+    ["Agendados hoje", count((issue) => maintenanceOf(issue).scheduledAt?.slice(0, 10) === todayValue), "scheduled"],
+    ["Em manutenção", count((issue) => maintenanceOf(issue).status === "Em manutenção"), "in-maintenance"],
+    ["Prontos para retirada", count((issue) => maintenanceOf(issue).status === "Veículo pronto para retirada"), "ready"],
+    ["Ações vencidas", count((issue) => isNextActionOverdue(issue)), "action-overdue"],
+    ["Atrasados / vencidos", count((issue) => isManagementOverdue(issue)), "late"],
+  ];
+  panel.innerHTML = `<div class="section-action"><div><p class="eyebrow">PRIORIDADES DO DIA</p><h3>Central de pendências</h3><p>Toque em uma opção para abrir os chamados correspondentes.</p></div><span class="chip grave">${open.length} em aberto</span></div><div class="command-center-grid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">${cards.map(([label, value, type]) => `<button type="button" class="command-card ${type} ${managerCommandFilter === type ? "active" : ""}" data-command-filter="${type}" aria-pressed="${managerCommandFilter === type}" style="min-width:0;${["late","action-overdue"].includes(type) ? "grid-column:span 2;" : ""}"><b>${value}</b><span>${label}</span><small>Ver chamados</small></button>`).join("")}</div>`;
+}
+function renderVehicleTimelines() {
+  const cards = $$("#vehiclesPanel .vehicle-card");
+  cards.forEach((card, index) => {
+    const vehicle = data.vehicles[index]; if (!vehicle) return;
+    const events = data.issues.filter((issue) => issue.vehicleId === vehicle.id || String(issue.vehiclePrefix) === String(vehicle.prefix)).flatMap((issue) => {
+      const maintenance = maintenanceOf(issue), entries = [{ at: issue.createdAt, label: `Chamado aberto: ${issue.itemName || "manutenção"}` }];
+      if (issue.leaderApproval?.approvedAt) entries.push({ at: issue.leaderApproval.approvedAt, label: `Liderança: ${issue.leaderApproval.status}` });
+      if (maintenance.scheduledAt) entries.push({ at: maintenance.scheduledAt, label: `Agendado${maintenance.provider ? ` — ${maintenance.provider}` : ""}` });
+      if (maintenance.deliveryAt) entries.push({ at: maintenance.deliveryAt, label: "Veículo entregue para manutenção" });
+      if (maintenance.readyAt) entries.push({ at: maintenance.readyAt, label: "Veículo pronto para retirada" });
+      if (issue.resolvedAt) entries.push({ at: issue.resolvedAt, label: "Chamado concluído" });
+      return entries;
+    }).filter((event) => event.at).sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 5);
+    if (!events.length) return;
+    card.insertAdjacentHTML("beforeend", `<section class="vehicle-timeline"><b>Linha do tempo recente</b>${events.map((event) => `<p><span>●</span> ${esc(dateTime(event.at))} · ${esc(event.label)}</p>`).join("")}</section>`);
+  });
+}
+function maintenanceDeadline(issue) { const maintenance = maintenanceOf(issue); return maintenance.deliveryAt ? new Date(maintenance.supplierDeadlineAt || new Date(maintenance.deliveryAt).getTime() + 21600000) : null; }
+function durationLabel(milliseconds) { const minutes = Math.max(0, Math.ceil(milliseconds / 60000)); return minutes >= 60 ? `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, "0")}min` : `${minutes} min`; }
+function supplierSlaResult(issue) {
+  const maintenance = maintenanceOf(issue); const deadline = maintenanceDeadline(issue);
+  if (!deadline) return null;
+  const finishedAt = maintenance.readyAt || maintenance.pickupAt || (maintenance.status === "Concluída" ? issue.resolvedAt : "");
+  if (finishedAt) {
+    const difference = new Date(finishedAt).getTime() - deadline.getTime();
+    return { deadline, finishedAt: new Date(finishedAt), difference, state: difference <= 0 ? "within" : "late" };
+  }
+  const difference = Date.now() - deadline.getTime();
+  return { deadline, finishedAt: null, difference, state: difference > 0 ? "late" : "running" };
+}
+function isMissedAppointment(issue) {
+  const maintenance = maintenanceOf(issue);
+  if (maintenance.status !== "Agendada" || !maintenance.scheduledAt || maintenance.deliveryAt) return false;
+  const scheduledAt = new Date(maintenance.scheduledAt).getTime();
+  return Number.isFinite(scheduledAt) && scheduledAt < Date.now();
+}
+function isManagementOverdue(issue) {
+  const maintenance = maintenanceOf(issue);
+  return maintenance.status !== "Concluída" && (supplierSlaResult(issue)?.state === "late" || isMissedAppointment(issue));
+}
+function isNextActionOverdue(issue) {
+  const maintenance = maintenanceOf(issue);
+  if (!maintenance.nextActionAt || isArchived(issue) || issue.status === "resolvida" || maintenance.status === "Concluída") return false;
+  return new Date(maintenance.nextActionAt).getTime() < Date.now();
+}
+function notifyManagementMaintenanceWatch(issue, overdue) {
+  if (returnNotificationPermission() !== "granted") return;
+  const maintenance = maintenanceOf(issue); const key = `checkfrota-management-watch-${overdue ? "deadline" : "delivery"}-${issue.id}-${maintenance.deliveryAt}`;
+  if (localStorage.getItem(key)) return;
+  const notification = new Notification(overdue ? "URBAM Frotas: prazo de fornecedor vencido" : "URBAM Frotas: veículo entregue para manutenção", { body: overdue ? `Prefixo ${issue.vehiclePrefix || "—"}: ultrapassou as 6 horas corridas.` : `Prefixo ${issue.vehiclePrefix || "—"}: entregue às ${dateTime(maintenance.deliveryAt)}.`, tag: `checkfrota-management-${issue.id}-${overdue ? "deadline" : "delivery"}`, renotify: true });
+  notification.onclick = () => { window.focus(); notification.close(); }; localStorage.setItem(key, new Date().toISOString());
+}
+function renderMaintenanceWatchAlerts() {
+  const panel = $("#maintenanceWatchAlerts"); if (!panel) return;
+  const active = data.issues.filter((issue) => {
+    const maintenance = maintenanceOf(issue);
+    return maintenance.deliveryAt && maintenance.status !== "Cancelada" && maintenance.status !== "Concluída" && issue.status !== "resolvida" && !isArchived(issue);
+  });
+  if (!active.length) { panel.hidden = true; panel.innerHTML = ""; return; }
+  const now = Date.now(); panel.hidden = false;
+  panel.innerHTML = `<div class="section-action"><div><p class="eyebrow">CONTROLE CONTRATUAL</p><h3>Prazo de atendimento de 6 horas</h3><p>O fornecedor não acessa o sistema. A Gestão registra o retorno recebido por WhatsApp e prepara o e-mail formal quando houver atraso.</p></div><span class="chip grave">${active.length} em acompanhamento</span></div>${active.map((issue) => {
+    const maintenance = maintenanceOf(issue), sla = supplierSlaResult(issue), overdue = sla?.state === "late";
+    if (!sla) return "";
+    notifyManagementMaintenanceWatch(issue, overdue && !sla.finishedAt);
+    const title = sla.state === "within" ? "✓ Atendimento dentro do prazo" : sla.state === "late" ? "! Prazo contratual vencido" : "◷ Prazo do fornecedor em andamento";
+    const detail = sla.finishedAt
+      ? `${sla.state === "within" ? `Finalizado ${durationLabel(-sla.difference)} antes do limite.` : `Finalizado com atraso de ${durationLabel(sla.difference)}.`} Veículo pronto: ${dateTime(sla.finishedAt)}.`
+      : (overdue ? `Veículo ainda não liberado. Excedido há ${durationLabel(sla.difference)}.` : `Restam ${durationLabel(-sla.difference)} das 6 horas corridas.`);
+    const action = sla.state === "late" ? "Preparar e-mail de notificação" : "Copiar comprovação de prazo";
+    return `<article class="maintenance-watch ${overdue ? "overdue" : ""}"><b>${title}</b><p><strong>Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate || "—")}</strong><br>Entregue: ${esc(dateTime(maintenance.deliveryAt))} · ${esc(maintenance.provider || "Oficina não informada")}</p><small>${esc(detail)} Prazo final: ${esc(dateTime(sla.deadline))}.</small>${maintenance.slaEmailAt ? `<p><small><b>E-mail formal preparado:</b> ${esc(dateTime(maintenance.slaEmailAt))}</small></p>` : ""}<div class="issue-actions"><button type="button" class="small-button" data-copy-sla-notice="${esc(issue.id)}">Copiar texto formal</button><button type="button" class="small-button ${overdue ? "danger-button" : ""}" data-send-sla-notice="${esc(issue.id)}">${action}</button></div></article>`;
+  }).join("")}`;
+}
+function startMaintenanceWatch() {
+  if (maintenanceWatchTimer) return;
+  maintenanceWatchTimer = window.setInterval(() => {
+    const managementVisible = !document.hidden && $(".screen.active[data-screen='controle']");
+    if (!managementVisible) return;
+    renderMaintenanceWatchAlerts();
+    if (cloudToken()) void loadCloudManager();
+  }, FAST_SYNC_INTERVAL_MS);
+}
+function renderControl() {
+  const open = data.issues.filter((issue) => issue.status === "aberta");
+  $("#fleetCount").textContent = data.vehicles.length;
+  $("#seriousCount").textContent = open.filter((issue) => issue.severity === "Grave").length;
+  const since = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  $("#weekChecks").textContent = data.inspections.filter((inspection) => new Date(inspection.createdAt).getTime() >= since).length;
+  renderManagementCommandCenter(); renderMaintenanceWatchAlerts(); renderIssues(); renderAgenda(); renderReports(); renderHistory(); renderVehicles(); renderVehicleTimelines(); renderDrivers(); renderAuditLog(); focusRequestedIssue();
+  renderLeaderInstallTarget();
+  renderDailyChecklistAlert();
+  renderStorageIndicator();
+  renderNotificationSettings();
+  $$("[data-master-only]").forEach((element) => { element.hidden = !masterAdmin; });
+  startDailyChecklistNotifications();
+  startMaintenanceWatch();
+}
+function formatBytes(bytes = 0) { if (!bytes) return "0 MB"; const mb = bytes / (1024 * 1024); return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(mb >= 10 ? 0 : 1)} MB`; }
+function renderStorageIndicator() {
+  const panel = $("#storageIndicator"); if (!panel) return;
+  const photos = data.issues.filter((issue) => issue.photoPath || issue.photoUrl);
+  const bytes = photos.reduce((total, issue) => total + Number(issue.photoSize || 0), 0);
+  const ratio = Math.min(100, (bytes / (1024 * 1024 * 1024)) * 100);
+  panel.className = `storage-indicator ${ratio >= 80 ? "warning" : ""}`;
+  panel.innerHTML = `<div><b>Armazenamento de fotos</b><p>${photos.length} foto(s) registrada(s) · uso estimado: ${formatBytes(bytes)} de 1 GB.</p></div><div class="storage-progress" aria-label="Uso estimado de armazenamento"><i style="width:${ratio}%"></i></div><small>${ratio >= 80 ? "Atenção: faça backup e remova fotos antigas após confirmar o relatório." : "Este cálculo considera as fotos enviadas pelo URBAM Frotas."}</small>`;
+}
+function todayStart() { const value = new Date(); value.setHours(0, 0, 0, 0); return value.getTime(); }
+function vehiclesWithoutChecklistToday() {
+  const start = todayStart();
+  const completed = new Set(data.inspections.filter((inspection) => new Date(inspection.createdAt).getTime() >= start).map((inspection) => inspection.vehicleId));
+  return data.vehicles.filter((vehicle) => vehicle?.id && !completed.has(vehicle.id));
+}
+function renderDailyChecklistAlert() {
+  const panel = $("#dailyChecklistAlert"); if (!panel) return;
+  const hour = new Date().getHours();
+  const missing = vehiclesWithoutChecklistToday();
+  panel.hidden = false;
+  if (hour < 8) {
+    panel.className = "daily-checklist-alert waiting";
+    panel.innerHTML = `<div><p class="eyebrow">ALERTA DIÁRIO · ACOMPANHAMENTO</p><h2>${missing.length} veículo(s) aguardando checklist hoje</h2><p>O alerta completo e o envio automático serão liberados às 08h.</p><small>Confira a relação antes da saída dos veículos.</small></div><ul>${missing.map((vehicle) => `<li>Prefixo ${esc(vehicle.prefix || "—")} · ${esc(vehicle.plate || "sem placa")} · ${esc(vehicle.model || vehicle.type || "Veículo")}</li>`).join("")}</ul>`;
+    return;
+  }
+  if (!missing.length) { panel.className = "daily-checklist-alert clear"; panel.innerHTML = `<b>✓ Checklist diário em dia</b><p>Todos os veículos cadastrados possuem checklist registrado hoje.</p>`; return; }
+  const automaticKey = `checkfrota-daily-checklist-dispatch-${dailyChecklistAlertContent(missing).dispatchId}`;
+  const coordinatorConfigured = Boolean(data.settings.coordinatorPhone);
+  const delivery = data.settings.webhookUrl
+    ? (localStorage.getItem(automaticKey) ? "✓ Resumo automático encaminhado pela integração." : "O resumo será encaminhado automaticamente pela integração após a sincronização do painel.")
+    : "Cadastre a integração nas Configurações da base para habilitar o envio automático.";
+  panel.className = "daily-checklist-alert";
+  const coordinatorHint = coordinatorConfigured ? "A mensagem abaixo pode ser copiada ou enviada ao coordenador." : "Cadastre o WhatsApp do coordenador em Configurações para habilitar o envio direto.";
+  panel.innerHTML = `<div><p class="eyebrow">ALERTA DIÁRIO · APÓS 08H</p><h2>${missing.length} veículo(s) sem checklist hoje</h2><p>Verifique os carros e caminhões abaixo antes da liberação.</p><small>${delivery}<br>${coordinatorHint}</small></div><ul>${missing.map((vehicle) => `<li>Prefixo ${esc(vehicle.prefix || "—")} · ${esc(vehicle.plate || "sem placa")} · ${esc(vehicle.model || vehicle.type || "Veículo")}</li>`).join("")}</ul><div class="issue-actions"><button type="button" class="small-button" id="copyDailyCoordinatorChecklistAlert">Copiar mensagem ao coordenador</button><button type="button" class="small-button whatsapp" id="sendDailyCoordinatorChecklistAlert">Enviar ao coordenador</button></div>`;
+}
+function notificationPermission() { return "Notification" in window ? Notification.permission : "unsupported"; }
+function renderNotificationSettings() {
+  const status = $("#notificationStatus"); const button = $("#enableDailyNotifications"); if (!status || !button) return;
+  const permission = notificationPermission();
+  if (permission === "granted") { status.textContent = "Ativa: o computador será avisado após as 08h caso existam veículos sem checklist."; button.textContent = "✓ Notificações ativas"; button.disabled = true; return; }
+  if (permission === "denied") { status.textContent = "As notificações foram bloqueadas neste navegador. Libere-as nas configurações do site para receber o alerta."; button.textContent = "Notificações bloqueadas"; button.disabled = true; return; }
+  if (permission === "unsupported") { status.textContent = "Este navegador não oferece notificações do sistema."; button.hidden = true; return; }
+  status.textContent = "Ative para receber o aviso de veículos sem checklist após as 08h."; button.textContent = "🔔 Ativar notificações"; button.disabled = false;
+}
+async function enableDailyNotifications() {
+  if (!("Notification" in window)) return alert("Este navegador não oferece notificações do sistema.");
+  const permission = await Notification.requestPermission();
+  renderNotificationSettings();
+  if (permission === "granted") { alert("Notificações ativadas neste computador."); notifyDailyChecklistIfNeeded(); }
+}
+function notifyDailyChecklistIfNeeded() {
+  if (notificationPermission() !== "granted" || new Date().getHours() < 8) return;
+  const missing = vehiclesWithoutChecklistToday(); if (!missing.length) return;
+  const dayKey = new Date().toISOString().slice(0, 10); const notificationKey = `checkfrota-daily-checklist-notification-${dayKey}`;
+  if (localStorage.getItem(notificationKey)) return;
+  const notification = new Notification("URBAM Frotas: checklist pendente", { body: `${missing.length} veículo(s) sem checklist hoje. Abra o painel de Gestão para verificar.`, tag: "checkfrota-checklist-diario", renotify: true });
+  notification.onclick = () => { window.focus(); notification.close(); };
+  localStorage.setItem(notificationKey, new Date().toISOString());
+}
+function dailyChecklistAlertContent(missing = vehiclesWithoutChecklistToday()) {
+  const now = new Date();
+  const date = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" }).format(now);
+  const time = new Intl.DateTimeFormat("pt-BR", { timeStyle: "short" }).format(now);
+  const list = missing.map((vehicle, index) => `${index + 1}. Prefixo ${vehicle.prefix || "—"} · ${vehicle.plate || "sem placa"} · ${vehicle.model || vehicle.type || "Veículo"}`).join("\n");
+  const dispatchId = `daily-checklist-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  return {
+    missing, dispatchId, date, time,
+    subject: `URBAM Frotas — ${missing.length} veículo(s) sem checklist em ${date}`,
+    message: `*URBAM FROTAS — ALERTA DIÁRIO AO COORDENADOR*\n\nData: ${date}\nHorário da conferência: ${time}\n\nForam identificados ${missing.length} veículo(s) sem checklist registrado até este horário:\n\n${list}\n\nSolicitamos verificar a situação e providenciar o preenchimento antes da operação.`,
+  };
+}
+async function dispatchDailyChecklistAlert() {
+  if (new Date().getHours() < 8 || !managementCloudLoaded) return false;
+  const alert = dailyChecklistAlertContent();
+  if (!alert.missing.length || !data.settings.webhookUrl) return false;
+  const key = `checkfrota-daily-checklist-dispatch-${alert.dispatchId}`;
+  if (localStorage.getItem(key)) return true;
+  const result = await sendToIntegration({
+    type: "daily-checklist-alert", automatic: true, dispatchId: alert.dispatchId, subject: alert.subject, message: alert.message,
+    generatedAt: new Date().toISOString(),
+    missingVehicles: alert.missing.map((vehicle) => ({ id: vehicle.id, prefix: vehicle.prefix || "", plate: vehicle.plate || "", model: vehicle.model || vehicle.type || "", base: vehicle.base || "" })),
+  });
+  if (!result.sent) return false;
+  localStorage.setItem(key, new Date().toISOString());
+  renderDailyChecklistAlert();
+  console.info("Alerta diário de checklist encaminhado pela integração.");
+  return true;
+}
+function startDailyChecklistNotifications() {
+  notifyDailyChecklistIfNeeded();
+  void dispatchDailyChecklistAlert();
+  if (dailyChecklistNotificationTimer) return;
+  dailyChecklistNotificationTimer = window.setInterval(() => { renderDailyChecklistAlert(); notifyDailyChecklistIfNeeded(); void dispatchDailyChecklistAlert(); }, 60 * 1000);
+}
+async function copyDailyCoordinatorChecklistAlert() {
+  const dailyAlert = dailyChecklistAlertContent();
+  if (!dailyAlert.missing.length) return window.alert("Todos os veículos cadastrados possuem checklist hoje.");
+  try { await navigator.clipboard.writeText(dailyAlert.message); alert("Mensagem ao coordenador copiada."); }
+  catch { alert("Não foi possível copiar automaticamente. Selecione a mensagem e copie."); }
+}
+function sendDailyCoordinatorChecklistAlert() {
+  const dailyAlert = dailyChecklistAlertContent();
+  if (!dailyAlert.missing.length) return window.alert("Todos os veículos cadastrados possuem checklist hoje.");
+  const target = data.settings.coordinatorPhone || "";
+  if (!target) return alert("Cadastre o WhatsApp do coordenador em Configurações antes de enviar.");
+  window.open(whatsappLink(target, dailyAlert.message), "_blank", "noopener");
+}
+function renderLeaderInstallTarget() {
+  const select = $("#leaderInstallBase"); const hint = $("#leaderInstallHint");
+  if (!select || !hint) return;
+  const base = select.value; const phone = BASES[base];
+  hint.textContent = phone ? `O link será enviado para ${LEADER_BASE_LABELS[base] || `Base ${base}`}: ${formatPhone(phone)}.` : "Escolha a base para conferir o número que receberá o link.";
+}
+function sendLeaderInstall() {
+  const base = $("#leaderInstallBase")?.value; const phone = BASES[base];
+  if (!phone) return alert("Selecione Base Vertical, Base Horizontal ou Base Abrigo.");
+  const label = LEADER_BASE_LABELS[base] || `Base ${base}`;
+  const link = `https://4lves-dev.github.io/checkfrota/instalar-lider.html?v=${APP_VERSION}&base=${encodeURIComponent(base)}`;
+  const message = `*URBAM FROTAS — APLICATIVO DA LIDERANÇA*\n\nOlá, ${label}.\n\nEste é o link de instalação do painel da liderança desta base:\n${link}\n\nApós instalar, utilize o aplicativo para consultar as ocorrências e registrar a aprovação ou recusa.`;
+  window.open(whatsappLink(phone, message), "_blank", "noopener");
+}
+function localDateValue(value) { const date = new Date(value); if (Number.isNaN(date.getTime())) return ""; const offset = date.getTimezoneOffset() * 60000; return new Date(date.getTime() - offset).toISOString().slice(0, 10); }
+function isWashIssue(issue) { return issue?.itemName === "Solicitação de lavagem"; }
+function issueType(issue) { if (isWashIssue(issue)) return "Lavagem"; if (/pneus|estepe/i.test(issue?.itemName || "")) return "Pneus"; if (/documentos/i.test(issue?.itemName || "")) return "Documentação"; return "Manutenção mecânica"; }
+function issueMatchesManagerFilters(issue) {
+  const filter = managerIssueFilters;
+  const maintenance = maintenanceOf(issue), todayValue = today();
+  const commandMatch = !managerCommandFilter || (managerCommandFilter === "approval" && !issue.leaderApproval && issue.approvalRoute !== "gestao") || (managerCommandFilter === "approved" && issue.leaderApproval?.status === "Aprovada" && maintenance.status === "Solicitada") || (managerCommandFilter === "scheduled" && maintenance.scheduledAt?.slice(0, 10) === todayValue) || (managerCommandFilter === "in-maintenance" && maintenance.status === "Em manutenção") || (managerCommandFilter === "ready" && maintenance.status === "Veículo pronto para retirada") || (managerCommandFilter === "action-overdue" && isNextActionOverdue(issue)) || (managerCommandFilter === "late" && isManagementOverdue(issue));
+  return commandMatch && (!filter.base || issue.baseName === filter.base) && (!filter.vehicle || issue.vehicleId === filter.vehicle) && (!filter.date || localDateValue(issue.createdAt) === filter.date) && (!filter.owner || normalizeOwnerName(issue.ownerName) === filter.owner) && (!filter.type || issueType(issue) === filter.type);
+}
+function renderIssueFilters(issues) {
+  const bases = [...new Set(issues.map((issue) => issue.baseName).filter(Boolean))].sort();
+  const vehicles = data.vehicles.filter((vehicle) => issues.some((issue) => issue.vehicleId === vehicle.id));
+  const owners = [...new Set(issues.map((issue) => normalizeOwnerName(issue.ownerName)).filter(Boolean))].sort();
+  const types = ["Manutenção mecânica", "Lavagem", "Documentação", "Pneus"].filter((type) => issues.some((issue) => issueType(issue) === type));
+  const commandLabel = { approval: "Aguardando líder", approved: "Aprovados para gestão", scheduled: "Agendados hoje", "in-maintenance": "Em manutenção", ready: "Prontos para retirada", "action-overdue": "Ações vencidas", late: "Atrasados" }[managerCommandFilter];
+  return `<section class="manager-filters"><div><b>Pendências da frota${commandLabel ? ` · ${commandLabel}` : ""}</b><small>Filtre por base, veículo, categoria, data ou responsável.</small></div><label>Base<select id="issueFilterBase"><option value="">Todas</option>${bases.map((value) => `<option value="${esc(value)}" ${managerIssueFilters.base === value ? "selected" : ""}>${esc(value)}</option>`).join("")}</select></label><label>Veículo<select id="issueFilterVehicle"><option value="">Todos</option>${vehicles.map((vehicle) => `<option value="${esc(vehicle.id)}" ${managerIssueFilters.vehicle === vehicle.id ? "selected" : ""}>${esc(vehicle.prefix)} · ${esc(vehicle.plate)}</option>`).join("")}</select></label><label>Categoria<select id="issueFilterType"><option value="">Todas</option>${types.map((value) => `<option value="${esc(value)}" ${managerIssueFilters.type === value ? "selected" : ""}>${esc(value)}</option>`).join("")}</select></label><label>Data<input id="issueFilterDate" type="date" value="${esc(managerIssueFilters.date)}"></label><label>Responsável<select id="issueFilterOwner"><option value="">Todos</option>${owners.map((value) => `<option value="${esc(value)}" ${managerIssueFilters.owner === value ? "selected" : ""}>${esc(value)}</option>`).join("")}</select></label><button type="button" class="small-button" id="clearIssueFilters">Limpar filtros</button></section>`;
+}
+function bindIssueFilters() {
+  [["#issueFilterBase", "base"], ["#issueFilterVehicle", "vehicle"], ["#issueFilterType", "type"], ["#issueFilterDate", "date"], ["#issueFilterOwner", "owner"]].forEach(([selector, key]) => $(selector)?.addEventListener("change", (event) => { managerIssueFilters[key] = event.target.value; renderIssues(); }));
+}
+function empty() { return $("#emptyStateTemplate").content.cloneNode(true); }
+function maintenanceOf(issue) {
+  const maintenance = { status: "Solicitada", scheduledAt: "", returnAt: "", provider: "", address: "", service: "", feedback: "", responsible: "Gestão de Frota", nextActionAt: "", delayReason: "", supplierReplyAt: "", readyAt: "", pickupAt: "", pickupBy: "", deliveryAt: "", supplierDeadlineAt: "", driverNotifiedAt: "", driverNotifiedPhone: "", driverNotificationStatus: "", slaNoticeAt: "", slaNoticeType: "", slaEmailAt: "", ...issue.maintenance };
+  const statusKey = String(maintenance.status || "").trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
+  const canonicalStatus = {
+    "": "Solicitada", solicitada: "Solicitada", solicitado: "Solicitada", pendente: "Solicitada", "aguardando aprovacao": "Solicitada", cancelada: "Solicitada",
+    agendada: "Agendada", agendado: "Agendada", reagendada: "Agendada", reagendado: "Agendada",
+    "em execucao": "Em manutenção", "em manutencao": "Em manutenção", "aguardando peca": "Em manutenção",
+    "veiculo pronto para retirada": "Veículo pronto para retirada", pronta: "Veículo pronto para retirada", pronto: "Veículo pronto para retirada",
+    concluida: "Concluída", concluido: "Concluída",
+  };
+  maintenance.status = canonicalStatus[statusKey] || maintenance.status || "Solicitada";
+  // Os marcos gravados são a fonte de verdade. Assim, dados de versões antigas
+  // não continuam exibindo "aguardando agendamento" depois de data/hora salvas.
+  if (maintenance.readyAt && maintenance.status !== "Concluída") maintenance.status = "Veículo pronto para retirada";
+  else if (maintenance.deliveryAt && !["Concluída", "Veículo pronto para retirada"].includes(maintenance.status)) maintenance.status = "Em manutenção";
+  else if (maintenance.scheduledAt && maintenance.status === "Solicitada") maintenance.status = "Agendada";
+  return maintenance;
+}
+const FLOW_STAGES = Object.freeze([
+  "Aguardando liderança",
+  "Aguardando agendamento",
+  "Agendado",
+  "Em manutenção",
+  "Pronto para retirada",
+  "Retirado",
+  "Concluído",
+]);
+function issueFlowStage(issue) {
+  const maintenance = maintenanceOf(issue);
+  if (isArchived(issue)) return "Arquivado";
+  if (issue.status === "resolvida" || maintenance.status === "Concluída") return "Concluído";
+  if (maintenance.pickupAt) return "Retirado";
+  if (maintenance.status === "Veículo pronto para retirada" || maintenance.readyAt) return "Pronto para retirada";
+  if (maintenance.status === "Em manutenção" || maintenance.deliveryAt) return "Em manutenção";
+  if (maintenance.status === "Agendada" || maintenance.scheduledAt) return "Agendado";
+  if (canManageMaintenance(issue)) return "Aguardando agendamento";
+  return "Aguardando liderança";
+}
+function issueTimeline(issue) {
+  const maintenance = maintenanceOf(issue), approval = issue.leaderApproval || {};
+  return [
+    { at: issue.createdAt, label: "Chamado aberto", done: true },
+    { at: approval.approvedAt, label: approval.status ? `Liderança: ${approval.status}` : "Decisão da liderança", done: Boolean(approval.status) },
+    { at: maintenance.scheduledAt, label: maintenance.rescheduledAt ? "Manutenção reagendada" : "Manutenção agendada", done: Boolean(maintenance.scheduledAt) },
+    { at: maintenance.deliveryAt, label: "Veículo entregue à manutenção", done: Boolean(maintenance.deliveryAt) },
+    { at: maintenance.readyAt, label: "Veículo pronto para retirada", done: Boolean(maintenance.readyAt) },
+    { at: maintenance.pickupAt, label: "Retirada confirmada", done: Boolean(maintenance.pickupAt) },
+    { at: issue.resolvedAt, label: "Chamado concluído", done: issue.status === "resolvida" || maintenance.status === "Concluída" },
+  ];
+}
+function issueTimelineMarkup(issue) {
+  const current = issueFlowStage(issue);
+  return `<section class="issue-flow" aria-label="Andamento do chamado"><div class="issue-flow-head"><b>${esc(current)}</b><small>${FLOW_STAGES.indexOf(current) + 1} de ${FLOW_STAGES.length}</small></div>${issueTimeline(issue).map((event) => `<div class="issue-flow-event ${event.done ? "done" : "pending"}"><i aria-hidden="true"></i><span>${esc(event.label)}${event.at ? `<small>${esc(dateTime(event.at))}</small>` : ""}</span></div>`).join("")}</section>`;
+}
+function issuePrimaryAction(issue) {
+  const stage = issueFlowStage(issue);
+  if (stage === "Aguardando liderança") return { label: "Aguardando aprovação da liderança", disabled: true };
+  if (stage === "Aguardando agendamento") return { label: isWashIssue(issue) ? "Agendar lavagem" : "Agendar manutenção", disabled: false };
+  if (stage === "Agendado") return { label: "Atualizar ou reagendar", disabled: false };
+  if (stage === "Em manutenção") return { label: "Registrar retorno da manutenção", disabled: false };
+  if (stage === "Pronto para retirada") return { label: "Acompanhar retirada", disabled: false };
+  if (stage === "Retirado") return { label: "Concluir chamado", disabled: false, close: true };
+  return { label: "Chamado concluído", disabled: true };
+}
+function canManageMaintenance(issue) {
+  const decision = String(issue?.leaderApproval?.status || "").trim().toLocaleLowerCase("pt-BR");
+  return issue?.approvalRoute !== "lideranca" || decision === "aprovada" || decision === "aprovado";
+}
+function operationalPriority(issue) {
+  const maintenance = maintenanceOf(issue);
+  if (isManagementOverdue(issue) || isNextActionOverdue(issue)) return { rank: 5, label: "Crítica", className: "grave" };
+  if (issue.severity === "Grave") return { rank: 4, label: "Alta", className: "grave" };
+  if (maintenance.status === "Veículo pronto para retirada" || maintenance.status === "Em manutenção") return { rank: 3, label: "Alta", className: "media" };
+  if (canManageMaintenance(issue)) return { rank: 2, label: "Programar", className: "media" };
+  return { rank: 1, label: "Aguardando líder", className: "leve" };
+}
+function renderIssues() {
+  const panel = $("#issuesPanel");
+  const allIssues = data.issues.filter((issue) => issue.status !== "resolvida" && !isArchived(issue) && maintenanceOf(issue).status !== "Concluída").sort((a,b) => operationalPriority(b).rank - operationalPriority(a).rank || severityRank(b.severity) - severityRank(a.severity) || new Date(a.createdAt)-new Date(b.createdAt));
+  const issues = allIssues.filter(issueMatchesManagerFilters);
+  panel.innerHTML = renderIssueFilters(allIssues);
+  if (!issues.length) { panel.append(empty()); bindIssueFilters(); return; }
+  panel.innerHTML += issues.map((issue, index) => {
+    const maintenance = maintenanceOf(issue);
+    const schedule = maintenance.scheduledAt ? ` · ${dateTime(maintenance.scheduledAt)}` : "";
+    const isFirstFromCall = issues.findIndex((entry) => entry.inspectionId === issue.inspectionId) === index;
+    const callPhotos = isFirstFromCall ? issues.filter((entry) => entry.inspectionId === issue.inspectionId && entry.photoPath) : [];
+    const gallery = callPhotos.length ? `<div class="issue-photo-gallery"><b>Fotos do chamado (${callPhotos.length})</b><div>${callPhotos.map((photo) => `<button type="button" class="photo-thumb" data-view-photo="${photo.id}" title="Abrir foto de ${esc(photo.itemName)}"><img src="${esc(publicIssuePhotoUrl(photo))}" alt="Foto: ${esc(photo.itemName)}"><span>${esc(photo.itemName)}</span></button>`).join("")}</div></div>` : "";
+    const leaderApproval = issue.leaderApproval;
+    const waitingForApproval = !canManageMaintenance(issue);
+    const primaryAction = issuePrimaryAction(issue);
+    const priority = operationalPriority(issue);
+    const approvalBox = leaderApproval?.status === "Aprovada" ? `<section class="manager-approval"><b>✓ Aprovado pela liderança</b><span>${esc(leaderApproval.approvedBy || `Base ${issue.baseName || ""}`)} · ${dateTime(leaderApproval.approvedAt)}</span><p>${esc(leaderApproval.note || "Sem observação da liderança.")}</p><label class="helper"><b>Mensagem para o proprietário do veículo</b></label><textarea readonly aria-label="Mensagem para o proprietário">${esc(buildApprovedOwnerMessage(issue))}</textarea><div class="issue-actions"><button class="small-button" data-copy-owner-message="${issue.id}">Copiar mensagem ao proprietário</button><button class="small-button whatsapp" data-approved-owner="${issue.id}">Enviar ao proprietário</button><button class="small-button whatsapp" data-manager-dispatch="${issue.id}">${leaderApproval.dispatchStatus === "Enviado" ? "✓ Enviado ao grupo" : "Enviar ao grupo"}</button></div></section>` : "";
+    const contactActions = maintenance.status === "Agendada" ? `<button class="small-button whatsapp" data-driver-maintenance-whatsapp="${issue.id}">Mensagem ao colaborador</button><button class="small-button" data-send-scheduling-return="${issue.id}">Mensagem ao grupo interno</button>` : maintenance.status === "Veículo pronto para retirada" ? `<button class="small-button whatsapp" data-driver-ready-whatsapp="${issue.id}">Avisar colaborador da retirada</button><button class="small-button whatsapp" data-leader-ready-whatsapp="${issue.id}">Avisar liderança da retirada</button>` : "";
+    return `<article class="issue-card ${issue.severity.toLowerCase()}" data-issue-card="${esc(issue.id)}">
+      <div class="card-heading"><div><h3>${esc(issue.itemName)}</h3><p class="vehicle-label">Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate)} · ${esc(issue.vehicleModel || issue.vehicleType)}${issue.vehicleBase ? ` · ${esc(issue.vehicleBase)}` : ""} · ${esc(issue.odometer ?? "—")} km</p></div><div><span class="chip ${priority.className}">Prioridade: ${esc(priority.label)}</span> <span class="chip ${issue.severity.toLowerCase()}">${esc(issueType(issue))}</span></div></div>
+      <p class="issue-desc">${esc(issue.description)}</p>
+      <p class="meta">${esc(issue.driver)} · matrícula ${esc(issue.driverRegistration || "—")} · ${esc(formatPhone(issue.driverPhone || "") || "sem telefone")} · ${dateTime(issue.createdAt)}${issue.photoName ? ` · 📷 ${esc(issue.photoName)}` : ""}${openingLocationMapUrl(issue.openingLocation) ? ` · <a href="${esc(openingLocationMapUrl(issue.openingLocation))}" target="_blank" rel="noopener">📍 Local do chamado (${Math.round(issue.openingLocation.accuracy || 0)} m)</a>` : ""}</p>
+      ${gallery}
+      ${approvalBox}
+      ${issueTimelineMarkup(issue)}
+      <p class="maintenance-meta"><b>Manutenção:</b> ${esc(maintenance.status)}${schedule}${maintenance.returnAt ? ` · retorno: ${dateTime(maintenance.returnAt)}` : ""}${maintenance.provider ? ` · ${esc(maintenance.provider)}` : ""}${maintenance.service ? ` · ${esc(maintenance.service)}` : ""}${maintenance.supplierReplyAt ? ` · retorno do fornecedor registrado: ${dateTime(maintenance.supplierReplyAt)}` : ""}${maintenance.driverNotifiedAt ? ` · retorno ao colaborador: ${dateTime(maintenance.driverNotifiedAt)}` : ""}</p>
+      <p class="maintenance-meta"><b>Próxima ação:</b> ${esc(maintenance.responsible || "Gestão de Frota")}${maintenance.nextActionAt ? ` · até ${dateTime(maintenance.nextActionAt)}` : " · prazo não definido"}${maintenance.delayReason ? ` · atraso: ${esc(maintenance.delayReason)}` : ""}${isNextActionOverdue(issue) ? " · ⚠ prazo vencido" : ""}</p>
+      ${waitingForApproval ? `<p class="maintenance-meta"><b>Aguardando aprovação da liderança.</b> O agendamento ficará disponível após a decisão.</p>` : ""}
+      <div class="issue-actions issue-primary-actions">${primaryAction.close ? `<button class="small-button primary-flow-action" data-close-issue="${issue.id}">${esc(primaryAction.label)}</button>` : `<button class="small-button primary-flow-action" data-maintenance-issue="${issue.id}" ${primaryAction.disabled ? "disabled" : ""}>${esc(primaryAction.label)}</button>`}${issue.photoPath ? `<button class="small-button photo-button" data-view-photo="${issue.id}">📷 Ver foto</button>` : ""}${contactActions}<button class="small-button" data-copy-coordinator-message="${issue.id}">Copiar atualização ao coordenador</button><button class="small-button whatsapp" data-send-coordinator-message="${issue.id}">Enviar ao coordenador</button>${masterAdmin ? `<button class="small-button danger-button" data-archive-issue="${issue.id}">Arquivar por erro</button>` : ""}</div>
+    </article>`;
+  }).join("");
+  bindIssueFilters();
+}
+function focusRequestedIssue() {
+  if (!requestedIssueId) return;
+  const card = document.querySelector(`[data-issue-card="${CSS.escape(requestedIssueId)}"]`);
+  if (!card) return;
+  requestedIssueId = "";
+  card.classList.add("deep-linked");
+  window.setTimeout(() => card.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
+  window.setTimeout(() => card.classList.remove("deep-linked"), 5000);
+}
+function renderAgenda() {
+  const panel = $("#agendaPanel"); if (!panel) return;
+  const active = data.issues.filter((issue) => issue.status !== "resolvida" && !isArchived(issue) && maintenanceOf(issue).scheduledAt).sort((a, b) => new Date(maintenanceOf(a).scheduledAt) - new Date(maintenanceOf(b).scheduledAt));
+  const supplierLate = active.filter((issue) => supplierSlaResult(issue)?.state === "late");
+  const missed = active.filter((issue) => isMissedAppointment(issue));
+  const exceptionalIds = new Set([...supplierLate, ...missed].map((issue) => issue.id));
+  const groups = [
+    ["Prazo do fornecedor vencido", supplierLate],
+    ["Agendamento vencido sem entrega", missed],
+    ["Hoje", active.filter((issue) => !exceptionalIds.has(issue.id) && maintenanceOf(issue).scheduledAt.slice(0, 10) === today())],
+    ["Próximos", active.filter((issue) => !exceptionalIds.has(issue.id) && maintenanceOf(issue).scheduledAt.slice(0, 10) > today())],
+  ];
+  panel.innerHTML = `<section class="agenda-board"><div class="section-action"><div><h3>Agenda da manutenção</h3><p>Acompanhe horário, oficina, rota e situação de cada veículo.</p></div><span class="chip ok">${active.length} agendado(s)</span></div>${groups.map(([title, entries]) => `<section class="agenda-group"><h4>${title} <span>${entries.length}</span></h4>${entries.length ? entries.map((issue) => { const m = maintenanceOf(issue), google = maintenanceGoogleNavigationUrl(m), waze = maintenanceWazeNavigationUrl(m); return `<article class="agenda-item ${isManagementOverdue(issue) ? "late" : ""}"><div><b>Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate || "—")}</b><p>${dateTime(m.scheduledAt)} · ${esc(m.status)}<br>${esc(m.provider || "Oficina a confirmar")}${m.address ? ` · ${esc(m.address)}` : ""}</p></div><div class="issue-actions">${google ? `<a class="small-button map-link" href="${esc(google)}" target="_blank" rel="noopener">Google Maps</a><a class="small-button waze-link" href="${esc(waze)}" target="_blank" rel="noopener">Waze</a>` : ""}<button class="small-button" data-maintenance-issue="${esc(issue.id)}">Atualizar</button></div></article>`; }).join("") : `<p class="agenda-empty">Nenhum veículo.</p>`}</section>`).join("")}</section>`;
+}
+function renderReports() {
+  const panel = $("#reportsPanel");
+  const issues = [...data.issues].sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const open = issues.filter((issue) => issue.status === "aberta").length;
+  const scheduled = issues.filter((issue) => maintenanceOf(issue).status === "Agendada").length;
+  const completed = issues.filter((issue) => issue.status === "resolvida" || maintenanceOf(issue).status === "Concluída").length;
+  const approved = issues.filter((issue) => issue.leaderApproval?.approvedAt);
+  const averageApprovalHours = approved.length ? approved.reduce((sum, issue) => sum + Math.max(0, new Date(issue.leaderApproval.approvedAt) - new Date(issue.createdAt)), 0) / approved.length / 3600000 : 0;
+  const scheduledIssues = issues.filter((issue) => maintenanceOf(issue).scheduledAt);
+  const averageSchedulingHours = scheduledIssues.length ? scheduledIssues.reduce((sum, issue) => { const start = issue.leaderApproval?.approvedAt || issue.createdAt; return sum + Math.max(0, new Date(maintenanceOf(issue).scheduledAt) - new Date(start)); }, 0) / scheduledIssues.length / 3600000 : 0;
+  const delivered = issues.filter((issue) => maintenanceOf(issue).deliveryAt);
+  const averageStoppedHours = delivered.length ? delivered.reduce((sum, issue) => { const m = maintenanceOf(issue); return sum + Math.max(0, new Date(m.readyAt || Date.now()) - new Date(m.deliveryAt)); }, 0) / delivered.length / 3600000 : 0;
+  const late = issues.filter((issue) => supplierSlaResult(issue)?.state === "late").length;
+  const finishedSla = delivered.map(supplierSlaResult).filter((result) => result?.finishedAt);
+  const withinSlaPercent = finishedSla.length ? Math.round(finishedSla.filter((result) => result.state === "within").length * 100 / finishedSla.length) : 0;
+  panel.innerHTML = `<section class="report-summary management-kpis"><article><span>${issues.length}</span><small>solicitações</small></article><article><span>${open}</span><small>em aberto</small></article><article><span>${scheduled}</span><small>agendadas</small></article><article><span>${completed}</span><small>concluídas</small></article><article><span>${averageApprovalHours.toFixed(1)}h</span><small>tempo médio para aprovação</small></article><article><span>${averageSchedulingHours.toFixed(1)}h</span><small>tempo médio até agendar</small></article><article><span>${averageStoppedHours.toFixed(1)}h</span><small>tempo médio parado</small></article><article><span>${withinSlaPercent}%</span><small>concluídas dentro de 6 horas</small></article><article class="alert"><span>${late}</span><small>fora do prazo de 6 horas</small></article></section><button class="report-download" id="downloadReport">↓ Baixar relatório de solicitações (Excel)</button><div class="report-list">${issues.length ? issues.map((issue) => { const maintenance = maintenanceOf(issue); return `<article class="report-item"><div><b>Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate)} · ${esc(issue.itemName)}</b><p>${esc(issue.description)}</p><small>${dateTime(issue.createdAt)} · ${esc(issueFlowStage(issue))}${maintenance.scheduledAt ? ` · ${dateTime(maintenance.scheduledAt)}` : ""}</small></div><span class="chip ${issue.severity.toLowerCase()}">${esc(issue.severity)}</span></article>`; }).join("") : `<div class="empty-state"><span>⌁</span><p>Nenhuma solicitação registrada.</p></div>`}</div>`;
+}
+function downloadReport() {
+  if (!window.XLSX) return alert("Não foi possível carregar o recurso de Excel. Verifique sua conexão e tente novamente.");
+  const rows = data.issues.map((issue) => { const maintenance = maintenanceOf(issue); return { "Data": dateTime(issue.createdAt), "Prefixo": issue.vehiclePrefix || "", "Placa": issue.vehiclePlate, "Tipo / modelo": issue.vehicleModel || issue.vehicleType, "Quilometragem (km)": issue.odometer ?? "", "Ocorrência": issue.itemName, "Gravidade": issue.severity, "Descrição": issue.description, "Colaborador": issue.driver, "Matrícula": issue.driverRegistration || "", "Situação": maintenance.status, "Agendamento": maintenance.scheduledAt ? dateTime(maintenance.scheduledAt) : "", "Previsão de retorno": maintenance.returnAt ? dateTime(maintenance.returnAt) : "", "Oficina / responsável": maintenance.provider, "Serviço": maintenance.service, "Retorno": maintenance.feedback }; });
+  const workbook = XLSX.utils.book_new();
+  const sheet = XLSX.utils.json_to_sheet(rows.length ? rows : [{ "Data": "Nenhuma solicitação registrada" }]);
+  sheet["!cols"] = [{ wch: 18 }, { wch: 10 }, { wch: 13 }, { wch: 28 }, { wch: 19 }, { wch: 25 }, { wch: 12 }, { wch: 45 }, { wch: 24 }, { wch: 16 }, { wch: 16 }, { wch: 20 }, { wch: 20 }, { wch: 28 }, { wch: 32 }, { wch: 15 }, { wch: 45 }];
+  XLSX.utils.book_append_sheet(workbook, sheet, "Solicitações");
+  XLSX.writeFile(workbook, `relatorio-solicitacoes-${today()}.xlsx`, { compression: true });
+}
+function renderHistory() {
+  const panel = $("#historyPanel"); panel.innerHTML = "";
+  const resolvedIssues = data.issues.filter((issue) => issue.status === "resolvida" || maintenanceOf(issue).status === "Concluída").sort((a, b) => new Date(b.resolvedAt || b.createdAt) - new Date(a.resolvedAt || a.createdAt));
+  const archivedIssues = data.issues.filter(isArchived).sort((a, b) => new Date(b.archivedAt || b.createdAt) - new Date(a.archivedAt || a.createdAt));
+  const inspectionsMarkup = data.inspections.slice(0, 30).map((inspection) => {
+    const issueCount = inspection.items.filter((item) => item.status === "issue").length;
+    return `<article class="history-card"><div><b>Prefixo ${esc(inspection.vehiclePrefix || "—")} · ${esc(inspection.vehiclePlate)} · ${esc(inspection.driver)}</b><p class="meta">${esc(inspection.odometer ?? "—")} km · ${dateTime(inspection.createdAt)}${inspection.notes ? ` · ${esc(inspection.notes)}` : ""}</p></div>${issueCount ? `<span class="chip grave">${issueCount} ocorrência(s)</span>` : `<span class="chip ok">OK</span>`}</article>`;
+  }).join("");
+  const resolvedMarkup = resolvedIssues.map((issue) => `<article class="history-card"><div><b>✓ Resolvido · Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate)} · ${esc(issue.itemName)}</b><p class="meta">${esc(issue.description || "Sem observação")} · concluído em ${dateTime(issue.resolvedAt || issue.maintenance?.updatedAt || issue.createdAt)}</p></div><span class="chip ok">Resolvido</span></article>`).join("");
+  const archivedMarkup = archivedIssues.map((issue) => `<article class="history-card"><div><b>▣ Arquivado · Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate)} · ${esc(issue.itemName)}</b><p class="meta">Motivo: ${esc(issue.archiveReason || "Não informado")} · arquivado em ${dateTime(issue.archivedAt || issue.createdAt)}</p></div><div><span class="chip">Arquivado</span>${masterAdmin ? `<button class="small-button" data-restore-issue="${esc(issue.id)}">Restaurar</button>` : ""}</div></article>`).join("");
+  if (!inspectionsMarkup && !resolvedMarkup && !(masterAdmin && archivedMarkup)) { panel.append(empty()); return; }
+  panel.innerHTML = `${masterAdmin && archivedMarkup ? `<section class="history-archived"><div class="section-action"><h3>Chamados arquivados por erro</h3><span class="chip">${archivedIssues.length}</span></div><p class="meta">Somente o Administrador Master vê e pode restaurar estes registros.</p>${archivedMarkup}</section>` : ""}${resolvedMarkup ? `<section class="history-resolved"><div class="section-action"><h3>Chamados resolvidos</h3><span class="chip ok">${resolvedIssues.length}</span></div>${resolvedMarkup}</section>` : ""}${inspectionsMarkup ? `<section class="history-inspections"><div class="section-action"><h3>Checklists realizados</h3></div>${inspectionsMarkup}</section>` : ""}`;
+}
+function vehicleHistoryMarkup(vehicle) {
+  const inspections = data.inspections.filter((inspection) => inspection.vehicleId === vehicle.id).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const issues = data.issues.filter((issue) => issue.vehicleId === vehicle.id).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const photos = issues.filter((issue) => issue.photoPath || issue.photoUrl);
+  return `<section class="vehicle-history"><div class="vehicle-history-summary"><b>Ficha do veículo</b><span>${inspections.length} checklist(s) · ${issues.length} ocorrência(s)</span></div><div class="vehicle-history-list">${inspections.length ? inspections.slice(0, 12).map((inspection) => { const count = (inspection.items || []).filter((item) => item.status === "issue").length; return `<p><b>${dateTime(inspection.createdAt)}</b> · ${esc(inspection.driver)}${inspection.driverRegistration ? ` · matrícula ${esc(inspection.driverRegistration)}` : ""} · ${esc(inspection.odometer)} km · ${count ? `${count} ocorrência(s)` : "Checklist OK"}</p>`; }).join("") : "<p>Nenhum checklist registrado para este veículo.</p>"}</div>${issues.length ? `<div class="vehicle-history-list">${issues.map((issue) => { const maintenance = maintenanceOf(issue); return `<p><b>${esc(issue.itemName)}</b> · ${esc(maintenance.status)}${maintenance.provider ? ` · ${esc(maintenance.provider)}` : ""}</p>`; }).join("")}</div>` : ""}${photos.length ? `<div class="issue-photo-gallery"><b>Fotos vinculadas ao veículo (${photos.length})</b><div>${photos.map((issue) => `<button type="button" class="photo-thumb" data-view-photo="${issue.id}"><img src="${esc(publicIssuePhotoUrl(issue))}" alt="Foto: ${esc(issue.itemName)}"><span>${esc(issue.itemName)}</span></button>`).join("")}</div></div>` : ""}</section>`;
+}
+function renderVehicles() {
+  const panel = $("#vehiclesPanel");
+  const cards = data.vehicles.map((vehicle) => {
+    const masterActions = masterAdmin ? `<button class="small-button" data-edit-vehicle="${vehicle.id}">Editar</button><button class="small-button danger-button" data-delete-vehicle="${vehicle.id}">Excluir</button>` : "";
+    return `<article class="vehicle-card"><div><h3>Prefixo ${esc(vehicle.prefix || "—")} · ${esc(vehicle.plate)} <span class="vehicle-label">· ${esc(vehicle.model || vehicle.type)}</span></h3><p>${esc(vehicle.ownerName)}${vehicle.manager ? ` · Gestor: ${esc(vehicle.manager)}` : ""}${vehicle.base ? ` · Base: ${esc(vehicle.base)}` : ""}${vehicle.ownerPhone ? ` · Tel.: ${esc(formatPhone(vehicle.ownerPhone))}` : ""}${vehicle.contract ? ` · Contrato: ${esc(vehicle.contract)}` : ""}${vehicle.odometer !== "" ? ` · ${esc(vehicle.odometer)} km` : ""}</p></div><div class="issue-actions"><button class="small-button" data-vehicle-history="${vehicle.id}">${selectedVehicleHistoryId === vehicle.id ? "Fechar ficha" : "Ver ficha"}</button>${masterActions}</div>${selectedVehicleHistoryId === vehicle.id ? vehicleHistoryMarkup(vehicle) : ""}</article>`;
+  }).join("");
+  const actions = masterAdmin ? `<div class="vehicle-actions"><button class="restore-button" id="restoreFleet">↺ Restaurar frota</button><button class="add-button" id="newVehicle">+ Cadastrar veículo/caminhão</button></div>` : "";
+  panel.innerHTML = `<div class="section-action"><h3>Veículos e caminhões cadastrados</h3>${actions}</div>${cards}`;
+}
+function renderDrivers() {
+  const panel = $("#driversPanel");
+  if (!panel) return;
+  const registered = employeeRoster().sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  const missing = driversMissingRegistration().sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const employeeAction = masterAdmin ? `<button class="add-button" type="button" data-employee-action="new">+ Cadastrar colaborador</button>` : "";
+  const card = (driver) => {
+    const accessLevel = employeeAccessLevel(driver); const base = driver.leader_base || "";
+    const isMaster = MASTER_EMPLOYEE_REGISTRATIONS.has(String(driver.registration || ""));
+    const manage = masterAdmin ? `<div class="issue-actions"><button class="small-button" type="button" data-employee-action="edit" data-registration="${esc(driver.registration)}">Editar</button><button class="small-button danger-button" type="button" data-employee-action="delete" data-registration="${esc(driver.registration)}">Excluir</button></div>` : "";
+    return `<article class="driver-row"><div><b>${esc(driver.name)}</b><span>Matrícula ${esc(driver.registration)}${driver.role ? ` · ${esc(driver.role)}` : ""}${isMaster ? " · <strong>Administrador Master</strong>" : ""}${accessLevel !== "colaborador" ? ` · <strong>${esc(ACCESS_LEVEL_LABELS[accessLevel] || accessLevel)}${accessLevel === "lider" && base ? ` — ${esc(base)}` : ""}</strong>` : ""}</span></div>${manage}</article>`;
+  };
+  panel.innerHTML = `<section class="driver-registry"><div class="section-action"><div><h3>Banco de colaboradores</h3><p>Defina o perfil: Líder aprova a base; Coordenador aprova as bases; Gestor acompanha toda a frota. O acesso inicial usa matrícula como usuário e senha.</p></div><div class="vehicle-actions"><span class="chip ok">${registered.length} cadastrados</span>${employeeAction}</div></div><div class="driver-grid">${registered.map(card).join("")}</div></section><section class="missing-drivers"><div class="section-action"><div><h3>Colaboradores sem matrícula</h3><p>Relação identificada na primeira tabela e ainda sem vínculo na segunda.</p></div><span class="chip grave">${missing.length} pendentes</span></div>${missing.length ? `<ul>${missing.map((name) => `<li>${esc(name)}</li>`).join("")}</ul>` : "<p>Todos os colaboradores possuem matrícula cadastrada.</p>"}</section>`;
+  panel.querySelector('[data-employee-action="new"]')?.addEventListener("click", () => openEmployeeDialog());
+  panel.querySelectorAll('[data-employee-action="edit"]').forEach((button) => button.addEventListener("click", () => {
+    const registration = button.dataset.registration || "";
+    openEmployeeDialog(employeeDatabase.find((employee) => String(employee.registration) === registration) || DRIVER_REGISTRY.find((employee) => String(employee.registration) === registration));
+  }));
+  panel.querySelectorAll('[data-employee-action="delete"]').forEach((button) => button.addEventListener("click", () => { void deactivateEmployee(button.dataset.registration || ""); }));
+  const quickEmployee = $("#quickNewEmployee");
+  if (quickEmployee) quickEmployee.onclick = (event) => { event.stopPropagation(); openEmployeeDialog(); };
+  const employeeForm = $("#employeeForm");
+  if (employeeForm) employeeForm.onsubmit = (event) => { event.preventDefault(); void saveEmployee(); };
+}
+function renderAuditLog() {
+  const panel = $("#auditPanel");
+  if (!panel) return;
+  const logs = data.issues.filter((issue) => issue.leaderApproval).sort((a, b) => new Date(b.leaderApproval?.approvedAt || b.createdAt) - new Date(a.leaderApproval?.approvedAt || a.createdAt));
+  panel.innerHTML = `<section class="audit-log"><div class="section-action"><div><h3>Log de solicitações</h3><p>Registro completo das decisões e etapas da manutenção.</p></div><span class="chip ok">${logs.length} registro(s)</span></div>${logs.length ? logs.map((issue) => { const approval = issue.leaderApproval || {}; const status = approval.status || "Sem decisão"; const statusClass = status === "Aprovada" ? "ok" : status === "Recusada" ? "grave" : "media"; return `<article class="audit-entry"><div class="card-heading"><div><h3>${esc(status)}</h3><p class="vehicle-label">Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate || "—")} · ${esc(issue.itemName || "Ocorrência")}</p></div><span class="chip ${statusClass}">${esc(status)}</span></div><p><b>Colaborador:</b> ${esc(issue.driver || "—")}${issue.driverRegistration ? ` · matrícula ${esc(issue.driverRegistration)}` : ""}</p><p><b>Decisão:</b> ${esc(approval.approvedBy || "Liderança")} · ${dateTime(approval.approvedAt || issue.createdAt)}</p>${approval.note ? `<p><b>Observação:</b> ${esc(approval.note)}</p>` : ""}<p class="audit-status"><b>Fluxo:</b> ${esc(approval.dispatchStatus || "Registrado")}</p>${issueTimelineMarkup(issue)}</article>`; }).join("") : `<div class="empty-state"><span>⌁</span><p>Nenhuma decisão da liderança registrada ainda.</p></div>`}</section>`;
+}
+function openVehicleDialog(id = "") {
+  if (!requireMasterAccess()) return;
+  const vehicle = vehicleById(id);
+  $("#vehicleDialogTitle").textContent = vehicle ? "Editar veículo" : "Novo veículo";
+  $("#editVehicleId").value = vehicle?.id || "";
+  $("#vehiclePrefix").value = vehicle?.prefix || ""; $("#vehiclePlate").value = vehicle?.plate || ""; $("#vehicleType").value = vehicle?.type || "Caminhão"; $("#vehicleModel").value = vehicle?.model || ""; $("#vehicleContract").value = vehicle?.contract || ""; $("#vehicleUrbamContract").value = vehicle?.urbamContract || ""; $("#vehicleOdometer").value = vehicle?.odometer ?? "";
+  $("#vehicleOwnerName").value = vehicle?.ownerName || ""; $("#vehicleOwnerPhone").value = vehicle?.ownerPhone || ""; $("#vehicleEmail").value = vehicle?.email || "";
+  $("#vehicleDialog").showModal();
+}
+function toggleEmployeeLeaderFields() {
+  const enabled = $("#employeeAccessLevel")?.value === "lider";
+  $("#employeeLeaderBaseField").hidden = !enabled;
+  $("#employeeLeaderBase").hidden = !enabled;
+  $("#employeeLeaderBase").required = enabled;
+}
+function openEmployeeDialog(employee = null) {
+  if (!requireMasterAccess()) return;
+  editingEmployeeRegistration = employee?.registration || "";
+  $("#employeeDialogTitle").textContent = employee ? "Configurar colaborador" : "Novo colaborador";
+  $("#employeeRegistration").value = employee?.registration || ""; $("#employeeRegistration").readOnly = Boolean(employee);
+  $("#employeeName").value = employee?.name || ""; $("#employeeRole").value = employee?.role || "";
+  $("#employeeAccessLevel").value = employeeAccessLevel(employee); $("#employeeLeaderBase").value = employee?.leader_base || ""; toggleEmployeeLeaderFields();
+  $("#employeeDialog").showModal();
+}
+async function saveEmployee() {
+  if (!requireMasterAccess()) return;
+  const registration = $("#employeeRegistration").value.replace(/\D/g, "");
+  const name = $("#employeeName").value.trim().toUpperCase();
+  const role = $("#employeeRole").value.trim();
+  const access_level = $("#employeeAccessLevel").value;
+  const leader = access_level === "lider";
+  const leader_base = leader ? $("#employeeLeaderBase").value : null;
+  if (!registration || !name || !role) { $("#employeeForm").reportValidity(); return; }
+  if (leader && !leader_base) { $("#employeeForm").reportValidity(); return; }
+  try {
+    const rows = await cloudRequest("/rest/v1/fleet_employees?on_conflict=registration", { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=representation" }, body: JSON.stringify({ registration, name, role, active: true, leader, leader_base, access_level }) });
+    const saved = rows?.[0] || { registration, name, role, active: true, leader, leader_base, access_level };
+    employeeDatabase = [...employeeDatabase.filter((entry) => String(entry.registration) !== registration), saved];
+    $("#employeeDialog").close(); renderDrivers(); alert(access_level === "colaborador" ? "Colaborador salvo no banco de dados." : `${ACCESS_LEVEL_LABELS[access_level]} salvo. No primeiro acesso, a senha é a matrícula e deverá ser trocada por uma senha numérica.`);
+  } catch (error) { alert("Não foi possível salvar o colaborador no banco. Verifique se a tabela e as permissões do Supabase foram configuradas."); console.warn(error); }
+}
+async function deactivateEmployee(registration) {
+  if (!requireMasterAccess()) return;
+  const employee = employeeDatabase.find((entry) => String(entry.registration) === String(registration));
+  if (!employee) { void loadEmployeeDatabase(); alert("Aguarde a sincronização dos colaboradores com o banco e tente excluir novamente."); return; }
+  if (!confirm(`Excluir definitivamente ${employee.name} do banco de colaboradores? O histórico de chamados será preservado.`)) return;
+  try {
+    const removed = await cloudRequest(`/rest/v1/fleet_employees?registration=eq.${encodeURIComponent(registration)}`, { method: "DELETE", headers: { Prefer: "return=representation" } });
+    if (!Array.isArray(removed) || !removed.length) throw new Error("Cadastro não encontrado no banco.");
+    employeeDatabase = employeeDatabase.filter((entry) => String(entry.registration) !== String(registration));
+    employeeDatabaseReady = true;
+    renderDrivers();
+    alert("Colaborador excluído definitivamente do banco de dados. O histórico de chamados foi preservado.");
+  } catch (error) { alert("Não foi possível excluir o colaborador do banco de dados. Tente novamente com a internet ativa."); console.warn(error); }
+}
+function saveVehicle() {
+  if (!requireMasterAccess()) return;
+  const id = $("#editVehicleId").value;
+  const detail = { prefix: $("#vehiclePrefix").value.trim(), plate: $("#vehiclePlate").value.trim().toUpperCase(), type: $("#vehicleType").value, model: $("#vehicleModel").value.trim(), contract: $("#vehicleContract").value.trim(), urbamContract: $("#vehicleUrbamContract").value.trim(), odometer: $("#vehicleOdometer").value === "" ? "" : Number($("#vehicleOdometer").value), ownerName: $("#vehicleOwnerName").value.trim(), ownerPhone: phoneOnly($("#vehicleOwnerPhone").value), email: $("#vehicleEmail").value.trim() };
+  if (!detail.prefix || !detail.plate || !detail.ownerName) { $("#vehicleForm").reportValidity(); return; }
+  if (id) Object.assign(vehicleById(id), detail); else data.vehicles.push({ id: crypto.randomUUID(), ...detail });
+  const savedVehicle = vehicleById(id || data.vehicles[data.vehicles.length - 1].id);
+  saveData(); void cloudSave("fleet_vehicles", { id: savedVehicle?.id || id, prefix: detail.prefix, plate: detail.plate, data: savedVehicle }); void recordAuditEvent({ id: `vehicle:${savedVehicle?.id || id}`, vehicleId: savedVehicle?.id || id }, id ? "veiculo_editado" : "veiculo_cadastrado", `Prefixo ${detail.prefix} · ${detail.plate}`); $("#vehicleDialog").close(); renderControl(); renderStart();
+}
+function deleteVehicle(id) {
+  if (!requireMasterAccess()) return;
+  const vehicle = vehicleById(id); if (!vehicle) return;
+  if (!confirm(`Excluir o veículo Prefixo ${vehicle.prefix || "—"} · ${vehicle.plate} da lista de uso? O histórico de chamados será preservado.`)) return;
+  data.vehicles = data.vehicles.filter((entry) => entry.id !== id);
+  if (initialData.vehicles.some((entry) => entry.id === id)) data.removedVehicleIds = [...new Set([...(data.removedVehicleIds || []), id])];
+  saveData(); renderControl(); renderStart();
+}
+async function restoreFleet() {
+  if (!requireMasterAccess()) return;
+  if (!confirm("Restaurar todos os veículos da frota cadastrada, incluindo caminhões que tenham sido excluídos?")) return;
+  const currentVehicles = data.vehicles;
+  const standardVehicles = initialData.vehicles.map((seed) => {
+    const existing = currentVehicles.find((vehicle) => vehicle.id === seed.id || vehicle.prefix === seed.prefix || vehicle.plate === seed.plate);
+    return withFleetResponsible({ ...seed, ...(existing || {}) });
+  });
+  const customVehicles = currentVehicles.filter((vehicle) => !initialData.vehicles.some((seed) => seed.id === vehicle.id || seed.prefix === vehicle.prefix || seed.plate === vehicle.plate));
+  data.vehicles = [...standardVehicles, ...customVehicles];
+  data.removedVehicleIds = [];
+  saveData();
+  try { await Promise.all(standardVehicles.map((vehicle) => cloudSave("fleet_vehicles", { id: vehicle.id, prefix: vehicle.prefix, plate: vehicle.plate, data: vehicle }))); }
+  catch (error) { console.warn("Não foi possível salvar a frota restaurada no banco", error); }
+  renderControl(); renderStart();
+}
+function sendIssueWhatsApp(issueId) {
+  const issue = data.issues.find((entry) => entry.id === issueId); if (!issue) return;
+  const message = `*URBAM FROTAS — SOLICITAÇÃO DE MANUTENÇÃO*\n\nPrezado(a) responsável,\n\nSolicitamos avaliação e agendamento de manutenção para o veículo abaixo.\n\n*Veículo:* Prefixo ${issue.vehiclePrefix || "—"} · ${issue.vehicleModel || issue.vehicleType || "—"} · Placa ${issue.vehiclePlate || "—"}\n*Quilometragem:* ${issue.odometer ?? "—"} km\n*Base responsável:* ${issue.baseName || "—"}\n\n*Ocorrência relatada:*\n${issue.itemName || "Ocorrência"}: ${issue.description || "—"}\n\nPedimos, por gentileza, informar disponibilidade para atendimento e previsão de agendamento.\n\nAtenciosamente,\nURBAM Frotas — Gestão de Manutenção`;
+  const target = issue.ownerPhone || data.settings.maintenancePhone;
+  if (!target) return alert("Cadastre o número de WhatsApp do responsável ou da base nas configurações.");
+  window.open(whatsappLink(target, message), "_blank", "noopener");
+}
+function buildApprovedOwnerMessage(issue) {
+  return `*URBAM FROTAS — SOLICITAÇÃO DE MANUTENÇÃO*\n\nPrezado(a) responsável,\n\nSolicitamos, por gentileza, a avaliação e o agendamento de manutenção para o veículo abaixo.\n\n*Veículo:* Prefixo ${issue.vehiclePrefix || "—"} · Placa ${issue.vehiclePlate || "—"}\n*Ocorrência:* ${issue.itemName || "—"}\n*Problema relatado:* ${issue.description || "—"}\n\nPedimos o retorno com data, horário e local para atendimento.\n\nAtenciosamente,\nURBAM Frotas — Gestão`;
+}
+function sendApprovedOwnerWhatsApp(issueId) {
+  const issue = data.issues.find((entry) => entry.id === issueId); if (!issue) return;
+  const message = buildApprovedOwnerMessage(issue);
+  const target = issue.ownerPhone; if (!target) return alert("Este veículo não possui WhatsApp de responsável cadastrado.");
+  window.open(whatsappLink(target, message), "_blank", "noopener");
+}
+async function copyOwnerMessage(issueId) { const issue = data.issues.find((entry) => entry.id === issueId); if (!issue) return; try { await navigator.clipboard.writeText(buildApprovedOwnerMessage(issue)); alert("Mensagem para o proprietário copiada."); } catch { alert("Não foi possível copiar automaticamente. Selecione a mensagem e copie."); } }
+function buildSchedulingReturn(issue, maintenance = maintenanceOf(issue)) {
+  const schedule = maintenance.scheduledAt ? dateTime(maintenance.scheduledAt) : "A confirmar";
+  return `*RETORNO DE AGENDAMENTO — MANUTENÇÃO*\n\n*Veículo:* Prefixo ${issue.vehiclePrefix || "—"} · ${issue.vehiclePlate || "—"}\n*Ocorrência:* ${issue.itemName || "—"}\n*Situação:* ${maintenance.status || "Pendente"}\n*Agendamento:* ${schedule}\n${maintenance.provider ? `*Oficina / responsável:* ${maintenance.provider}\n` : ""}${maintenance.address ? `*Endereço:* ${maintenance.address}\n` : ""}${maintenanceMapUrl(maintenance, issue) ? `*Mapa / rota desde o chamado:* ${maintenanceMapUrl(maintenance, issue)}\n` : ""}${maintenance.feedback ? `*Retorno:* ${maintenance.feedback}\n` : ""}\nEsta atualização foi registrada pela Gestão de Frota para ciência da equipe de manutenção.`;
+}
+function buildCoordinatorMessage(issue, maintenance = maintenanceOf(issue)) {
+  const stage = issueFlowStage(issue);
+  const approval = issue.leaderApproval || {};
+  const map = maintenanceMapUrl(maintenance, issue);
+  const delivery = maintenance.deliveryAt ? `*Entrega para manutenção:* ${dateTime(maintenance.deliveryAt)}\n` : "";
+  const scheduled = maintenance.scheduledAt ? `*Agendamento:* ${dateTime(maintenance.scheduledAt)}\n` : "";
+  const returnAt = maintenance.returnAt ? `*Previsão de retorno:* ${dateTime(maintenance.returnAt)}\n` : "";
+  const location = maintenance.provider || maintenance.address ? `*Local:* ${maintenance.provider || "Oficina"}${maintenance.address ? ` — ${maintenance.address}` : ""}\n` : "";
+  const approvalLine = approval.status ? `*Liderança:* ${approval.status}${approval.approvedAt ? ` em ${dateTime(approval.approvedAt)}` : ""}\n` : "";
+  const deadline = maintenance.supplierDeadlineAt ? `*Prazo do fornecedor:* ${dateTime(maintenance.supplierDeadlineAt)}${supplierSlaResult(issue)?.state === "late" ? " — VENCIDO" : ""}\n` : "";
+  return `*URBAM FROTAS — ATUALIZAÇÃO AO COORDENADOR*\n\n*Situação atual:* ${stage}\n*Veículo:* Prefixo ${issue.vehiclePrefix || "—"} · Placa ${issue.vehiclePlate || "—"}\n*Base:* ${issue.baseName || issue.vehicleBase || "—"}\n*Ocorrência:* ${issue.itemName || "—"}\n*Descrição:* ${issue.description || "—"}\n${approvalLine}${scheduled}${location}${delivery}${returnAt}${deadline}${maintenance.feedback ? `*Retorno registrado:* ${maintenance.feedback}\n` : ""}${map ? `*Mapa / rota:* ${map}\n` : ""}\n*Colaborador:* ${driverContactSummary(issue)}\n\nMensagem gerada pela Gestão de Frota para acompanhamento do fluxo.`;
+}
+async function copyCoordinatorMessage(issueId) {
+  const issue = data.issues.find((entry) => entry.id === issueId); if (!issue) return;
+  try { await navigator.clipboard.writeText(buildCoordinatorMessage(issue)); alert("Atualização para o coordenador copiada."); }
+  catch { alert("Não foi possível copiar automaticamente. Selecione a mensagem e copie."); }
+}
+function sendCoordinatorMessage(issueId) {
+  const issue = data.issues.find((entry) => entry.id === issueId); if (!issue) return;
+  const target = data.settings.coordinatorPhone || "";
+  if (!target) return alert("Cadastre o WhatsApp do coordenador em Configurações antes de enviar.");
+  window.open(whatsappLink(target, buildCoordinatorMessage(issue)), "_blank", "noopener");
+}
+function sendSchedulingReturn(issue, maintenance = maintenanceOf(issue)) {
+  const target = data.settings.maintenanceGroupPhone || MAINTENANCE_GROUP_PHONE;
+  if (!target) return alert("Cadastre o WhatsApp do grupo de manutenção em Configurações da base.");
+  window.open(whatsappLink(target, buildSchedulingReturn(issue, maintenance)), "_blank", "noopener");
+}
+function buildApprovedMaintenanceMessage(issue) {
+  const approval = issue?.leaderApproval || {};
+  return `*URBAM FROTAS — MANUTENÇÃO APROVADA*\n\n*Veículo:* Prefixo ${issue.vehiclePrefix || "—"} · Placa ${issue.vehiclePlate || "—"} · ${issue.vehicleModel || issue.vehicleType || "—"}\n*Base:* ${issue.baseName || "—"}\n*Quilometragem:* ${issue.odometer ?? "Não informada"} km\n*Gravidade:* ${issue.severity || "—"}\n*Ocorrência:* ${issue.itemName || "—"}\n*Descrição:* ${issue.description || "—"}\n${approval.note ? `*Parecer da liderança:* ${approval.note}\n` : ""}\nSolicitamos agendamento, local e previsão de atendimento para retorno à Gestão de Frota.`;
+}
+async function dispatchManagerMaintenance(issueId) {
+  const issue = data.issues.find((entry) => entry.id === issueId);
+  const approval = issue?.leaderApproval;
+  const message = approval?.maintenanceMessage || (issue && approval?.status === "Aprovada" ? buildApprovedMaintenanceMessage(issue) : "");
+  if (!issue || !message) return alert("Este chamado ainda não foi aprovado pela liderança.");
+  const phone = data.settings.maintenanceGroupPhone || MAINTENANCE_GROUP_PHONE;
+  window.open(whatsappLink(phone, message), "_blank", "noopener");
+  issue.leaderApproval = { ...approval, maintenanceMessage: message, dispatchStatus: "Enviado", dispatchedAt: new Date().toISOString() };
+  saveData(); renderControl();
+  try { await cloudUpdateIssue(issue); } catch (error) { console.warn("Não foi possível registrar o envio", error); }
+}
+async function copyManagerMaintenanceMessage(issueId) {
+  const issue = data.issues.find((entry) => entry.id === issueId);
+  const message = issue?.leaderApproval?.maintenanceMessage || (issue?.leaderApproval?.status === "Aprovada" ? buildApprovedMaintenanceMessage(issue) : "");
+  if (!message) return;
+  try { await navigator.clipboard.writeText(message); alert("Mensagem copiada."); }
+  catch { alert("Não foi possível copiar automaticamente. Selecione o texto da mensagem e copie."); }
+}
+function maintenanceFormValues(existing = {}) {
+  const status = $("#maintenanceStatus").value;
+  const location = maintenanceMapLocation || {};
+  const feedback = $("#maintenanceFeedback").value.trim();
+  const isReady = status === "Veículo pronto para retirada";
+  return {
+    ...existing, status,
+    responsible: $("#maintenanceResponsible").value || "Gestão de Frota",
+    nextActionAt: $("#maintenanceNextActionAt").value,
+    delayReason: $("#maintenanceDelayReason").value,
+    scheduledAt: $("#maintenanceScheduledAt").value, returnAt: $("#maintenanceReturnAt").value,
+    provider: $("#maintenanceProvider").value.trim(), address: $("#maintenanceAddress").value.trim(),
+    service: $("#maintenanceService").value.trim(), feedback,
+    latitude: location.latitude ?? "", longitude: location.longitude ?? "", mapLabel: location.mapLabel || "", mapUrl: location.mapUrl || "",
+    supplierReplyAt: isReady && feedback ? (existing.supplierReplyAt || new Date().toISOString()) : (existing.supplierReplyAt || ""),
+    readyAt: isReady ? (existing.readyAt || new Date().toISOString()) : (existing.readyAt || ""), updatedAt: new Date().toISOString()
+  };
+}
+function buildMaintenanceMessage(issue) {
   const maintenance = maintenanceOf(issue);
   return `*RETORNO DE SERVIÇO — ${maintenance.status.toUpperCase()}*\n\nVeículo: Prefixo ${issue.vehiclePrefix || "—"} · ${issue.vehiclePlate} (${issue.vehicleModel || issue.vehicleType})\nQuilometragem: ${issue.odometer ?? "Não informada"} km\nSolicitação: ${issue.itemName}\n${maintenance.scheduledAt ? `Agendamento: ${dateTime(maintenance.scheduledAt)}\n` : ""}${maintenance.returnAt ? `Previsão de retorno: ${dateTime(maintenance.returnAt)}\n` : ""}${maintenance.provider ? `Oficina / responsável: ${maintenance.provider}\n` : ""}${maintenance.service ? `Serviço: ${maintenance.service}\n` : ""}${maintenance.feedback ? `Retorno: ${maintenance.feedback}\n` : ""}\nSolicitação original: ${issue.description}`;
 }
@@ -1028,4 +2354,3 @@ if (new URLSearchParams(location.search).get("gestao") === "1") {
 void syncCloudOutbox();
 // Tentativas pendentes também ganham prioridade quando o aplicativo está aberto.
 window.setInterval(() => { if (!document.hidden) void syncCloudOutbox(); }, FAST_SYNC_INTERVAL_MS);
-
