@@ -5,7 +5,7 @@
  */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "237";
+const APP_VERSION = "238";
 const SOFTWARE_SIGNATURE = Object.freeze({ owner: "LUCHTI ME", product: "URBAM Frotas", fingerprint: "LUCHTI-CHECKFROTA-URBAM-20260909-A7F3", notice: "Todos os direitos reservados" });
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v218";
 const CHECKLIST = [
@@ -262,9 +262,12 @@ async function loadMasterAccess() {
 }
 async function cloudSave(table, row) {
   if (!CLOUD?.url) throw new Error("A conexão com o banco de dados não está configurada.");
-  const authenticatedWrite = Boolean(cloudToken());
-  const endpoint = authenticatedWrite ? `${CLOUD.url}/rest/v1/${table}?on_conflict=id` : `${CLOUD.url}/rest/v1/${table}`;
-  const prefer = authenticatedWrite ? "resolution=merge-duplicates,return=minimal" : "resolution=ignore-duplicates,return=minimal";
+  // Um checklist é sempre um registro novo. Usar upsert quando existe uma
+  // sessão de Gestão ativa no mesmo navegador força uma atualização e aciona
+  // a proteção de alteração da Gestão, impedindo o colaborador de enviar.
+  // A fila local já trata uma eventual duplicidade (409) como entregue.
+  const endpoint = `${CLOUD.url}/rest/v1/${table}`;
+  const prefer = "return=minimal";
   const response = await fetch(endpoint, {
     method: "POST",
     signal: AbortSignal.timeout(CLOUD_WRITE_TIMEOUT_MS),

@@ -16,4 +16,3 @@ for insert to anon, authenticated
 with check (
   coalesce(data ->> 'driverRegistration', '') ~ '^[0-9]{3,}$'
 );
-

@@ -13,7 +13,9 @@ function confirmDelivery_(deliveryId, status, errorMessage) {
   if (!deliveryId) return;
   UrlFetchApp.fetch(`${SUPABASE_URL}/rest/v1/rpc/fleet_confirm_email_delivery`, {
     method: 'post', contentType: 'application/json', muteHttpExceptions: true,
-    headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+    // Chaves publicáveis modernas do Supabase identificam a chamada somente
+    // pelo cabeçalho apikey; elas não são JWTs válidos para Authorization.
+    headers: { apikey: SUPABASE_ANON_KEY },
     payload: JSON.stringify({ p_delivery_id: deliveryId, p_status: status, p_error: errorMessage || '' })
   });
 }
@@ -150,4 +152,3 @@ function doPost(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 }
-

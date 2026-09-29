@@ -1,5 +1,5 @@
 {
-  "version": "237",
-  "released_at": "2026-09-27",
-  "notes": "Correção da credencial de sincronização com Supabase."
+  "version": "238",
+  "released_at": "2026-09-29",
+  "notes": "Correção do envio de checklist após acesso à Gestão e confirmação de entrega por e-mail."
 }

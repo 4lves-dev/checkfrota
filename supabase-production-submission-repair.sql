@@ -2,16 +2,42 @@
 -- Execute uma única vez no SQL Editor do Supabase.
 -- O aplicativo público pode somente INSERIR registros identificados; leitura e
 -- alterações seguem restritas aos painéis autenticados de Liderança e Gestão.
+-- Remove regras antigas duplicadas: elas podem fazer um envio novo ser tratado
+-- como atualização quando o mesmo navegador já acessou a Gestão.
 
-drop policy if exists "Colaborador registra inspeções" on public.fleet_inspections;
-create policy "Colaborador registra inspeções" on public.fleet_inspections
-for insert to anon, authenticated
-with check (coalesce(id, '') <> '');
+do $repair$
+declare item record;
+begin
+  for item in
+    select tablename, policyname
+      from pg_policies
+     where schemaname = 'public'
+       and tablename in ('fleet_inspections', 'fleet_issues')
+  loop
+    execute format('drop policy if exists %I on public.%I', item.policyname, item.tablename);
+  end loop;
+end;
+$repair$;
 
-drop policy if exists "Colaborador registra chamados" on public.fleet_issues;
-create policy "Colaborador registra chamados" on public.fleet_issues
+create policy "CheckFrota colaborador envia inspeções" on public.fleet_inspections
 for insert to anon, authenticated
-with check (coalesce(id, '') <> '');
+with check (coalesce(id, '') <> '' and coalesce(data ->> 'driverRegistration', '') ~ '^[0-9]{3,}$');
+
+create policy "CheckFrota gestão lê inspeções" on public.fleet_inspections
+for select to authenticated using (public.fleet_is_manager());
+
+create policy "CheckFrota gestão administra inspeções" on public.fleet_inspections
+for update to authenticated using (public.fleet_is_manager()) with check (public.fleet_is_manager());
+
+create policy "CheckFrota colaborador envia chamados" on public.fleet_issues
+for insert to anon, authenticated
+with check (coalesce(id, '') <> '' and coalesce(data ->> 'driverRegistration', '') ~ '^[0-9]{3,}$');
+
+create policy "CheckFrota gestão lê chamados" on public.fleet_issues
+for select to authenticated using (public.fleet_is_manager());
+
+create policy "CheckFrota gestão atualiza chamados" on public.fleet_issues
+for update to authenticated using (public.fleet_is_manager()) with check (public.fleet_is_manager());
 
 create table if not exists public.fleet_email_deliveries (
   id text primary key,
