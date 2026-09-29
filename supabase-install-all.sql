@@ -470,7 +470,7 @@ drop policy if exists "Gestão lê inspeções" on public.fleet_inspections;
 drop policy if exists "Colaborador registra inspeções" on public.fleet_inspections;
 create policy "Gestão lê inspeções" on public.fleet_inspections for select to authenticated using (public.fleet_is_manager());
 create policy "Colaborador registra inspeções" on public.fleet_inspections for insert to anon, authenticated
-with check (coalesce(data ->> 'driverRegistration','') ~ '^[0-9]{3,}$' and length(regexp_replace(coalesce(data ->> 'driverPhone',''), '\D', '', 'g')) between 10 and 13);
+with check (coalesce(data ->> 'driverRegistration','') ~ '^[0-9]{3,}$');
 
 drop policy if exists "Aplicativo lê chamados" on public.fleet_issues;
 drop policy if exists "Aplicativo registra chamados" on public.fleet_issues;
@@ -482,7 +482,7 @@ create policy "Gestão lê chamados" on public.fleet_issues for select to authen
 create policy "Gestão atualiza chamados" on public.fleet_issues for update to authenticated
 using (public.fleet_is_manager()) with check (public.fleet_is_manager());
 create policy "Colaborador registra chamados" on public.fleet_issues for insert to anon, authenticated
-with check (coalesce(data ->> 'driverRegistration','') ~ '^[0-9]{3,}$' and length(regexp_replace(coalesce(data ->> 'driverPhone',''), '\D', '', 'g')) between 10 and 13);
+with check (coalesce(data ->> 'driverRegistration','') ~ '^[0-9]{3,}$');
 
 drop policy if exists "Gestão consulta auditoria" on public.fleet_audit_events;
 drop policy if exists "Gestão registra auditoria" on public.fleet_audit_events;
@@ -1241,3 +1241,4 @@ end; $$;
 drop trigger if exists fleet_issue_timeline_trigger on public.fleet_issues;
 create trigger fleet_issue_timeline_trigger before insert or update on public.fleet_issues
 for each row execute function public.fleet_register_issue_timeline();
+
