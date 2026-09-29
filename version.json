@@ -1,5 +1,5 @@
 {
-  "version": "236",
+  "version": "237",
   "released_at": "2026-09-27",
   "notes": "Correção da credencial de sincronização com Supabase."
 }
