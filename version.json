@@ -1,6 +1,5 @@
 {
-  "version": "233",
+  "version": "234",
   "released_at": "2026-09-27",
-  "notes": "Atualização do cache do aplicativo instalado e recuperação da tela inicial."
+  "notes": "Envio pendente explicado de forma clara e correção de sincronização com os painéis."
 }
-
