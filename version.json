@@ -1,6 +1,6 @@
 {
-  "version": "232",
+  "version": "233",
   "released_at": "2026-09-27",
-  "notes": "Controles do colaborador restaurados e consulta de matrícula ativa."
+  "notes": "Atualização do cache do aplicativo instalado e recuperação da tela inicial."
 }
 
