@@ -5,7 +5,7 @@
  */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "233";
+const APP_VERSION = "234";
 const SOFTWARE_SIGNATURE = Object.freeze({ owner: "LUCHTI ME", product: "URBAM Frotas", fingerprint: "LUCHTI-CHECKFROTA-URBAM-20260909-A7F3", notice: "Todos os direitos reservados" });
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v218";
 const CHECKLIST = [
@@ -288,6 +288,18 @@ function syncTimeText() {
   const value = localStorage.getItem("checkfrota-last-sync");
   return value ? new Date(value).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "ainda não realizada";
 }
+function cloudSyncFailureMessage(error) {
+  const detail = String(error?.message || "");
+  // O detalhe técnico continua registrado no console, mas não deve confundir o
+  // colaborador. Este erro significa que o banco recusou o registro antes de
+  // ele chegar aos painéis de Liderança e Gestão.
+  if (/\b42501\b|row-level security|new row violates/i.test(detail)) {
+    return "aguardando correção de acesso no banco";
+  }
+  if (/\b401\b|\b403\b|não autorizad/i.test(detail)) return "aguardando autorização do banco";
+  if (/timeout|abort/i.test(detail)) return "aguardando nova tentativa de conexão";
+  return "aguardando nova tentativa";
+}
 async function syncCloudOutbox() {
   const queue = readCloudOutbox();
   if (!CLOUD?.url) { setCloudSyncStatus("Banco não configurado", "error"); return 0; }
@@ -303,12 +315,13 @@ async function syncCloudOutbox() {
       // banco. Não mantenha o celular preso em uma fila que já foi entregue.
       const detail = String(error?.message || "");
       if (/\b409\b|duplicate key|duplicado/i.test(detail)) continue;
-      lastFailure = detail.replace(/^Banco de dados:\s*/i, "").slice(0, 72);
+      console.warn("Sincronização pendente", error);
+      lastFailure = cloudSyncFailureMessage(error);
       remaining.push(entry);
     }
   }
   localStorage.setItem(OUTBOX_KEY, JSON.stringify(remaining));
-  if (remaining.length) setCloudSyncStatus(`${remaining.length} envio(s) aguardando nova tentativa${lastFailure ? ` · ${lastFailure}` : ""}`, "pending");
+  if (remaining.length) setCloudSyncStatus(`${remaining.length} envio(s) ${lastFailure || "aguardando nova tentativa"}`, "pending");
   else { localStorage.setItem("checkfrota-last-sync", new Date().toISOString()); setCloudSyncStatus(`✓ Sincronizado às ${syncTimeText()}`, "ok"); }
   return queue.length - remaining.length;
 }
@@ -1088,7 +1101,10 @@ async function submitChecklist() {
   // A confirmação ao colaborador não depende da velocidade da rede. O envio
   // começa imediatamente em segundo plano; se falhar, entra na fila local.
   void cloudSyncSubmission(inspection, newIssues).then((cloudSaved) => {
-    if (!cloudSaved) console.warn("Chamado aguardando sincronização automática.");
+    if (!cloudSaved) {
+      console.warn("Chamado aguardando sincronização automática.");
+      setCloudSyncStatus("Chamado salvo neste aparelho e aguardando envio ao banco.", "pending");
+    }
   }).catch((error) => console.warn("Não foi possível gravar o chamado no banco", error));
   // O colaborador só recebe e visualiza o retorno quando a Gestão agendar.
   // Antes disso, o chamado segue apenas para Liderança/Gestão, evitando dúvida
