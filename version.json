@@ -1,6 +1,6 @@
 {
-  "version": "231",
+  "version": "232",
   "released_at": "2026-09-27",
-  "notes": "Nova automação de e-mail configurada para envio do formulário com PDF anexado."
+  "notes": "Controles do colaborador restaurados e consulta de matrícula ativa."
 }
 
