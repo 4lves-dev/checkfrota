@@ -1,6 +1,6 @@
 {
-  "version": "230",
+  "version": "231",
   "released_at": "2026-09-27",
-  "notes": "Consulta de matrícula reforçada no banco; formulário por e-mail volta a incluir PDF após atualizar o Apps Script."
+  "notes": "Nova automação de e-mail configurada para envio do formulário com PDF anexado."
 }
 
