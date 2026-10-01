@@ -1,5 +1,5 @@
 {
-  "version": "238",
-  "released_at": "2026-09-29",
-  "notes": "Correção do envio de checklist após acesso à Gestão e confirmação de entrega por e-mail."
+  "version": "239",
+  "released_at": "2026-10-01",
+  "notes": "Preserva fila offline e formulários durante atualização; corrige cadastro de veículos e confirmação de sincronização."
 }

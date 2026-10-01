@@ -5,7 +5,7 @@
  */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "238";
+const APP_VERSION = "239";
 const SOFTWARE_SIGNATURE = Object.freeze({ owner: "LUCHTI ME", product: "URBAM Frotas", fingerprint: "LUCHTI-CHECKFROTA-URBAM-20260909-A7F3", notice: "Todos os direitos reservados" });
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v218";
 const CHECKLIST = [
@@ -266,8 +266,9 @@ async function cloudSave(table, row) {
   // sessão de Gestão ativa no mesmo navegador força uma atualização e aciona
   // a proteção de alteração da Gestão, impedindo o colaborador de enviar.
   // A fila local já trata uma eventual duplicidade (409) como entregue.
-  const endpoint = `${CLOUD.url}/rest/v1/${table}`;
-  const prefer = "return=minimal";
+  const updatesVehicle = table === "fleet_vehicles";
+  const endpoint = `${CLOUD.url}/rest/v1/${table}${updatesVehicle ? "?on_conflict=id" : ""}`;
+  const prefer = updatesVehicle ? "resolution=merge-duplicates,return=minimal" : "return=minimal";
   const response = await fetch(endpoint, {
     method: "POST",
     signal: AbortSignal.timeout(CLOUD_WRITE_TIMEOUT_MS),
@@ -284,8 +285,9 @@ function readCloudOutbox() { try { return JSON.parse(localStorage.getItem(OUTBOX
 function queueCloudWrite(table, row) {
   const key = `${table}:${row.id || crypto.randomUUID()}`;
   const queue = readCloudOutbox().filter((entry) => entry.key !== key);
-  queue.push({ key, table, row, queuedAt: new Date().toISOString() });
-  localStorage.setItem(OUTBOX_KEY, JSON.stringify(queue.slice(-100)));
+  queue.push({ key, table, row, queuedAt: new Date().toISOString(), attemptId: crypto.randomUUID() });
+  // Nunca descarte os envios mais antigos para limitar o tamanho da fila.
+  localStorage.setItem(OUTBOX_KEY, JSON.stringify(queue));
 }
 function setCloudSyncStatus(message, state = "") {
   const element = $("#cloudSyncStatus");
@@ -309,30 +311,42 @@ function cloudSyncFailureMessage(error) {
   if (/timeout|abort/i.test(detail)) return "aguardando nova tentativa de conexão";
   return "aguardando nova tentativa";
 }
-async function syncCloudOutbox() {
+let cloudOutboxSyncPromise = null;
+function syncCloudOutbox() {
+  if (cloudOutboxSyncPromise) return cloudOutboxSyncPromise;
+  cloudOutboxSyncPromise = flushCloudOutbox().finally(() => { cloudOutboxSyncPromise = null; });
+  return cloudOutboxSyncPromise;
+}
+async function flushCloudOutbox() {
   const queue = readCloudOutbox();
   if (!CLOUD?.url) { setCloudSyncStatus("Banco não configurado", "error"); return 0; }
   if (!navigator.onLine) { setCloudSyncStatus(`⚠ Offline · última sincronização ${syncTimeText()}${queue.length ? ` · ${queue.length} pendente(s)` : ""}`, "error"); return 0; }
-  if (!queue.length) { if (!localStorage.getItem("checkfrota-last-sync")) localStorage.setItem("checkfrota-last-sync", new Date().toISOString()); setCloudSyncStatus(`✓ Sincronizado às ${syncTimeText()}`, "ok"); return 0; }
+  if (!queue.length) { setCloudSyncStatus(localStorage.getItem("checkfrota-last-sync") ? `✓ Último envio confirmado às ${syncTimeText()}` : "Online · sem envios pendentes", "ok"); return 0; }
   setCloudSyncStatus(`Sincronizando ${queue.length} envio(s)...`, "pending");
-  const remaining = [];
+  const delivered = new Set();
+  const entryIdentity = (entry) => JSON.stringify([entry.key, entry.attemptId || entry.queuedAt, entry.row]);
   let lastFailure = "";
   for (const entry of queue) {
-    try { await cloudSave(entry.table, entry.row); }
+    try { await cloudSave(entry.table, entry.row); delivered.add(entryIdentity(entry)); }
     catch (error) {
       // Um 409 para o mesmo UUID indica que o primeiro envio já chegou ao
       // banco. Não mantenha o celular preso em uma fila que já foi entregue.
       const detail = String(error?.message || "");
-      if (/\b409\b|duplicate key|duplicado/i.test(detail)) continue;
+      if (entry.table !== "fleet_vehicles" && /\b23505\b/.test(detail) && /(?:fleet_inspections|fleet_issues|fleet_email_deliveries)_pkey/.test(detail)) {
+        delivered.add(entryIdentity(entry));
+        continue;
+      }
       console.warn("Sincronização pendente", error);
       lastFailure = cloudSyncFailureMessage(error);
-      remaining.push(entry);
     }
   }
+  // Releia a fila: outro envio pode ter sido incluído durante as chamadas à rede.
+  // Uma nova tentativa do mesmo registro também não pode ser descartada.
+  const remaining = readCloudOutbox().filter((entry) => !delivered.has(entryIdentity(entry)));
   localStorage.setItem(OUTBOX_KEY, JSON.stringify(remaining));
   if (remaining.length) setCloudSyncStatus(`${remaining.length} envio(s) ${lastFailure || "aguardando nova tentativa"}`, "pending");
   else { localStorage.setItem("checkfrota-last-sync", new Date().toISOString()); setCloudSyncStatus(`✓ Sincronizado às ${syncTimeText()}`, "ok"); }
-  return queue.length - remaining.length;
+  return delivered.size;
 }
 async function saveSubmissionWithOutbox(table, row) {
   try { await cloudSave(table, row); return true; }
@@ -2312,18 +2326,27 @@ $("#maintenanceAddress")?.addEventListener("input", () => { maintenanceMapLocati
 $("#maintenanceProvider")?.addEventListener("input", updateMaintenanceMapLink);
 $$(".tab").forEach((tab) => tab.addEventListener("click", () => { $$(".tab").forEach((button) => button.classList.toggle("active", button === tab)); $$(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab.dataset.tab}Panel`)); }));
 
+function canReloadForUpdate() {
+  return !submissionInProgress && !readCloudOutbox().length
+    && !document.querySelector("dialog[open], .screen.active[data-screen='checklist'], .screen.active[data-screen='review']")
+    && !(current?.odometer && !submissionCompleted);
+}
 if ("serviceWorker" in navigator) {
   let refreshedForUpdate = false;
   let checkingVersion = false;
   let targetVersion = APP_VERSION;
+  let updatePending = false;
   const reloadOnUpdate = () => {
     if (refreshedForUpdate) return;
+    if (!canReloadForUpdate()) { updatePending = true; return; }
     refreshedForUpdate = true;
     const url = new URL(location.href);
     url.searchParams.set("v", targetVersion);
     location.replace(url.toString());
   };
-  const activateWaitingWorker = (registration) => registration.waiting?.postMessage({ type: "SKIP_WAITING" });
+  const activateWaitingWorker = (registration) => {
+    if (canReloadForUpdate()) registration?.waiting?.postMessage({ type: "SKIP_WAITING" });
+  };
   const checkAppVersion = async () => {
     if (checkingVersion || !navigator.onLine) return;
     checkingVersion = true;
@@ -2331,7 +2354,7 @@ if ("serviceWorker" in navigator) {
       const response = await fetch(`version.json?t=${Date.now()}`, { cache: "no-store" });
       if (!response.ok) return;
       const remote = String((await response.json()).version || "");
-      if (remote && remote !== APP_VERSION) {
+      if (/^\d+$/.test(remote) && Number(remote) > Number(APP_VERSION)) {
         targetVersion = remote;
         const registration = await navigator.serviceWorker.getRegistration();
         await registration?.update();
@@ -2351,22 +2374,20 @@ if ("serviceWorker" in navigator) {
       registration.addEventListener("updatefound", () => registration.installing?.addEventListener("statechange", () => activateWaitingWorker(registration)));
       await registration.update();
       activateWaitingWorker(registration);
-      // Elimina caches de versões anteriores sempre que o PWA é aberto.
-      const expectedCache = `checkfrota-v${APP_VERSION}`;
-      const keys = await caches.keys();
-      await Promise.all(keys.filter((key) => key.startsWith("checkfrota-v") && key !== expectedCache).map((key) => caches.delete(key)));
+      // O worker remove o cache antigo somente após a nova instalação concluir.
     } catch (_) {}
     void checkAppVersion();
   });
   document.addEventListener("visibilitychange", () => { if (!document.hidden) void checkAppVersion(); });
   window.addEventListener("online", () => void checkAppVersion());
   window.setInterval(() => void checkAppVersion(), 5 * 60 * 1000);
+  window.setInterval(() => { if (updatePending && canReloadForUpdate()) reloadOnUpdate(); }, 10000);
 }
 window.addEventListener("load", () => { void window.URBAMOneSignal?.initialize(); });
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; showInstallBanner(); });
 window.addEventListener("appinstalled", () => { document.body.classList.add("app-installed"); $("#installBanner").hidden = true; });
 if (isInstalled()) document.body.classList.add("app-installed"); else window.addEventListener("load", showInstallBanner);
-window.addEventListener("online", () => { localStorage.setItem("checkfrota-last-sync", new Date().toISOString()); void syncCloudOutbox().then((count) => { if (count) console.info(`${count} envio(s) pendente(s) sincronizado(s).`); }); });
+window.addEventListener("online", () => { void syncCloudOutbox().then((count) => { if (count) console.info(`${count} envio(s) pendente(s) sincronizado(s).`); }); });
 window.addEventListener("offline", () => void syncCloudOutbox());
 // Atualiza o acompanhamento assim que o colaborador volta ao aplicativo;
 // não é necessário aguardar o próximo ciclo de consulta de 60 segundos.

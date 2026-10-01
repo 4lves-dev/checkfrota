@@ -1,8 +1,8 @@
 /* LUCHTI ME · URBAM Frotas · LUCHTI-CHECKFROTA-URBAM-20260909-A7F3 · Todos os direitos reservados. */
-const CACHE = "checkfrota-v238";
-const ASSETS = ["./", "./index.html", "./gestao.html?v=238", "./lider.html?v=238", "./instalar-gestao.html?v=238", "./instalar-lider.html?v=238", "./aprovacao.html?v=238", "./styles.css?v=238", "./supabase-config.js?v=238", "./onesignal.js?v=238", "./app.js?v=238", "./manifest.webmanifest", "./gestao-manifest.webmanifest", "./lider-manifest.webmanifest", "./icons/icon.svg", "./version.json"];
+const CACHE = "checkfrota-v239";
+const ASSETS = ["./", "./index.html", "./gestao.html?v=239", "./lider.html?v=239", "./instalar-gestao.html?v=239", "./instalar-lider.html?v=239", "./aprovacao.html?v=239", "./styles.css?v=239", "./supabase-config.js?v=239", "./onesignal.js?v=239", "./app.js?v=239", "./manifest.webmanifest", "./gestao-manifest.webmanifest", "./lider-manifest.webmanifest", "./icons/icon.svg", "./version.json"];
 
-self.addEventListener("install", (event) => event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting())));
+self.addEventListener("install", (event) => event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS))));
 self.addEventListener("activate", (event) => event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key.startsWith("checkfrota-v") && key !== CACHE).map((key) => caches.delete(key)))).then(() => self.clients.claim())));
 self.addEventListener("message", (event) => {
   if (event.data?.type === "SKIP_WAITING") void self.skipWaiting();
@@ -14,10 +14,21 @@ self.addEventListener("fetch", (event) => {
   if (freshAsset) {
     const networkRequest = new Request(event.request, { cache: "no-store" });
     event.respondWith(fetch(networkRequest).then((response) => {
-      const copy = response.clone();
-      void caches.open(CACHE).then((cache) => cache.put(event.request, copy));
+      if (response.ok) {
+        const copy = response.clone();
+        event.waitUntil(caches.open(CACHE).then((cache) => cache.put(event.request, copy)));
+      }
       return response;
-    }).catch(() => caches.match(event.request).then((cached) => cached || caches.match("./index.html"))));
+    }).catch(async () => {
+      const cached = await caches.match(event.request, { ignoreSearch: true });
+      if (cached) return cached;
+      // Nunca devolva HTML no lugar de um JavaScript/CSS ausente.
+      if (event.request.mode === "navigate" && /\/(?:index\.html)?$/.test(url.pathname)) {
+        const home = await caches.match("./index.html");
+        if (home) return home;
+      }
+      return new Response("Recurso indisponível offline. Conecte-se e tente novamente.", { status: 503, headers: { "Content-Type": "text/plain;charset=utf-8" } });
+    }));
     return;
   }
   event.respondWith(caches.match(event.request).then((cached) => cached || fetch(event.request)));
@@ -37,6 +48,6 @@ self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   event.waitUntil(clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
     const open = windows.find((client) => client.url.includes("lider.html"));
-    return open ? open.focus() : clients.openWindow("./lider.html?v=238");
+    return open ? open.focus() : clients.openWindow("./lider.html?v=239");
   }));
 });

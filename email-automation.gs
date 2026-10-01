@@ -11,13 +11,18 @@ const SUPABASE_ANON_KEY = 'sb_publishable_yLJvwIAxkQ6j4epa_hfccw_Jz1Uu2g-';
 
 function confirmDelivery_(deliveryId, status, errorMessage) {
   if (!deliveryId) return;
-  UrlFetchApp.fetch(`${SUPABASE_URL}/rest/v1/rpc/fleet_confirm_email_delivery`, {
+  const response = UrlFetchApp.fetch(`${SUPABASE_URL}/rest/v1/rpc/fleet_confirm_email_delivery`, {
     method: 'post', contentType: 'application/json', muteHttpExceptions: true,
     // Chaves publicáveis modernas do Supabase identificam a chamada somente
     // pelo cabeçalho apikey; elas não são JWTs válidos para Authorization.
     headers: { apikey: SUPABASE_ANON_KEY },
     payload: JSON.stringify({ p_delivery_id: deliveryId, p_status: status, p_error: errorMessage || '' })
   });
+  if (response.getResponseCode() >= 300) {
+    console.error(`Confirmação de e-mail recusada pelo banco: HTTP ${response.getResponseCode()}`);
+    return false;
+  }
+  return true;
 }
 
 function doGet() {
@@ -147,8 +152,25 @@ function doPost(e) {
     return ContentService.createTextOutput(JSON.stringify({ ok: true, protocol: inspection.id }))
       .setMimeType(ContentService.MimeType.JSON);
   } catch (error) {
+    console.error(`Falha no formulário: ${String(error.message || error)}`);
     try { confirmDelivery_(payload && payload.emailDeliveryId, 'falhou', String(error.message || error)); } catch (_) {}
     return ContentService.createTextOutput(JSON.stringify({ ok: false, error: String(error.message || error) }))
       .setMimeType(ContentService.MimeType.JSON);
   }
+}
+
+// Executar manualmente no editor para autorizar Docs/Drive/Mail e validar PDF.
+// Não cria chamados no banco nem notifica motoristas ou fornecedores.
+function testarEmailComPdf() {
+  const result = doPost({ postData: { contents: JSON.stringify({
+    inspection: { id: `diagnostico-${Date.now()}`, createdAt: new Date().toISOString(),
+      driver: 'TESTE TÉCNICO — NÃO É CHAMADO', driverRegistration: 'TESTE',
+      baseName: 'Homologação', odometer: 0,
+      items: [{ name: 'Validação do formulário PDF', status: 'ok' }],
+      notes: 'Diagnóstico autorizado da integração. Não representa veículo real.' },
+    vehicle: { prefix: 'TESTE', plate: 'TESTE', type: 'Diagnóstico' }, issues: []
+  }) } });
+  const response = JSON.parse(result.getContent());
+  if (!response.ok) throw new Error(response.error || 'Falha no diagnóstico.');
+  console.log('Provedor aceitou o e-mail com PDF. Conferir recebimento na caixa de entrada.');
 }
