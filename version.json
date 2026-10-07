@@ -1,5 +1,5 @@
 {
-  "version": "239",
-  "released_at": "2026-10-01",
-  "notes": "Preserva fila offline e formulários durante atualização; corrige cadastro de veículos e confirmação de sincronização."
+  "version": "240",
+  "released_at": "2026-10-07",
+  "notes": "Checklists e histórico mais visíveis, atualização manual da Gestão, aviso de falha de leitura e proteção contra conflitos. Homologação integral ainda pendente."
 }

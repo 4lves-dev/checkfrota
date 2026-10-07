@@ -5,7 +5,7 @@
  */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "239";
+const APP_VERSION = "240";
 const SOFTWARE_SIGNATURE = Object.freeze({ owner: "LUCHTI ME", product: "URBAM Frotas", fingerprint: "LUCHTI-CHECKFROTA-URBAM-20260909-A7F3", notice: "Todos os direitos reservados" });
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v218";
 const CHECKLIST = [
@@ -47,6 +47,8 @@ let returnedIssuesLoading = false;
 let maintenanceMapLocation = null;
 let maintenanceWatchTimer = null;
 let managementCloudLoading = false;
+let managementLastRead = "";
+let managementReadError = false;
 let managementRole = "";
 let submissionInProgress = false;
 let submissionCompleted = false;
@@ -282,10 +284,10 @@ async function cloudSave(table, row) {
   return true;
 }
 function readCloudOutbox() { try { return JSON.parse(localStorage.getItem(OUTBOX_KEY) || "[]"); } catch { return []; } }
-function queueCloudWrite(table, row) {
-  const key = `${table}:${row.id || crypto.randomUUID()}`;
+function queueCloudWrite(table, row, operation = "insert") {
+  const key = `${operation}:${table}:${row.id || crypto.randomUUID()}`;
   const queue = readCloudOutbox().filter((entry) => entry.key !== key);
-  queue.push({ key, table, row, queuedAt: new Date().toISOString(), attemptId: crypto.randomUUID() });
+  queue.push({ key, table, row, operation, queuedAt: new Date().toISOString(), attemptId: crypto.randomUUID() });
   // Nunca descarte os envios mais antigos para limitar o tamanho da fila.
   localStorage.setItem(OUTBOX_KEY, JSON.stringify(queue));
 }
@@ -301,6 +303,7 @@ function syncTimeText() {
 }
 function cloudSyncFailureMessage(error) {
   const detail = String(error?.message || "");
+  if (error?.code === "ISSUE_CONFLICT" || /atualizado por outra pessoa/i.test(detail)) return "com conflito: atualize o painel e revise a alteração";
   // O detalhe técnico continua registrado no console, mas não deve confundir o
   // colaborador. Este erro significa que o banco recusou o registro antes de
   // ele chegar aos painéis de Liderança e Gestão.
@@ -327,12 +330,20 @@ async function flushCloudOutbox() {
   const entryIdentity = (entry) => JSON.stringify([entry.key, entry.attemptId || entry.queuedAt, entry.row]);
   let lastFailure = "";
   for (const entry of queue) {
-    try { await cloudSave(entry.table, entry.row); delivered.add(entryIdentity(entry)); }
+    const originalIdentity = entryIdentity(entry);
+    try {
+      if (entry.operation === "update" || (!entry.operation && Number.isInteger(entry.row?.data?.__revision))) {
+        await cloudUpdateIssue(entry.row.data);
+      } else {
+        await cloudSave(entry.table, entry.row);
+      }
+      delivered.add(originalIdentity);
+    }
     catch (error) {
       // Um 409 para o mesmo UUID indica que o primeiro envio já chegou ao
       // banco. Não mantenha o celular preso em uma fila que já foi entregue.
       const detail = String(error?.message || "");
-      if (entry.table !== "fleet_vehicles" && /\b23505\b/.test(detail) && /(?:fleet_inspections|fleet_issues|fleet_email_deliveries)_pkey/.test(detail)) {
+      if (entry.operation !== "update" && !Number.isInteger(entry.row?.data?.__revision) && entry.table !== "fleet_vehicles" && /\b23505\b/.test(detail) && /(?:fleet_inspections|fleet_issues|fleet_email_deliveries)_pkey/.test(detail)) {
         delivered.add(entryIdentity(entry));
         continue;
       }
@@ -394,12 +405,18 @@ async function cloudUpdateIssue(issue) {
   if (Number.isInteger(issue.__revision)) {
     const rows = await cloudRpc("fleet_update_issue_if_current", { p_issue_id: issue.id, p_expected_revision: issue.__revision, p_status: issue.status || "aberta", p_data: issue });
     const nextRevision = Array.isArray(rows) ? rows[0]?.revision : rows?.revision;
-    if (!Number.isInteger(nextRevision)) throw new Error("Este chamado foi atualizado por outra pessoa. Atualize o painel antes de salvar novamente.");
+    if (!Number.isInteger(nextRevision)) {
+      const error = new Error("Este chamado foi atualizado por outra pessoa. Atualize o painel antes de salvar novamente.");
+      error.code = "ISSUE_CONFLICT";
+      throw error;
+    }
     issue.__revision = nextRevision;
     return;
   }
-  const response = await fetch(`${CLOUD.url}/rest/v1/fleet_issues?id=eq.${encodeURIComponent(issue.id)}`, { method: "PATCH", headers: { ...cloudHeaders(), Prefer: "return=minimal" }, body: JSON.stringify({ status: issue.status || "aberta", data: issue }) });
-  if (!response.ok) throw new Error(`Banco de dados: ${response.status}`);
+  // Não sobrescrever uma alteração recente usando dados antigos do cache.
+  const error = new Error("Este chamado precisa ser sincronizado. Atualize o painel e revise os dados antes de salvar.");
+  error.code = "ISSUE_CONFLICT";
+  throw error;
 }
 async function compressPhoto(file) {
   if (!file?.type?.startsWith("image/")) return file;
@@ -702,13 +719,15 @@ function mergeFleetVehicles(cloudVehicles = []) {
 async function loadCloudManager() {
   if (!cloudToken() || managementCloudLoading) return;
   managementCloudLoading = true;
+  renderManagementSyncStatus();
   try {
     const [issues, inspections, vehicles] = await Promise.all([
       cloudRequest("/rest/v1/fleet_issues?select=id,inspection_id,vehicle_id,status,data,revision&order=created_at.desc"),
-      cloudRequest("/rest/v1/fleet_inspections?select=data&order=created_at.desc"),
+      cloudRequest("/rest/v1/fleet_inspections?select=id,created_at,data&order=created_at.desc"),
       cloudRequest("/rest/v1/fleet_vehicles?select=data"),
     ]);
-    if (issues) data.issues = issues.map((row) => ({
+    if (!Array.isArray(issues) || !Array.isArray(inspections) || !Array.isArray(vehicles)) throw new Error("Resposta incompleta do banco");
+    data.issues = issues.map((row) => ({
       ...(row.data || {}),
       id: row.id ?? row.data?.id,
       inspectionId: row.inspection_id ?? row.data?.inspectionId,
@@ -716,11 +735,37 @@ async function loadCloudManager() {
       status: row.status || row.data?.status || "aberta",
       __revision: Number.isInteger(row.revision) ? row.revision : undefined,
     }));
-    if (inspections) data.inspections = inspections.map((row) => row.data);
+    data.inspections = normalizeManagerInspections(inspections);
     data.vehicles = mergeFleetVehicles((vehicles || []).map((row) => row.data).filter(Boolean));
-    managementCloudLoaded = true; saveData(); renderControl();
-  } catch (error) { console.warn("Não foi possível carregar a nuvem", error); }
-  finally { managementCloudLoading = false; }
+    managementCloudLoaded = true;
+    managementLastRead = new Date().toISOString();
+    managementReadError = false;
+    saveData(); renderControl();
+  } catch (error) {
+    managementReadError = true;
+    console.warn("Não foi possível carregar a nuvem", error);
+  }
+  finally { managementCloudLoading = false; renderManagementSyncStatus(); }
+}
+
+function normalizeManagerInspections(rows) {
+  return rows.filter((row) => row && row.id).map((row) => ({
+    ...(row.data && typeof row.data === "object" && !Array.isArray(row.data) ? row.data : {}),
+    id: row.id,
+    createdAt: row.created_at || row.data?.createdAt || "",
+    items: Array.isArray(row.data?.items) ? row.data.items.filter((item) => item && typeof item === "object") : [],
+  }));
+}
+
+function renderManagementSyncStatus() {
+  const status = $("#managementSyncStatus");
+  const button = $("#refreshManagement");
+  if (button) button.disabled = managementCloudLoading;
+  if (!status) return;
+  status.textContent = managementCloudLoading ? "Consultando o banco…"
+    : managementReadError ? "Não foi possível atualizar a Gestão. Os dados exibidos podem estar desatualizados. Tente novamente."
+    : managementLastRead ? `Gestão atualizada em ${dateTime(managementLastRead)}`
+    : "Aguardando consulta ao banco. Os dados locais ainda não foram conferidos.";
 }
 
 function loadData() {
@@ -1678,7 +1723,7 @@ function renderHistory() {
   const resolvedIssues = data.issues.filter((issue) => issue.status === "resolvida" || maintenanceOf(issue).status === "Concluída").sort((a, b) => new Date(b.resolvedAt || b.createdAt) - new Date(a.resolvedAt || a.createdAt));
   const archivedIssues = data.issues.filter(isArchived).sort((a, b) => new Date(b.archivedAt || b.createdAt) - new Date(a.archivedAt || a.createdAt));
   const inspectionsMarkup = data.inspections.slice(0, 30).map((inspection) => {
-    const issueCount = inspection.items.filter((item) => item.status === "issue").length;
+    const issueCount = (Array.isArray(inspection.items) ? inspection.items : []).filter((item) => item?.status === "issue").length;
     return `<article class="history-card"><div><b>Prefixo ${esc(inspection.vehiclePrefix || "—")} · ${esc(inspection.vehiclePlate)} · ${esc(inspection.driver)}</b><p class="meta">${esc(inspection.odometer ?? "—")} km · ${dateTime(inspection.createdAt)}${inspection.notes ? ` · ${esc(inspection.notes)}` : ""}</p></div>${issueCount ? `<span class="chip grave">${issueCount} ocorrência(s)</span>` : `<span class="chip ok">OK</span>`}</article>`;
   }).join("");
   const resolvedMarkup = resolvedIssues.map((issue) => `<article class="history-card"><div><b>✓ Resolvido · Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate)} · ${esc(issue.itemName)}</b><p class="meta">${esc(issue.description || "Sem observação")} · concluído em ${dateTime(issue.resolvedAt || issue.maintenance?.updatedAt || issue.createdAt)}</p></div><span class="chip ok">Resolvido</span></article>`).join("");
@@ -1951,7 +1996,7 @@ async function sendSupplierSlaNotice(issueId) {
   issue.maintenance = { ...maintenance, slaNoticeAt: new Date().toISOString(), slaNoticeType: type, slaEmailAt: sla.state === "late" ? new Date().toISOString() : maintenance.slaEmailAt, updatedAt: new Date().toISOString() };
   saveData(); renderControl();
   try { await cloudUpdateIssue(issue); await recordAuditEvent(issue, "notificacao_sla_email", type); }
-  catch (error) { queueCloudWrite("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: issue.vehicleId, status: issue.status, data: issue }); }
+  catch (error) { queueCloudWrite("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: issue.vehicleId, status: issue.status, data: issue }, "update"); }
   if (sla.state !== "late") return copySupplierSlaNotice(issueId);
   const target = String(issue.email || data.vehicles.find((vehicle) => vehicle.id === issue.vehicleId)?.email || "").trim();
   const subject = slaEmailSubject(issue);
@@ -2032,7 +2077,7 @@ async function saveAndSendInternalMaintenanceUpdate(issue) {
     await cloudUpdateIssue(issue);
     await recordAuditEvent(issue, "aviso_equipe_interna", "Atualização de manutenção enviada ao grupo interno.");
   } catch (error) {
-    queueCloudWrite("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: issue.vehicleId, status: issue.status, data: issue });
+    queueCloudWrite("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: issue.vehicleId, status: issue.status, data: issue }, "update");
     alert("A atualização foi guardada neste aparelho e será sincronizada quando a internet voltar.");
   }
   sendSchedulingReturn(issue, maintenance);
@@ -2048,7 +2093,7 @@ async function sendDriverMaintenanceWhatsApp(issue) {
     await cloudUpdateIssue(issue);
     await recordAuditEvent(issue, "mensagem_agendamento_colaborador", `Mensagem de agendamento aberta para matrícula ${issue.driverRegistration || "—"} · telefone ${target}`);
   } catch (error) {
-    queueCloudWrite("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: issue.vehicleId, status: issue.status, data: issue });
+    queueCloudWrite("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: issue.vehicleId, status: issue.status, data: issue }, "update");
   }
   window.open(whatsappLink(target, buildDriverAppointmentMessage(issue)), "_blank", "noopener");
 }
@@ -2065,9 +2110,11 @@ function sendLeaderReadyWhatsApp(issueId) {
   window.open(whatsappLink(target, buildLeaderReadyMessage(issue)), "_blank", "noopener");
 }
 async function saveMaintenance() {
+  if ($("#saveMaintenanceButton").disabled) return;
   const issue = data.issues.find((entry) => entry.id === $("#maintenanceIssueId").value); if (!issue) return;
   if (!canManageMaintenance(issue)) { alert("Este chamado ainda aguarda a aprovação da liderança."); return; }
   const previousMaintenance = maintenanceOf(issue);
+  const previousIssue = JSON.parse(JSON.stringify(issue));
   const nextMaintenance = maintenanceFormValues(previousMaintenance);
   if (nextMaintenance.status !== previousMaintenance.status && !confirm(`Confirma a mudança da manutenção de “${previousMaintenance.status || "Solicitada"}” para “${nextMaintenance.status}”?`)) return;
   if (nextMaintenance.status === "Agendada" && (!nextMaintenance.scheduledAt || !nextMaintenance.provider || !nextMaintenance.address)) { alert("Para agendar ou reagendar, informe data e horário, oficina e endereço do atendimento."); return; }
@@ -2083,7 +2130,19 @@ async function saveMaintenance() {
   try {
     saveData();
     try { await cloudUpdateIssue(issue); }
-    catch (error) { queueCloudWrite("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: issue.vehicleId, status: issue.status, data: issue }); alert("A atualização foi guardada neste aparelho e será sincronizada quando a internet voltar."); }
+    catch (error) {
+      if (error.code === "ISSUE_CONFLICT") {
+        Object.keys(issue).forEach(key => delete issue[key]);
+        Object.assign(issue, previousIssue);
+        saveData();
+        alert(error.message + " Os campos do formulário foram mantidos para sua revisão.");
+        return;
+      }
+      queueCloudWrite("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: issue.vehicleId, status: issue.status, data: issue }, "update");
+      setCloudSyncStatus("Agendamento pendente de confirmação no banco. Nenhum aviso foi enviado.", "pending");
+      alert("Não foi possível confirmar o agendamento no banco. A alteração está guardada para nova tentativa; Liderança e colaborador ainda não foram avisados.");
+      return;
+    }
     void recordAuditEvent(issue, "manutencao_atualizada", `Situação: ${issue.maintenance.status}`);
     if (data.settings.webhookUrl) void sendToIntegration({ type: issue.maintenance.status === "Agendada" ? "maintenance-scheduled" : "maintenance-update", issue, maintenance: issue.maintenance });
     $("#maintenanceDialog").close(); renderControl();
@@ -2131,7 +2190,7 @@ async function locateMaintenanceAddress() {
   updateMaintenanceMapLink();
 }
 function prepareReschedule() { $("#maintenanceStatus").value = "Agendada"; $("#maintenanceScheduledAt").focus(); $("#maintenanceMapStatus").textContent = "Atualize data, horário, oficina ou endereço e salve o novo agendamento."; }
-async function closeIssue(issueId) { const issue = data.issues.find((entry) => entry.id === issueId); if (!issue) return; const maintenance = maintenanceOf(issue); if (!maintenance.pickupAt) return alert("Aguarde a confirmação de retirada pela Liderança antes de concluir este chamado."); issue.maintenance = { ...maintenance, status: "Concluída", updatedAt: new Date().toISOString() }; issue.status = "resolvida"; issue.resolvedAt = new Date().toISOString(); saveData(); try { await cloudUpdateIssue(issue); } catch (error) { queueCloudWrite("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: issue.vehicleId, status: issue.status, data: issue }); alert("O chamado foi resolvido e será sincronizado quando a internet voltar."); } await recordAuditEvent(issue, "chamado_resolvido", "Manutenção concluída após confirmação de retirada pela Liderança"); if (data.settings.webhookUrl) void sendToIntegration({ type: "maintenance-update", issue, maintenance: issue.maintenance }); renderControl(); }
+async function closeIssue(issueId) { const issue = data.issues.find((entry) => entry.id === issueId); if (!issue) return; const maintenance = maintenanceOf(issue); if (!maintenance.pickupAt) return alert("Aguarde a confirmação de retirada pela Liderança antes de concluir este chamado."); issue.maintenance = { ...maintenance, status: "Concluída", updatedAt: new Date().toISOString() }; issue.status = "resolvida"; issue.resolvedAt = new Date().toISOString(); saveData(); try { await cloudUpdateIssue(issue); } catch (error) { queueCloudWrite("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: issue.vehicleId, status: issue.status, data: issue }, "update"); alert("O chamado foi resolvido e será sincronizado quando a internet voltar."); } await recordAuditEvent(issue, "chamado_resolvido", "Manutenção concluída após confirmação de retirada pela Liderança"); if (data.settings.webhookUrl) void sendToIntegration({ type: "maintenance-update", issue, maintenance: issue.maintenance }); renderControl(); }
 async function archiveIssue(issueId) {
   if (!requireMasterAccess()) return;
   const issue = data.issues.find((entry) => entry.id === issueId); if (!issue) return;
@@ -2320,6 +2379,7 @@ $("#dismissInstallBanner").addEventListener("click", dismissInstallBanner);
 $("#issueForm").addEventListener("submit", (event) => { event.preventDefault(); saveIssue(); });
 $("#vehicleForm").addEventListener("submit", (event) => { event.preventDefault(); saveVehicle(); });
 $("#employeeForm").addEventListener("submit", (event) => { event.preventDefault(); void saveEmployee(); });
+$("#refreshManagement")?.addEventListener("click", () => { void loadCloudManager(); });
 $("#settingsForm").addEventListener("submit", (event) => { event.preventDefault(); saveSettings(); });
 $("#maintenanceForm").addEventListener("submit", (event) => { event.preventDefault(); void saveMaintenance(); });
 $("#maintenanceAddress")?.addEventListener("input", () => { maintenanceMapLocation = null; updateMaintenanceMapLink(); });

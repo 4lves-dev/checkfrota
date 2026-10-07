@@ -23,17 +23,23 @@ begin
          error_message = nullif(trim(coalesce(p_error,'')), ''), confirmed_at = now()
    where id = p_delivery_id;
 end; $$;
-grant execute on function public.fleet_confirm_email_delivery(text,text,text) to anon, authenticated;
+-- Não reabrir o callback legado ao reaplicar esta migração.
+-- Use supabase-email-confirmation-secure.sql e a chave privada no Apps Script.
+revoke execute on function public.fleet_confirm_email_delivery(text,text,text) from public, anon, authenticated;
 
 alter table public.fleet_issues add column if not exists revision integer not null default 1;
 
 create or replace function public.fleet_update_issue_if_current(p_issue_id text, p_expected_revision integer, p_status text, p_data jsonb)
 returns table(revision integer) language plpgsql security definer set search_path = public as $$
 begin
+  if auth.uid() is null or not public.fleet_is_manager() then
+    raise exception 'Acesso restrito à gestão autorizada.' using errcode = '42501';
+  end if;
   return query
   update public.fleet_issues
      set status = p_status, data = p_data, revision = public.fleet_issues.revision + 1, updated_at = now()
-   where id = p_issue_id and revision = p_expected_revision
+   where id = p_issue_id and public.fleet_issues.revision = p_expected_revision
    returning public.fleet_issues.revision;
 end; $$;
-grant execute on function public.fleet_update_issue_if_current(text,integer,text,jsonb) to anon, authenticated;
+revoke execute on function public.fleet_update_issue_if_current(text,integer,text,jsonb) from public, anon;
+grant execute on function public.fleet_update_issue_if_current(text,integer,text,jsonb) to authenticated;

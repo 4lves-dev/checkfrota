@@ -9,26 +9,46 @@ const URBAM_FROTAS_EMAIL = 'urbamfrota@gmail.com';
 const SUPABASE_URL = 'https://lkorooafivaxdykpssjz.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_yLJvwIAxkQ6j4epa_hfccw_Jz1Uu2g-';
 
-function confirmDelivery_(deliveryId, status, errorMessage) {
+function confirmDelivery_(deliveryId, status, errorMessage, inspectionId) {
   if (!deliveryId) return;
-  const response = UrlFetchApp.fetch(`${SUPABASE_URL}/rest/v1/rpc/fleet_confirm_email_delivery`, {
+  const token = PropertiesService.getScriptProperties().getProperty('CHECKFROTA_EMAIL_CONFIRMATION_SECRET') || '';
+  if (token.length < 32 || !inspectionId) {
+    console.error('Confirmação segura não configurada ou inspeção ausente.');
+    return false;
+  }
+  const response = UrlFetchApp.fetch(`${SUPABASE_URL}/rest/v1/rpc/fleet_confirm_email_delivery_secure`, {
     method: 'post', contentType: 'application/json', muteHttpExceptions: true,
     // Chaves publicáveis modernas do Supabase identificam a chamada somente
     // pelo cabeçalho apikey; elas não são JWTs válidos para Authorization.
     headers: { apikey: SUPABASE_ANON_KEY },
-    payload: JSON.stringify({ p_delivery_id: deliveryId, p_status: status, p_error: errorMessage || '' })
+    payload: JSON.stringify({ p_delivery_id: deliveryId, p_inspection_id: inspectionId, p_status: status, p_token: token, p_error: errorMessage || '' })
   });
   if (response.getResponseCode() >= 300) {
     console.error(`Confirmação de e-mail recusada pelo banco: HTTP ${response.getResponseCode()}`);
     return false;
   }
-  return true;
+  try { return JSON.parse(response.getContentText()) === true; }
+  catch (_) { return false; }
 }
 
 function doGet() {
   return ContentService
     .createTextOutput(JSON.stringify({ ok: true, service: 'URBAM Frotas e-mail', updatedAt: new Date().toISOString() }))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+// Checks the private credential without creating a call or sending an email.
+function validarConfirmacaoSegura() {
+  const token = PropertiesService.getScriptProperties().getProperty('CHECKFROTA_EMAIL_CONFIRMATION_SECRET') || '';
+  if (token.length < 32) throw new Error('Chave ausente ou curta nas propriedades do script.');
+  const response = UrlFetchApp.fetch(`${SUPABASE_URL}/rest/v1/rpc/fleet_confirm_email_delivery_secure`, {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    headers: { apikey: SUPABASE_ANON_KEY },
+    payload: JSON.stringify({ p_delivery_id: `validacao-${Utilities.getUuid()}`, p_inspection_id: 'validacao-sem-chamado', p_status: 'enviado', p_token: token, p_error: '' })
+  });
+  if (response.getResponseCode() !== 200 || response.getContentText().trim() !== 'false')
+    throw new Error(`Validação recusada: HTTP ${response.getResponseCode()}. Confira a configuração dos dois serviços.`);
+  console.log('CHAVE VALIDADA: integração autenticada; nenhum chamado ou e-mail criado.');
 }
 
 function escapeHtml_(value) {
@@ -59,54 +79,82 @@ function buildChecklistPdf_(inspection, vehicle, issues, date) {
   const documentName = `Formulario-URBAM-Frotas-${vehicle.prefix || 'veiculo'}-${String(inspection.id || '').slice(0, 8)}`;
   const document = DocumentApp.create(documentName);
   const body = document.getBody();
-  body.appendParagraph('URBAM FROTAS').setHeading(DocumentApp.ParagraphHeading.HEADING1);
-  body.appendParagraph('FORMULÁRIO DE INSPEÇÃO').setHeading(DocumentApp.ParagraphHeading.HEADING2);
-  body.appendParagraph(`Protocolo: ${inspection.id || '—'}`);
-  body.appendParagraph(`Data e hora: ${date}`);
-  body.appendParagraph('');
-  body.appendParagraph('Dados do formulário').setHeading(DocumentApp.ParagraphHeading.HEADING2);
-  [
-    ['Colaborador', inspection.driver],
-    ['Matrícula', inspection.driverRegistration],
-    ['Base', inspection.baseName],
-    ['Veículo', `Prefixo ${vehicle.prefix || '—'} · Placa ${vehicle.plate || '—'} · ${vehicle.model || vehicle.type || '—'}`],
-    ['Quilometragem', `${inspection.odometer || '—'} km`]
-  ].forEach(([label, value]) => body.appendParagraph(`${label}: ${value || '—'}`));
-
-  body.appendParagraph('');
-  body.appendParagraph('Checklist completo').setHeading(DocumentApp.ParagraphHeading.HEADING2);
-  const items = Array.isArray(inspection.items) ? inspection.items : [];
-  if (items.length) {
-    items.forEach((item, index) => {
-      const isIssue = item && item.status === 'issue';
-      const description = isIssue ? (item.issue && item.issue.description || item.description || 'Verificar apontamento') : 'Em ordem';
-      body.appendParagraph(`${isIssue ? '☐' : '☑'} ${index + 1}. ${item && item.name || 'Item'} — ${description}`);
+  body.setPageWidth(595.28).setPageHeight(841.89)
+    .setMarginTop(32).setMarginBottom(32).setMarginLeft(36).setMarginRight(36);
+  const valueText = value => value === null || value === undefined || value === '' ? '-' : String(value);
+  const styleParagraph = (paragraph, size, color, bold) => {
+    paragraph.setSpacingBefore(0).setSpacingAfter(3).setLineSpacing(1.1);
+    paragraph.editAsText().setFontFamily('Arial').setFontSize(size)
+      .setForegroundColor(color).setBold(bold);
+    return paragraph;
+  };
+  const section = title => {
+    const paragraph = body.appendParagraph(title);
+    styleParagraph(paragraph, 12, '#183a59', true).setSpacingBefore(12).setSpacingAfter(6);
+  };
+  const table = (rows, widths) => {
+    const result = body.appendTable(rows);
+    result.setBorderColor('#dce6ee').setBorderWidth(0.5);
+    widths.forEach((width, index) => result.setColumnWidth(index, width));
+    rows.forEach((row, r) => row.forEach((_, c) => {
+      const cell = result.getRow(r).getCell(c);
+      cell.setPaddingTop(6).setPaddingBottom(6).setPaddingLeft(9).setPaddingRight(9);
+      styleParagraph(cell.getChild(0).asParagraph(), 9, '#17324a', false);
+    }));
+    return result;
+  };
+  const banner = table([['URBAM FROTAS\nChecklist de inspeção']], [523.28]);
+  banner.getRow(0).getCell(0).setBackgroundColor('#083b64');
+  styleParagraph(banner.getRow(0).getCell(0).getChild(0).asParagraph(), 17, '#ffffff', true);
+  styleParagraph(body.appendParagraph(`Protocolo: ${valueText(inspection.id)} | ${date}`), 8, '#526475', false);
+  section('Dados do formulário');
+  const data = table([
+    ['Colaborador', valueText(inspection.driver)],
+    ['Matrícula / Base', `${valueText(inspection.driverRegistration)} / ${valueText(inspection.baseName)}`],
+    ['Veículo', `Prefixo ${valueText(vehicle.prefix)} | Placa ${valueText(vehicle.plate)} | ${valueText(vehicle.model || vehicle.type)}`],
+    ['Quilometragem', `${valueText(inspection.odometer)} km`]
+  ], [130, 393.28]);
+  for (let r = 0; r < data.getNumRows(); r++) {
+    data.getRow(r).getCell(0).setBackgroundColor('#f2f5f8');
+    data.getRow(r).getCell(1).editAsText().setBold(true);
+  }
+  section('Checklist completo');
+  const checklist = Array.isArray(inspection.items) ? inspection.items : [];
+  if (checklist.length) {
+    const grid = table(checklist.map((item, index) => {
+      const issue = item && item.status === 'issue';
+      const ok = item && item.status === 'ok';
+      return [`${index + 1}. ${item && item.name || 'Item'}`, issue ? `OCORRÊNCIA\n${item.issue && item.issue.description || item.description || 'Verificar apontamento'}` : ok ? 'EM ORDEM' : 'NÃO INFORMADO'];
+    }), [250, 273.28]);
+    checklist.forEach((item, index) => {
+      const cell = grid.getRow(index).getCell(1);
+      const issue = item && item.status === 'issue';
+      const ok = item && item.status === 'ok';
+      cell.setBackgroundColor(issue ? '#fff1ef' : ok ? '#f0f8f3' : '#fff8e8');
+      cell.editAsText().setForegroundColor(issue ? '#b42318' : ok ? '#087443' : '#805b10');
     });
-  } else {
-    body.appendParagraph('Detalhamento do checklist não informado.');
-  }
-
-  body.appendParagraph('');
-  body.appendParagraph('Ocorrências relatadas').setHeading(DocumentApp.ParagraphHeading.HEADING2);
-  if (issues.length) {
-    issues.forEach((issue, index) => body.appendParagraph(`${index + 1}. ${issue.itemName || 'Ocorrência'} (${issue.severity || 'Não informada'}): ${issue.description || 'Sem descrição'}`));
-  } else {
-    body.appendParagraph('Checklist concluído sem ocorrências.');
-  }
+  } else styleParagraph(body.appendParagraph('Detalhamento do checklist não informado.'), 9, '#526475', false);
+  section('Ocorrências relatadas');
+  (issues.length ? issues.map((issue, index) => `${index + 1}. ${issue.itemName || 'Ocorrência'} (${issue.severity || 'Não informada'}): ${issue.description || 'Sem descrição'}`) : ['Checklist concluído sem ocorrências.'])
+    .forEach(text => styleParagraph(body.appendParagraph(text), 9, '#17324a', false));
   if (inspection.notes) {
-    body.appendParagraph('');
-    body.appendParagraph('Observação geral').setHeading(DocumentApp.ParagraphHeading.HEADING2);
-    body.appendParagraph(inspection.notes);
+    section('Observação geral');
+    styleParagraph(body.appendParagraph(String(inspection.notes)), 9, '#17324a', false);
   }
+  styleParagraph(document.addFooter().appendParagraph('URBAM Frotas | Registro de inspeção'), 8, '#617181', false);
   document.saveAndClose();
   const file = DriveApp.getFileById(document.getId());
-  const pdf = file.getAs(MimeType.PDF).setName(`${documentName}.pdf`);
-  file.setTrashed(true);
-  return pdf;
+  try {
+    return file.getAs(MimeType.PDF).setName(`${documentName}.pdf`);
+  } finally {
+    file.setTrashed(true);
+  }
 }
+
 
 function doPost(e) {
   let payload = {};
+  let mailAccepted = false;
   try {
     payload = JSON.parse((e && e.postData && e.postData.contents) || '{}');
     const inspection = payload.inspection || {};
@@ -132,7 +180,7 @@ function doPost(e) {
       `Data: ${date}`,
       `Colaborador: ${inspection.driver || 'Não informado'} · Matrícula: ${inspection.driverRegistration || '—'}`,
       `Veículo: Prefixo ${vehicle.prefix} · Placa ${vehicle.plate || '—'} · ${vehicle.model || vehicle.type || ''}`,
-      `Quilometragem: ${inspection.odometer || '—'} km`,
+      `Quilometragem: ${inspection.odometer ?? '—'} km`,
       `Base: ${inspection.baseName || 'Não informada'}`, '',
       'Ocorrências:', issueText,
       inspection.notes ? `\nObservação geral: ${inspection.notes}` : ''
@@ -148,12 +196,20 @@ function doPost(e) {
       attachments: [pdfAttachment],
       name: 'URBAM Frotas'
     });
-    confirmDelivery_(payload.emailDeliveryId, 'enviado');
-    return ContentService.createTextOutput(JSON.stringify({ ok: true, protocol: inspection.id }))
+    mailAccepted = true;
+    const confirmationRecorded = confirmDelivery_(payload.emailDeliveryId, 'enviado', '', inspection.id) === true;
+    return ContentService.createTextOutput(JSON.stringify({ ok: true, protocol: inspection.id, confirmationRecorded }))
       .setMimeType(ContentService.MimeType.JSON);
   } catch (error) {
+    // Uma falha no registro do banco não desfaz o envio já aceito pelo MailApp.
+    // Não marcar como falhou nem incentivar um segundo envio do mesmo formulário.
+    if (mailAccepted) {
+      console.error('E-mail aceito, mas confirmação no banco pendente.');
+      return ContentService.createTextOutput(JSON.stringify({ ok: true, confirmationRecorded: false, warning: 'confirmation_pending' }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
     console.error(`Falha no formulário: ${String(error.message || error)}`);
-    try { confirmDelivery_(payload && payload.emailDeliveryId, 'falhou', String(error.message || error)); } catch (_) {}
+    try { confirmDelivery_(payload && payload.emailDeliveryId, 'falhou', String(error.message || error), payload.inspection && payload.inspection.id); } catch (_) {}
     return ContentService.createTextOutput(JSON.stringify({ ok: false, error: String(error.message || error) }))
       .setMimeType(ContentService.MimeType.JSON);
   }
