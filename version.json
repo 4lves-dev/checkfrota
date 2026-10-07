@@ -1,5 +1,5 @@
 {
-  "version": "240",
+  "version": "241",
   "released_at": "2026-10-07",
-  "notes": "Checklists e histórico mais visíveis, atualização manual da Gestão, aviso de falha de leitura e proteção contra conflitos. Homologação integral ainda pendente."
+  "notes": "Prazo de seis horas derivado da entrega, alerta de horários inconsistentes e bloqueio de mensagens indevidas de atraso. Homologação integral ainda pendente."
 }

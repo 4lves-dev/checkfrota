@@ -5,7 +5,7 @@
  */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "240";
+const APP_VERSION = "241";
 const SOFTWARE_SIGNATURE = Object.freeze({ owner: "LUCHTI ME", product: "URBAM Frotas", fingerprint: "LUCHTI-CHECKFROTA-URBAM-20260909-A7F3", notice: "Todos os direitos reservados" });
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v218";
 const CHECKLIST = [
@@ -1339,12 +1339,23 @@ function renderVehicleTimelines() {
     card.insertAdjacentHTML("beforeend", `<section class="vehicle-timeline"><b>Linha do tempo recente</b>${events.map((event) => `<p><span>●</span> ${esc(dateTime(event.at))} · ${esc(event.label)}</p>`).join("")}</section>`);
   });
 }
-function maintenanceDeadline(issue) { const maintenance = maintenanceOf(issue); return maintenance.deliveryAt ? new Date(maintenance.supplierDeadlineAt || new Date(maintenance.deliveryAt).getTime() + 21600000) : null; }
+function maintenanceDeadline(issue) {
+  const maintenance = maintenanceOf(issue);
+  const delivered = new Date(maintenance.deliveryAt).getTime();
+  if (!maintenance.deliveryAt || !Number.isFinite(delivered)) return null;
+  // O limite contratual deriva da entrega, nunca de um prazo editável antigo.
+  return new Date(delivered + 21600000);
+}
 function durationLabel(milliseconds) { const minutes = Math.max(0, Math.ceil(milliseconds / 60000)); return minutes >= 60 ? `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, "0")}min` : `${minutes} min`; }
 function supplierSlaResult(issue) {
   const maintenance = maintenanceOf(issue); const deadline = maintenanceDeadline(issue);
   if (!deadline) return null;
   const finishedAt = maintenance.readyAt || maintenance.pickupAt || (maintenance.status === "Concluída" ? issue.resolvedAt : "");
+  const delivered = new Date(maintenance.deliveryAt).getTime();
+  const reference = finishedAt ? new Date(finishedAt).getTime() : Date.now();
+  if (!Number.isFinite(reference) || reference < delivered) {
+    return { deadline, finishedAt: null, difference: 0, state: "invalid", error: "Horários inconsistentes. Confira a entrega registrada e o relógio automático do aparelho antes de avaliar o prazo." };
+  }
   if (finishedAt) {
     const difference = new Date(finishedAt).getTime() - deadline.getTime();
     return { deadline, finishedAt: new Date(finishedAt), difference, state: difference <= 0 ? "within" : "late" };
@@ -1385,6 +1396,7 @@ function renderMaintenanceWatchAlerts() {
   panel.innerHTML = `<div class="section-action"><div><p class="eyebrow">CONTROLE CONTRATUAL</p><h3>Prazo de atendimento de 6 horas</h3><p>O fornecedor não acessa o sistema. A Gestão registra o retorno recebido por WhatsApp e prepara o e-mail formal quando houver atraso.</p></div><span class="chip grave">${active.length} em acompanhamento</span></div>${active.map((issue) => {
     const maintenance = maintenanceOf(issue), sla = supplierSlaResult(issue), overdue = sla?.state === "late";
     if (!sla) return "";
+    if (sla.state === "invalid") return `<article class="maintenance-watch overdue"><b>⚠ Conferir horários</b><p>Prefixo ${esc(issue.vehiclePrefix || "—")} · ${esc(issue.vehiclePlate || "—")}</p><small>${esc(sla.error)}</small></article>`;
     notifyManagementMaintenanceWatch(issue, overdue && !sla.finishedAt);
     const title = sla.state === "within" ? "✓ Atendimento dentro do prazo" : sla.state === "late" ? "! Prazo contratual vencido" : "◷ Prazo do fornecedor em andamento";
     const detail = sla.finishedAt
@@ -1974,7 +1986,9 @@ function slaEmailSubject(issue) {
 }
 function buildSupplierSlaMessage(issue) {
   const maintenance = maintenanceOf(issue); const sla = supplierSlaResult(issue);
-  if (!sla) return "";
+  if (!sla || sla.state === "invalid") return "";
+  if (sla.state === "running") return `Registro de acompanhamento — Prefixo ${issue.vehiclePrefix || "—"} · Placa ${issue.vehiclePlate || "—"}\nEntrega: ${dateTime(maintenance.deliveryAt)}\nLimite de 6 horas: ${dateTime(sla.deadline)}\nPrazo em andamento. Este registro não constitui notificação de atraso.`;
+  if (sla.state === "within") return `Registro de atendimento no prazo — Prefixo ${issue.vehiclePrefix || "—"} · Placa ${issue.vehiclePlate || "—"}\nEntrega: ${dateTime(maintenance.deliveryAt)}\nPronto para retirada: ${dateTime(sla.finishedAt)}\nLimite de 6 horas: ${dateTime(sla.deadline)}\nAtendimento concluído dentro do prazo registrado.`;
   const vehicleType = issue.vehicleType || "Veículo";
   const problem = issue.description || issue.itemName || "problema informado no chamado";
   if (sla.state === "late" && sla.finishedAt) {
@@ -1984,14 +1998,17 @@ function buildSupplierSlaMessage(issue) {
 }
 async function copySupplierSlaNotice(issueId) {
   const issue = data.issues.find((entry) => entry.id === issueId); const message = issue ? buildSupplierSlaMessage(issue) : "";
-  if (!message) return alert("O prazo de 6 horas começa somente após a entrega do veículo para manutenção.");
-  try { await navigator.clipboard.writeText(`Assunto: ${slaEmailSubject(issue)}\n\n${message}`); alert("Texto do e-mail formal copiado."); }
+  if (!message) return alert("Confira a entrega e os horários registrados antes de preparar a mensagem.");
+  const late = supplierSlaResult(issue)?.state === "late";
+  try { await navigator.clipboard.writeText(`${late ? `Assunto: ${slaEmailSubject(issue)}\n\n` : ""}${message}`); alert(late ? "Texto do e-mail formal copiado." : "Registro de acompanhamento copiado."); }
   catch { alert("Não foi possível copiar automaticamente. Use o botão para preparar o e-mail."); }
 }
 async function sendSupplierSlaNotice(issueId) {
   const issue = data.issues.find((entry) => entry.id === issueId); if (!issue) return;
   const maintenance = maintenanceOf(issue); const sla = supplierSlaResult(issue);
   if (!sla) return alert("Registre primeiro a entrega do veículo para iniciar o prazo contratual.");
+  if (sla.state === "invalid") return alert(sla.error);
+  if (sla.state !== "late") return copySupplierSlaNotice(issueId);
   const type = sla.state === "late" ? "E-mail de notificação de atraso preparado" : "Comprovação de atendimento no prazo copiada";
   issue.maintenance = { ...maintenance, slaNoticeAt: new Date().toISOString(), slaNoticeType: type, slaEmailAt: sla.state === "late" ? new Date().toISOString() : maintenance.slaEmailAt, updatedAt: new Date().toISOString() };
   saveData(); renderControl();
@@ -2051,6 +2068,7 @@ function sendMaintenanceWhatsApp() {
 }
 async function saveAndSendInternalMaintenanceUpdate(issue) {
   if (!issue) return;
+  const previousIssue = JSON.parse(JSON.stringify(issue));
   const existing = maintenanceOf(issue);
   const form = maintenanceFormValues(existing);
   // Este botão apenas comunica a equipe e preserva os marcos já registrados.
@@ -2077,8 +2095,15 @@ async function saveAndSendInternalMaintenanceUpdate(issue) {
     await cloudUpdateIssue(issue);
     await recordAuditEvent(issue, "aviso_equipe_interna", "Atualização de manutenção enviada ao grupo interno.");
   } catch (error) {
-    queueCloudWrite("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: issue.vehicleId, status: issue.status, data: issue }, "update");
-    alert("A atualização foi guardada neste aparelho e será sincronizada quando a internet voltar.");
+    if (error.code === "ISSUE_CONFLICT") {
+      Object.assign(issue, previousIssue); saveData();
+      alert("Outra pessoa atualizou este chamado. Atualize a Gestão antes de avisar a equipe.");
+    } else {
+      queueCloudWrite("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: issue.vehicleId, status: issue.status, data: issue }, "update");
+      alert("Atualização aguardando sincronização. Nenhuma mensagem foi aberta; confirme a gravação antes de avisar a equipe.");
+    }
+    renderControl();
+    return;
   }
   sendSchedulingReturn(issue, maintenance);
   renderControl();
