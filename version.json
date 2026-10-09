@@ -1,5 +1,5 @@
 {
-  "version": "241",
-  "released_at": "2026-10-07",
-  "notes": "Prazo de seis horas derivado da entrega, alerta de horários inconsistentes e bloqueio de mensagens indevidas de atraso. Homologação integral ainda pendente."
+  "version": "242",
+  "released_at": "2026-10-09",
+  "notes": "Proteção de notificação formal em falhas ou conflitos de gravação. Migração de acesso direto restrito à Gestão. Liberação geral ainda pendente de autenticação do colaborador e fila de e-mail no servidor."
 }

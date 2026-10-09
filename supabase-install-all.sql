@@ -1243,3 +1243,15 @@ end; $$;
 drop trigger if exists fleet_issue_timeline_trigger on public.fleet_issues;
 create trigger fleet_issue_timeline_trigger before insert or update on public.fleet_issues
 for each row execute function public.fleet_register_issue_timeline();
+
+-- v242: políticas restritivas prevalecem sobre permissões legadas amplas.
+do $$ declare t text; begin
+  foreach t in array array['fleet_inspections','fleet_issues'] loop
+    execute format('drop policy if exists management_select_guard on public.%I',t);
+    execute format('create policy management_select_guard on public.%I as restrictive for select to authenticated using (public.fleet_is_manager())',t);
+    execute format('drop policy if exists management_update_guard on public.%I',t);
+    execute format('create policy management_update_guard on public.%I as restrictive for update to authenticated using (public.fleet_is_manager()) with check (public.fleet_is_manager())',t);
+    execute format('drop policy if exists management_delete_guard on public.%I',t);
+    execute format('create policy management_delete_guard on public.%I as restrictive for delete to authenticated using (public.fleet_is_manager())',t);
+  end loop;
+end $$;

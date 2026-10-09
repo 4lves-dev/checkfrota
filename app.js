@@ -5,7 +5,7 @@
  */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "241";
+const APP_VERSION = "242";
 const SOFTWARE_SIGNATURE = Object.freeze({ owner: "LUCHTI ME", product: "URBAM Frotas", fingerprint: "LUCHTI-CHECKFROTA-URBAM-20260909-A7F3", notice: "Todos os direitos reservados" });
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v218";
 const CHECKLIST = [
@@ -2009,12 +2009,22 @@ async function sendSupplierSlaNotice(issueId) {
   if (!sla) return alert("Registre primeiro a entrega do veículo para iniciar o prazo contratual.");
   if (sla.state === "invalid") return alert(sla.error);
   if (sla.state !== "late") return copySupplierSlaNotice(issueId);
-  const type = sla.state === "late" ? "E-mail de notificação de atraso preparado" : "Comprovação de atendimento no prazo copiada";
+  const previousIssue = JSON.parse(JSON.stringify(issue));
+  const type = "E-mail de notificação de atraso preparado";
   issue.maintenance = { ...maintenance, slaNoticeAt: new Date().toISOString(), slaNoticeType: type, slaEmailAt: sla.state === "late" ? new Date().toISOString() : maintenance.slaEmailAt, updatedAt: new Date().toISOString() };
   saveData(); renderControl();
-  try { await cloudUpdateIssue(issue); await recordAuditEvent(issue, "notificacao_sla_email", type); }
-  catch (error) { queueCloudWrite("fleet_issues", { id: issue.id, inspection_id: issue.inspectionId, vehicle_id: issue.vehicleId, status: issue.status, data: issue }, "update"); }
-  if (sla.state !== "late") return copySupplierSlaNotice(issueId);
+  try { await cloudUpdateIssue(issue); }
+  catch (error) {
+    Object.assign(issue, previousIssue);
+    saveData(); renderControl();
+    alert(error?.code === "ISSUE_CONFLICT"
+      ? "Este chamado foi atualizado por outra pessoa. Atualize a Gestão antes de preparar a notificação."
+      : "Não foi possível confirmar os dados no banco. Nenhuma mensagem foi aberta; tente novamente após reconectar.");
+    return;
+  }
+  // Falha no registro auxiliar não desfaz uma gravação já confirmada.
+  try { await recordAuditEvent(issue, "notificacao_sla_email", type); }
+  catch (error) { console.warn("Notificação preparada; registro auxiliar indisponível.", error); }
   const target = String(issue.email || data.vehicles.find((vehicle) => vehicle.id === issue.vehicleId)?.email || "").trim();
   const subject = slaEmailSubject(issue);
   const body = buildSupplierSlaMessage(issue);
