@@ -153,8 +153,19 @@ function buildChecklistPdf_(inspection, vehicle, issues, date) {
 
 
 function doPost(e) {
+  // After activation the public endpoint does not send browser-supplied data.
+  // Only the authenticated server queue supplies the checklist to the worker.
+  if (PropertiesService.getScriptProperties().getProperty('CHECKFROTA_EMAIL_QUEUE_MODE') === 'server') {
+    return ContentService.createTextOutput(JSON.stringify({ ok: true, queued: true, confirmed: false }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  return sendChecklist_(e);
+}
+
+function sendChecklist_(e, queueJob) {
   let payload = {};
   let mailAccepted = false;
+  let sendAttempted = false;
   try {
     payload = JSON.parse((e && e.postData && e.postData.contents) || '{}');
     const inspection = payload.inspection || {};
@@ -188,6 +199,8 @@ function doPost(e) {
 
     const htmlBody = `<!doctype html><html><body style="margin:0;padding:24px;background:#f2f5f8;font-family:Arial,sans-serif;color:#17324a"><main style="max-width:680px;margin:0 auto;background:#fff;border:1px solid #dce6ee;border-radius:12px;overflow:hidden"><header style="padding:22px 28px;background:#083b64;color:#fff"><div style="font-size:11px;font-weight:700;letter-spacing:1px">URBAM FROTAS · FORMULÁRIO ENVIADO</div><h1 style="margin:7px 0 0;font-size:24px">Checklist de inspeção</h1></header><section style="padding:24px 28px"><p style="margin:0 0 18px;color:#075a91;font-size:12px;font-weight:700">PROTOCOLO: ${escapeHtml_(inspection.id)}</p><h2 style="font-size:17px;margin:0 0 12px;color:#183a59">Dados do formulário</h2><table style="width:100%;border-collapse:collapse;font-size:13px"><tr><td style="width:40%;padding:9px 7px;border-bottom:1px solid #dce6ee;color:#617181">Motorista</td><td style="padding:9px 7px;border-bottom:1px solid #dce6ee;font-weight:700">${escapeHtml_(inspection.driver)}</td></tr><tr><td style="padding:9px 7px;border-bottom:1px solid #dce6ee;color:#617181">Matrícula</td><td style="padding:9px 7px;border-bottom:1px solid #dce6ee;font-weight:700">${escapeHtml_(inspection.driverRegistration)}</td></tr><tr><td style="padding:9px 7px;border-bottom:1px solid #dce6ee;color:#617181">Base</td><td style="padding:9px 7px;border-bottom:1px solid #dce6ee;font-weight:700">${escapeHtml_(inspection.baseName)}</td></tr><tr><td style="padding:9px 7px;border-bottom:1px solid #dce6ee;color:#617181">Veículo</td><td style="padding:9px 7px;border-bottom:1px solid #dce6ee;font-weight:700">Prefixo ${escapeHtml_(vehicle.prefix)} · ${escapeHtml_(vehicle.plate)} · ${escapeHtml_(vehicle.model || vehicle.type)}</td></tr><tr><td style="padding:9px 7px;border-bottom:1px solid #dce6ee;color:#617181">Quilometragem</td><td style="padding:9px 7px;border-bottom:1px solid #dce6ee;font-weight:700">${escapeHtml_(inspection.odometer)} km</td></tr><tr><td style="padding:9px 7px;border-bottom:1px solid #dce6ee;color:#617181">Data e hora</td><td style="padding:9px 7px;border-bottom:1px solid #dce6ee;font-weight:700">${date}</td></tr></table><h2 style="font-size:17px;margin:25px 0 12px;color:#183a59">Checklist completo</h2><table style="width:100%;border-collapse:separate;border-spacing:0;border:1px solid #dce6ee;border-radius:8px;overflow:hidden">${checklistRows}</table><h2 style="font-size:17px;margin:25px 0 12px;color:#183a59">Ocorrências relatadas</h2>${issueHtml}${inspection.notes ? `<section style="margin-top:18px;padding:13px 14px;border-radius:8px;background:#f3f7fa"><b style="font-size:12px;color:#506274">OBSERVAÇÃO GERAL</b><p style="margin:6px 0 0;font-size:13px;line-height:1.45">${escapeHtml_(inspection.notes)}</p></section>` : ''}</section><footer style="padding:15px 28px;background:#f4f7f9;color:#607181;font-size:11px">URBAM Frotas · Registro automático de inspeção</footer></main></body></html>`;
     const pdfAttachment = buildChecklistPdf_(inspection, vehicle, issues, date);
+    if (queueJob && !emailQueueTransition_(queueJob, 'sending')) throw new Error('Reserva de envio expirada.');
+    sendAttempted = true;
     MailApp.sendEmail({
       to: URBAM_FROTAS_EMAIL,
       subject,
@@ -197,7 +210,9 @@ function doPost(e) {
       name: 'URBAM Frotas'
     });
     mailAccepted = true;
-    const confirmationRecorded = confirmDelivery_(payload.emailDeliveryId, 'enviado', '', inspection.id) === true;
+    const confirmationRecorded = queueJob
+      ? emailQueueTransition_(queueJob, 'sent') === true
+      : confirmDelivery_(payload.emailDeliveryId, 'enviado', '', inspection.id) === true;
     return ContentService.createTextOutput(JSON.stringify({ ok: true, protocol: inspection.id, confirmationRecorded }))
       .setMimeType(ContentService.MimeType.JSON);
   } catch (error) {
@@ -209,7 +224,10 @@ function doPost(e) {
         .setMimeType(ContentService.MimeType.JSON);
     }
     console.error(`Falha no formulário: ${String(error.message || error)}`);
-    try { confirmDelivery_(payload && payload.emailDeliveryId, 'falhou', String(error.message || error), payload.inspection && payload.inspection.id); } catch (_) {}
+    try {
+      if (queueJob) emailQueueTransition_(queueJob, sendAttempted ? 'uncertain' : 'retry', String(error.message || error));
+      else confirmDelivery_(payload && payload.emailDeliveryId, 'falhou', String(error.message || error), payload.inspection && payload.inspection.id);
+    } catch (_) {}
     return ContentService.createTextOutput(JSON.stringify({ ok: false, error: String(error.message || error) }))
       .setMimeType(ContentService.MimeType.JSON);
   }
@@ -218,7 +236,7 @@ function doPost(e) {
 // Executar manualmente no editor para autorizar Docs/Drive/Mail e validar PDF.
 // Não cria chamados no banco nem notifica motoristas ou fornecedores.
 function testarEmailComPdf() {
-  const result = doPost({ postData: { contents: JSON.stringify({
+  const result = sendChecklist_({ postData: { contents: JSON.stringify({
     inspection: { id: `diagnostico-${Date.now()}`, createdAt: new Date().toISOString(),
       driver: 'TESTE TÉCNICO — NÃO É CHAMADO', driverRegistration: 'TESTE',
       baseName: 'Homologação', odometer: 0,
