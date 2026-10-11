@@ -90,7 +90,7 @@ function buildChecklistPdf_(inspection, vehicle, issues, date) {
   };
   const section = title => {
     const paragraph = body.appendParagraph(title);
-    styleParagraph(paragraph, 12, '#183a59', true).setSpacingBefore(12).setSpacingAfter(6).setKeepWithNext(true);
+    styleParagraph(paragraph, 12, '#183a59', true).setSpacingBefore(12).setSpacingAfter(6);
   };
   const table = (rows, widths) => {
     const result = body.appendTable(rows);
