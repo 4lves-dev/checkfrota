@@ -104,8 +104,12 @@ function buildChecklistPdf_(inspection, vehicle, issues, date) {
     return result;
   };
   const banner = table([['URBAM FROTAS\nChecklist de inspeção']], [523.28]);
-  banner.getRow(0).getCell(0).setBackgroundColor('#083b64');
-  styleParagraph(banner.getRow(0).getCell(0).getChild(0).asParagraph(), 17, '#ffffff', true);
+  const bannerCell = banner.getRow(0).getCell(0);
+  bannerCell.setBackgroundColor('#083b64');
+  // Newlines in table cells create separate paragraphs. Style both lines.
+  for (let p = 0; p < bannerCell.getNumChildren(); p++) {
+    styleParagraph(bannerCell.getChild(p).asParagraph(), p === 0 ? 17 : 11, '#ffffff', p === 0);
+  }
   styleParagraph(body.appendParagraph(`Protocolo: ${valueText(inspection.id)} | ${date}`), 8, '#526475', false);
   section('Dados do formulário');
   const data = table([
@@ -248,3 +252,4 @@ function testarEmailComPdf() {
   if (!response.ok) throw new Error(response.error || 'Falha no diagnóstico.');
   console.log('Provedor aceitou o e-mail com PDF. Conferir recebimento na caixa de entrada.');
 }
+
