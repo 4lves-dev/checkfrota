@@ -1,5 +1,6 @@
 {
-  "version": "242",
-  "released_at": "2026-10-09",
-  "notes": "Proteção de notificação formal em falhas ou conflitos de gravação. Migração de acesso direto restrito à Gestão. Liberação geral ainda pendente de autenticação do colaborador e fila de e-mail no servidor."
+  "version": "243",
+  "released_at": "2026-10-11",
+  "notes": "Envio de PDF pela fila do servidor; confirmação de sincronização sem afirmar recebimento antecipado. Homologação móvel completa ainda pendente."
 }
+

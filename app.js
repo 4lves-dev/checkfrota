@@ -5,7 +5,7 @@
  */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "242";
+const APP_VERSION = "243";
 const SOFTWARE_SIGNATURE = Object.freeze({ owner: "LUCHTI ME", product: "URBAM Frotas", fingerprint: "LUCHTI-CHECKFROTA-URBAM-20260909-A7F3", notice: "Todos os direitos reservados" });
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v218";
 const CHECKLIST = [
@@ -1181,19 +1181,12 @@ async function submitChecklist() {
   renderScheduledAppointments();
   renderDailyChecklistAlert();
   await finishCorrectionRequest(current.correctionOf, inspection, newIssues.length > 0);
-  const emailDeliveryId = crypto.randomUUID();
-  void cloudSave("fleet_email_deliveries", { id: emailDeliveryId, inspection_id: inspection.id, recipient: EMAIL_COPY_RECIPIENT, status: "encaminhado" })
-    .catch((error) => console.warn("Rastreio de e-mail será criado após instalar a atualização do banco", error));
-  // Não mantenha a tela travada esperando o Apps Script. O serviço recebe a
-  // tentativa em paralelo e o motorista volta ao início em poucos segundos.
-  const emailPayload = { inspection, vehicle, issues: newIssues, emailDeliveryId };
-  void sendToIntegration(emailPayload).then((result) => {
-    if (!result.sent) console.warn("Integração de e-mail indisponível; verifique a configuração.");
-  });
+  // A fila do servidor cria o rastreio e envia o PDF após persistir o checklist
+  // e todas as ocorrências. O celular não cria outro envio nem confirma e-mail.
   // A confirmação visual não pode afirmar que Liderança/Gestão já receberam o
   // chamado antes de a gravação na nuvem terminar. O formulário local continua
   // disponível, mas a tela informa corretamente quando houver pendência.
-  await showCompletion(inspection, vehicle, newIssues, { sent: Boolean(data.settings.webhookUrl), unverified: Boolean(data.settings.webhookUrl), reason: "envio em andamento", cloudPending: true });
+  await showCompletion(inspection, vehicle, newIssues, { serverQueued: true, cloudPending: true });
   current = { driver: current.driver, driverRegistration: current.driverRegistration, driverRole: current.driverRole, driverEmail: current.driverEmail, driverPhone: current.driverPhone, baseName: current.baseName, basePhone: current.basePhone, vehicleId: vehicle.id, odometer: "", openingLocation: null, states: {}, notes: "" };
   saveData();
   } finally {
@@ -1284,7 +1277,7 @@ async function showCompletion(inspection, vehicle, issues, sendResult) {
   const cloudText = sendResult.cloudPending
     ? `O formulário foi salvo neste aparelho e será disponibilizado para ${destination} assim que a sincronização for confirmada.`
     : `O formulário foi salvo com ${issues.length} ocorrência(s) e já está disponível para ${destination}.`;
-  $("#successText").textContent = issues.length ? `${cloudText} ${sendResult.unverified ? "O pedido de e-mail foi encaminhado; a confirmação depende da implantação do serviço de e-mail." : sendResult.sent ? "A integração de e-mail confirmou o recebimento." : "Configure a integração para o envio automático por e-mail."}` : "Checklist concluído sem observações. Não é necessária aprovação da liderança.";
+  $("#successText").textContent = `${cloudText} ${sendResult.serverQueued ? "O PDF será enviado automaticamente pelo servidor após a sincronização. O estado do envio pode ser acompanhado pela Gestão." : "Consulte a Gestão para acompanhar o envio do formulário."}${!issues.length ? " Não é necessária aprovação da liderança." : ""}`;
   const form = $("#submittedForm");
   const occurrenceRows = issues.length ? issues.map((issue) => `<article class="submitted-issue ${esc(issue.severity.toLowerCase())}"><div><b>${esc(issue.itemName)}</b><span class="chip ${esc(issue.severity.toLowerCase())}">${esc(issue.severity)}</span></div><p>${esc(issue.description)}</p>${issue.photoPath ? `<img src="${esc(publicIssuePhotoUrl(issue))}" alt="Foto da ocorrência ${esc(issue.itemName)}" loading="lazy">` : ""}</article>`).join("") : `<p class="form-empty">Nenhuma ocorrência informada.</p>`;
   form.innerHTML = `<div class="form-top"><span class="form-mark">✓</span><div><small>URBAM FROTAS · RESPOSTA ENVIADA</small><h2>Formulário de inspeção</h2></div></div><div class="form-fields"><div><span>Colaborador</span><b>${esc(inspection.driver)}</b></div>${inspection.driverRegistration ? `<div><span>Matrícula</span><b>${esc(inspection.driverRegistration)}</b></div>` : ""}${inspection.driverRole ? `<div><span>Função</span><b>${esc(inspection.driverRole)}</b></div>` : ""}<div><span>Base</span><b>${esc(inspection.baseName)}</b></div>${inspection.driverEmail ? `<div><span>Cópia para e-mail</span><b>${esc(inspection.driverEmail)}</b></div>` : ""}<div><span>Veículo</span><b>Prefixo ${esc(vehicle.prefix)} · ${esc(vehicle.plate)}</b></div><div><span>Modelo</span><b>${esc(vehicle.model || vehicle.type)}</b></div><div><span>Quilometragem</span><b>${esc(inspection.odometer)} km</b></div><div><span>Data e hora</span><b>${esc(dateTime(inspection.createdAt))}</b></div></div><div class="form-occurrences"><h3>Ocorrências relatadas</h3>${occurrenceRows}</div>${inspection.notes ? `<div class="form-notes"><span>Observação geral</span><p>${esc(inspection.notes)}</p></div>` : ""}`;
@@ -1297,7 +1290,7 @@ async function showCompletion(inspection, vehicle, issues, sendResult) {
     return;
   }
   const directToManagement = issues.some((issue) => issue.approvalRoute === "gestao");
-  actions.innerHTML = `<div class="dispatch-confirmation" role="status" aria-live="polite"><span aria-hidden="true">✓</span><div><b>Chamado enviado</b><small>Disponível no painel ${directToManagement ? "da Gestão" : "da Liderança"}.</small></div></div>`;
+  actions.innerHTML = `<div class="dispatch-confirmation" role="status" aria-live="polite"><span aria-hidden="true">✓</span><div><b>${sendResult.cloudPending ? "Chamado salvo neste aparelho" : "Chamado sincronizado"}</b><small>${sendResult.cloudPending ? "Aguardando confirmação da sincronização" : `Disponível no painel ${directToManagement ? "da Gestão" : "da Liderança"}`}.</small></div></div>`;
   showScreen("success");
   if (completionReturnTimer) clearTimeout(completionReturnTimer);
   completionReturnTimer = window.setTimeout(() => {
@@ -2502,3 +2495,4 @@ if (new URLSearchParams(location.search).get("gestao") === "1") {
 void syncCloudOutbox();
 // Tentativas pendentes também ganham prioridade quando o aplicativo está aberto.
 window.setInterval(() => { if (!document.hidden) void syncCloudOutbox(); }, FAST_SYNC_INTERVAL_MS);
+
