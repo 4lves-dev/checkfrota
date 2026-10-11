@@ -5,7 +5,7 @@
  */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "243";
+const APP_VERSION = "244";
 const SOFTWARE_SIGNATURE = Object.freeze({ owner: "LUCHTI ME", product: "URBAM Frotas", fingerprint: "LUCHTI-CHECKFROTA-URBAM-20260909-A7F3", notice: "Todos os direitos reservados" });
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v218";
 const CHECKLIST = [
@@ -727,7 +727,7 @@ async function loadCloudManager() {
       cloudRequest("/rest/v1/fleet_vehicles?select=data"),
     ]);
     if (!Array.isArray(issues) || !Array.isArray(inspections) || !Array.isArray(vehicles)) throw new Error("Resposta incompleta do banco");
-    data.issues = issues.map((row) => ({
+    const nextIssues = issues.map((row) => ({
       ...(row.data || {}),
       id: row.id ?? row.data?.id,
       inspectionId: row.inspection_id ?? row.data?.inspectionId,
@@ -735,8 +735,10 @@ async function loadCloudManager() {
       status: row.status || row.data?.status || "aberta",
       __revision: Number.isInteger(row.revision) ? row.revision : undefined,
     }));
-    data.inspections = normalizeManagerInspections(inspections);
-    data.vehicles = mergeFleetVehicles((vehicles || []).map((row) => row.data).filter(Boolean));
+    const nextInspections = normalizeManagerInspections(inspections);
+    const nextVehicles = mergeFleetVehicles(vehicles.map((row) => row.data).filter(Boolean));
+    // Prepare o conjunto completo antes de substituir os dados já exibidos.
+    Object.assign(data, { issues: nextIssues, inspections: nextInspections, vehicles: nextVehicles });
     managementCloudLoaded = true;
     managementLastRead = new Date().toISOString();
     managementReadError = false;
@@ -763,7 +765,7 @@ function renderManagementSyncStatus() {
   if (button) button.disabled = managementCloudLoading;
   if (!status) return;
   status.textContent = managementCloudLoading ? "Consultando o banco…"
-    : managementReadError ? "Não foi possível atualizar a Gestão. Os dados exibidos podem estar desatualizados. Tente novamente."
+    : managementReadError ? `Não foi possível atualizar a Gestão. Os dados exibidos podem estar desatualizados.${managementLastRead ? ` Última sincronização: ${dateTime(managementLastRead)}.` : ""} A atualização será tentada novamente automaticamente.`
     : managementLastRead ? `Gestão atualizada em ${dateTime(managementLastRead)}`
     : "Aguardando consulta ao banco. Os dados locais ainda não foram conferidos.";
 }
@@ -2495,4 +2497,3 @@ if (new URLSearchParams(location.search).get("gestao") === "1") {
 void syncCloudOutbox();
 // Tentativas pendentes também ganham prioridade quando o aplicativo está aberto.
 window.setInterval(() => { if (!document.hidden) void syncCloudOutbox(); }, FAST_SYNC_INTERVAL_MS);
-

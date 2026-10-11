@@ -1,6 +1,5 @@
 {
-  "version": "243",
+  "version": "244",
   "released_at": "2026-10-11",
   "notes": "Envio de PDF pela fila do servidor; confirmação de sincronização sem afirmar recebimento antecipado. Homologação móvel completa ainda pendente."
 }
-
