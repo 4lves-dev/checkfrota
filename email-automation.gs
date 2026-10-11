@@ -90,7 +90,7 @@ function buildChecklistPdf_(inspection, vehicle, issues, date) {
   };
   const section = title => {
     const paragraph = body.appendParagraph(title);
-    styleParagraph(paragraph, 12, '#183a59', true).setSpacingBefore(12).setSpacingAfter(6);
+    styleParagraph(paragraph, 12, '#183a59', true).setSpacingBefore(12).setSpacingAfter(6).setKeepWithNext(true);
   };
   const table = (rows, widths) => {
     const result = body.appendTable(rows);
@@ -99,7 +99,10 @@ function buildChecklistPdf_(inspection, vehicle, issues, date) {
     rows.forEach((row, r) => row.forEach((_, c) => {
       const cell = result.getRow(r).getCell(c);
       cell.setPaddingTop(6).setPaddingBottom(6).setPaddingLeft(9).setPaddingRight(9);
-      styleParagraph(cell.getChild(0).asParagraph(), 9, '#17324a', false);
+      // Every line can be a separate paragraph; do not inherit document defaults.
+      for (let p = 0; p < cell.getNumChildren(); p++) {
+        styleParagraph(cell.getChild(p).asParagraph(), 9, '#17324a', false);
+      }
     }));
     return result;
   };
