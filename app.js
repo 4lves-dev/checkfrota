@@ -5,7 +5,7 @@
  */
 const STORAGE_KEY = "checkfrota-v1";
 const OUTBOX_KEY = "checkfrota-cloud-outbox-v1";
-const APP_VERSION = "244";
+const APP_VERSION = "245";
 const SOFTWARE_SIGNATURE = Object.freeze({ owner: "LUCHTI ME", product: "URBAM Frotas", fingerprint: "LUCHTI-CHECKFROTA-URBAM-20260909-A7F3", notice: "Todos os direitos reservados" });
 const LOCAL_DATA_RESET_KEY = "checkfrota-reset-v218";
 const CHECKLIST = [
@@ -202,7 +202,38 @@ function cloudHeaders(json = true) {
   const token = cloudToken();
   return { apikey: CLOUD?.publishableKey || "", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(json ? { "Content-Type": "application/json" } : {}) };
 }
-async function cloudRequest(path, options = {}) { if (!CLOUD?.url) return null; const response = await fetch(`${CLOUD.url}${path}`, { ...options, signal: options.signal || AbortSignal.timeout(15000), headers: { ...cloudHeaders(options.json !== false), ...(options.headers || {}) } }); if (!response.ok) throw new Error(`Supabase: ${response.status}`); return response.status === 204 ? null : response.json(); }
+let cloudSessionRefresh = null;
+async function refreshCloudSession() {
+  const refreshToken = sessionStorage.getItem("checkfrota-supabase-refresh");
+  if (!refreshToken) return false;
+  if (cloudSessionRefresh) return cloudSessionRefresh;
+  cloudSessionRefresh = (async () => {
+    const response = await fetch(`${CLOUD.url}/auth/v1/token?grant_type=refresh_token`, {
+      method: "POST", signal: AbortSignal.timeout(15000),
+      headers: { apikey: CLOUD.publishableKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+    if (!response.ok) throw new Error("Não foi possível renovar a sessão de Gestão.");
+    const session = await response.json();
+    if (!session.access_token || !session.refresh_token) throw new Error("Sessão incompleta.");
+    sessionStorage.setItem("checkfrota-supabase-token", session.access_token);
+    sessionStorage.setItem("checkfrota-supabase-refresh", session.refresh_token);
+    return true;
+  })();
+  try { return await cloudSessionRefresh; } finally { cloudSessionRefresh = null; }
+}
+async function cloudRequest(path, options = {}) {
+  if (!CLOUD?.url) return null;
+  const tokenBefore = cloudToken();
+  const request = () => fetch(`${CLOUD.url}${path}`, { ...options, cache: "no-store", signal: options.signal || AbortSignal.timeout(15000), headers: { ...cloudHeaders(options.json !== false), ...(options.headers || {}) } });
+  let response = await request();
+  // Renove uma única sessão para as consultas simultâneas, sem repetir outras falhas.
+  if (response.status === 401 && tokenBefore) {
+    if (cloudToken() !== tokenBefore || await refreshCloudSession()) response = await request();
+  }
+  if (!response.ok) throw new Error(response.status === 401 ? "Sessão expirada. Entre novamente na Gestão para atualizar os dados." : `Supabase: ${response.status}`);
+  return response.status === 204 ? null : response.json();
+}
 async function cloudRpc(functionName, payload = {}) {
   return cloudRequest(`/rest/v1/rpc/${functionName}`, { method: "POST", body: JSON.stringify(payload) });
 }
@@ -233,9 +264,7 @@ async function loadMasterAccess() {
   managementRole = masterAdmin ? "master" : "";
   if (!CLOUD?.url || !cloudToken()) return renderControl();
   try {
-    const response = await fetch(`${CLOUD.url}/auth/v1/user`, { headers: cloudHeaders(false) });
-    if (!response.ok) throw new Error();
-    const profile = await response.json();
+    const profile = await cloudRequest("/auth/v1/user", { json: false });
     const email = String(profile.email || "").trim().toLowerCase();
     const role = await cloudRpc("fleet_current_management_role").catch(() => email === MASTER_ADMIN_EMAIL ? "master" : "");
     managementRole = email === MASTER_ADMIN_EMAIL
@@ -256,8 +285,10 @@ async function loadMasterAccess() {
       renderControl();
       return;
     }
-    sessionStorage.removeItem("checkfrota-supabase-token");
-    location.replace(`gestao.html?v=${APP_VERSION}&acesso=negado`);
+    // Uma falha de rede não prova falta de autorização. O banco continua
+    // protegendo as operações; mantenha o painel e permita tentar novamente.
+    managementReadError = true;
+    renderManagementSyncStatus();
     return;
   }
   renderControl();

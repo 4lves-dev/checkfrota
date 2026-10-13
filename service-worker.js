@@ -1,6 +1,6 @@
 /* LUCHTI ME · URBAM Frotas · LUCHTI-CHECKFROTA-URBAM-20260909-A7F3 · Todos os direitos reservados. */
-const CACHE = "checkfrota-v244";
-const ASSETS = ["./", "./index.html", "./gestao.html?v=244", "./lider.html?v=244", "./instalar-gestao.html?v=244", "./instalar-lider.html?v=244", "./aprovacao.html?v=244", "./styles.css?v=244", "./supabase-config.js?v=244", "./onesignal.js?v=244", "./app.js?v=244", "./manifest.webmanifest", "./gestao-manifest.webmanifest", "./lider-manifest.webmanifest", "./icons/icon.svg", "./version.json"];
+const CACHE = "checkfrota-v245";
+const ASSETS = ["./", "./index.html", "./gestao.html?v=245", "./lider.html?v=245", "./instalar-gestao.html?v=245", "./instalar-lider.html?v=245", "./aprovacao.html?v=245", "./styles.css?v=245", "./supabase-config.js?v=245", "./onesignal.js?v=245", "./app.js?v=245", "./manifest.webmanifest", "./gestao-manifest.webmanifest", "./lider-manifest.webmanifest", "./icons/icon.svg", "./version.json"];
 
 self.addEventListener("install", (event) => event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS))));
 self.addEventListener("activate", (event) => event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key.startsWith("checkfrota-v") && key !== CACHE).map((key) => caches.delete(key)))).then(() => self.clients.claim())));
@@ -48,6 +48,6 @@ self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   event.waitUntil(clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
     const open = windows.find((client) => client.url.includes("lider.html"));
-    return open ? open.focus() : clients.openWindow("./lider.html?v=244");
+    return open ? open.focus() : clients.openWindow("./lider.html?v=245");
   }));
 });
